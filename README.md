@@ -19,13 +19,14 @@ Bestanden
 - `DocBot.ahk` — ontwikkelversie 2.2 met de huidige GUI,
   telefoniefunctionaliteit, hotstrings, snelkiesnummers en pakketbeheer.
 - `packages/` — versieerbare ingebouwde hotstringpakketten plus manifest.
-- `ColorButton.ahk` — custom-draw ondersteuning voor de moderne knoppen.
-- `JXON.ahk` — JSON-library van TheArkive, gebruikt voor het laden en
-  opslaan van gebruikersgegevens.
+- `ThirdParty/ColorButton/` — custom-draw ondersteuning voor de moderne
+  knoppen, inclusief de oorspronkelijke MIT-licentie.
+- `ThirdParty/JXON/` — JSON-library van TheArkive voor het laden en opslaan
+  van gebruikersgegevens, inclusief de oorspronkelijke MIT-licentie.
 - `ThirdParty/UIA-v2/` — Windows UI Automation-library voor het betrouwbaar
-  activeren van de geconfigureerde Edge-tab en invullen van het SMS-veld.
-- `LICENSE-JXON.md` — MIT-licentie van de JXON-library.
-- `LICENSE` — MIT-licentie van DocBot.
+  activeren van de geconfigureerde Edge-tab en invullen van het SMS-veld,
+  inclusief de oorspronkelijke MIT-licentie.
+- `LICENSE` — PolyForm Noncommercial-licentie van DocBot 2.2 en later.
 - `AGENTS.md` en `CLAUDE.md` — project- en werkinstructies voor
   AI-assistenten.
 
@@ -39,7 +40,7 @@ tijdens het draaien van het script aangemaakt op de gebruikerscomputer (zie
 
 Installatie
 -----------
-Laat `DocBot.ahk` en `JXON.ahk` in dezelfde map staan. Kopieer
+Laat `DocBot.ahk` en de map `ThirdParty/` in de oorspronkelijke structuur staan. Kopieer
 `DocBot.local.example.ahk` naar `DocBot.local.ahk`, vul lokaal de
 telefonieserver, endpointnamen, standaard-snelkiesnummers en
 standaard-hotstrings in en compileer daarna `DocBot.ahk` met AutoHotkey v2.
@@ -291,6 +292,8 @@ Changelog
 
 ### 2.2 — In ontwikkeling
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
+- Externe libraries staan met hun oorspronkelijke MIT-licenties gegroepeerd
+  onder `ThirdParty/`.
 - Nieuwe vierstandeninstelling **Belactie** als vervanging voor AutoCall en
   DirectCall, inclusief een lokaal configureerbare keuze van de SMS-pagina.
   De SMS-keuze wordt alleen aangeboden als minimaal één geldige

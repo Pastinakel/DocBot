@@ -1,8 +1,8 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 Persistent true
-#Include JXON.ahk
-#Include ColorButton.ahk
+#Include ThirdParty\JXON\JXON.ahk
+#Include ThirdParty\ColorButton\ColorButton.ahk
 #Include Telemetry.ahk
 #Include ThirdParty\UIA-v2\UIA.ahk
 #Include ThirdParty\UIA-v2\UIA_Browser.ahk
@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-dev.3"
+global AppVersion := "2.2-third-party-includes.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.

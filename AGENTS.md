@@ -14,7 +14,8 @@ DocBot is een AutoHotkey v2-hulpmiddel voor medewerkers met twee hoofdfuncties:
 ## Bestanden
 
 - `DocBot.ahk` — huidig hoofdscript; werk hieraan voor hotstrings, telefonie en de interface.
-- `JXON.ahk` — JSON-library (TheArkive, MIT), gebruikt voor hotstring-opslag.
+- `ThirdParty/JXON/JXON.ahk` — JSON-library (TheArkive, MIT), gebruikt voor hotstring-opslag.
+- `ThirdParty/ColorButton/ColorButton.ahk` — knopbibliotheek (Nikola Perovic, MIT).
 - `README.md` — volledige documentatie over installatie, functionaliteit, telefonie, diagnostiek en wijzigingen.
 - De historische legacybron staat uitsluitend in de Git-geschiedenis en op `archive/legacy-v2-final`; voeg hem niet opnieuw toe aan actieve branches.
 
