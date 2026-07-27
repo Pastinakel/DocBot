@@ -30,10 +30,6 @@ Bestanden
 - `AGENTS.md` en `CLAUDE.md` — project- en werkinstructies voor
   AI-assistenten.
 
-De verwijderde legacybron blijft beschikbaar in de Git-geschiedenis en op
-de vaste archieftak `archive/legacy-v2-final`; hij maakt geen deel meer uit
-van de actieve ontwikkel- en distributiebestanden.
-
 Er is geen apart bestand voor debug-logging in de repo: dat logbestand wordt
 tijdens het draaien van het script aangemaakt op de gebruikerscomputer (zie
 "Diagnostiek" hieronder).
