@@ -468,3 +468,15 @@ gehaald in plaats van uit de commit message zelf. De oude bestandsnaam-
 labels uit eerdere versies van deze changelog (v4.2, v4.5) waren interne
 tussenstappen tijdens de refactor, geen aparte productversies — die
 geschiedenis valt nu onder v2.0.0-beta hierboven.*
+
+## License
+
+DocBot 2.2 and later are available under the
+[PolyForm Noncommercial License 1.0.0](LICENSE).
+
+Noncommercial use, modification, and distribution are permitted under the
+license terms. Commercial use requires a separate written license from the
+copyright holder.
+
+DocBot 2.1 was released separately under the MIT License and remains available
+under those terms in tag `v2.1`.
