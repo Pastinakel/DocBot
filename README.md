@@ -9,18 +9,21 @@ van het ziekenhuis, inclusief automatische detectie van telefoonnummers op
 het klembord. Alles draait via één GUI met sidebar-navigatie en een
 tray-icoon.
 
-Deze README beschrijft DocBot 2.1 op de `main`-branch. Versie 2.1 is de
-huidige stabiele productieversie; nieuwe functionaliteit wordt eerst via
-`develop`, afzonderlijke featurebranches en het testprofiel beproefd.
+Deze README beschrijft de ontwikkeling van DocBot 2.2 op de
+`develop`-branch. Versie 2.1 is de huidige stabiele productieversie op
+`main`; nieuwe functionaliteit wordt eerst via afzonderlijke
+featurebranches en het testprofiel beproefd.
 
 Bestanden
 ---------
-- `DocBot.ahk` — stabiele versie 2.1 met de huidige GUI,
+- `DocBot.ahk` — ontwikkelversie 2.2 met de huidige GUI,
   telefoniefunctionaliteit, hotstrings, snelkiesnummers en pakketbeheer.
 - `packages/` — versieerbare ingebouwde hotstringpakketten plus manifest.
 - `ColorButton.ahk` — custom-draw ondersteuning voor de moderne knoppen.
 - `JXON.ahk` — JSON-library van TheArkive, gebruikt voor het laden en
   opslaan van gebruikersgegevens.
+- `ThirdParty/UIA-v2/` — Windows UI Automation-library voor het betrouwbaar
+  activeren van de geconfigureerde Edge-tab en invullen van het SMS-veld.
 - `LICENSE-JXON.md` — MIT-licentie van de JXON-library.
 - `LICENSE` — MIT-licentie van DocBot.
 - `AGENTS.md` en `CLAUDE.md` — project- en werkinstructies voor
@@ -171,20 +174,34 @@ Functionaliteit — Telefonie
 -----------------------------
 - DocBot houdt het Windows-klembord in de gaten en herkent automatisch
   Nederlandse telefoonnummers zodra ze gekopieerd worden.
-- Bij een herkend nummer kan DocBot, afhankelijk van de instellingen:
-  - **AutoCall**: automatische detectie aan/uit — staat dit uit, dan
-    gebeurt er niets met een gekopieerd nummer.
-  - **DirectCall**: bepaalt wat er gebeurt zodra AutoCall actief is. Staat
-    DirectCall uit, dan verschijnt eerst een bevestigingsdialoog met het
-    gevonden nummer; staat DirectCall aan, dan wordt direct gebeld zonder
-    bevestiging.
+- Bij een herkend nummer bepaalt **Belactie** wat DocBot doet:
+  - **Niets doen** — het gekopieerde nummer wordt genegeerd;
+  - **Bellen na bevestiging** — eerst verschijnt een bevestigingsdialoog;
+  - **Direct bellen** — het nummer wordt zonder bevestiging gebeld;
+  - **Bellen of sms kiezen** — bij een extern nummer verschijnt een keuze.
+    Met links/rechts wordt **Annuleren**, **SMS** of **Bellen** geselecteerd;
+    Enter bevestigt de blauwe keuze. Interne nummers worden in deze stand
+    direct gebeld. Deze optie is alleen beschikbaar wanneer lokaal ten minste
+    één SMS-actie is geconfigureerd.
+- Onder **Instellingen > SMS actie** kiest de gebruiker welke lokaal
+  geconfigureerde SMS-pagina wordt gebruikt. De dropdown toont de
+  gebruikersvriendelijke `Title`; de technische `WindowTitle` wordt
+  uitsluitend gebruikt om het juiste Edge-venster te herkennen. Eén
+  `SmsCallAction`-map en een lijst met meerdere acties worden ondersteund.
+- Bij **SMS** activeert DocBot eerst rechtstreeks het Edge-venster via
+  `WindowTitle`. Staat de pagina als achtergrondtab open, dan selecteert
+  DocBot hem via Windows UI Automation. Bestaat de tab nog niet, dan wordt de
+  lokaal geconfigureerde URL geopend. Vervolgens wordt het 06-nummer via het
+  UIA-`AutomationId` uit `FieldId` ingevuld; JavaScript is uitsluitend de
+  fallback. SMS wordt alleen aangeboden voor een geldig Nederlands
+  06-nummer en DocBot verstuurt het bericht niet zelf.
 - Het eigen toestelnummer wordt gekoppeld/geregistreerd bij de interne
   telefonieserver; de Verversen-knop op de Overzicht-pagina vraagt (met een
   ingebouwde afkoeltijd) een nieuw koppelnummer op. Zolang er nog geen
   toestel gekoppeld is, weigert DocBot te bellen en licht de hulptekst op
   de Overzicht-pagina toe wat de gebruiker moet doen.
-- De GUI opent op Overzicht, met telefoonregistratie, AutoCall/DirectCall en
-  tekstvervanging. Telefonie bevat een onbeperkte lijst snelkiesnummers met
+- De GUI opent op Overzicht, met telefoonregistratie, de instelling Belactie
+  en tekstvervanging. Telefonie bevat een onbeperkte lijst snelkiesnummers met
   een inline bewerkingspaneel. Snelkiesnummers kunnen actief of inactief
   worden gemaakt; alleen actieve nummers verschijnen in het traymenu en
   kunnen worden gebeld. De eerste tien actieve nummers staan als snelle
@@ -271,6 +288,21 @@ laten klaarzetten — zonder dat zij de inhoud zelf hoeven in te zien.
 
 Changelog
 ---------
+
+### 2.2 — In ontwikkeling
+- Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
+- Nieuwe vierstandeninstelling **Belactie** als vervanging voor AutoCall en
+  DirectCall, inclusief een lokaal configureerbare keuze van de SMS-pagina.
+  De SMS-keuze wordt alleen aangeboden als minimaal één geldige
+  `SmsCallAction` aanwezig is; zichtbare namen komen uit `Title`.
+- Geïntegreerde SMS-actie opent of activeert de geselecteerde Edge-pagina via
+  snelle `WinActivate`-detectie met UI Automation als achtergrondtab-
+  fallback, vult het geconfigureerde telefoonveld in en laat het uiteindelijke
+  controleren en versturen bewust aan de gebruiker over. Het keuzescherm is
+  volledig met links/rechts en Enter bedienbaar en toont geen overbodige
+  succesmelding nadat het telefoonnummer zichtbaar is ingevuld. Een
+  geforceerde repaint ná het tonen van de dialoog voorkomt dat de knoppen
+  aanvankelijk nog met de native Windows-rand verschijnen.
 
 ### 2.1 — Huidige stabiele release
 - Nieuwe Help-pagina met vier uitklapbare, scrollbare instructiekaarten voor
@@ -360,7 +392,7 @@ versiegeschiedenis wordt onderhouden.
   `State["IPT"]`.
 - Registratie en polling bij de telefonieserver (`IPT_register`,
   `IPT_poller`), klembordmonitoring voor automatische nummerherkenning, en
-  dial-actie met AutoCall/DirectCall-beslislogica.
+  dial-actie met de vierstandenlogica van Belactie.
 - Eigen bevestigingsdialoog voor bellen, opstart- en afsluitkoppeling van de
   telefonie-integratie, Verversen-knop met afkoeltijd en aftellende
   countdown-tekst.

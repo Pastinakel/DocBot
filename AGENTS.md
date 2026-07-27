@@ -143,11 +143,11 @@ Wijzig develop en main nooit rechtstreeks. Maak altijd een pull request vanuit e
 Gebruik in de huidige ontwikkelcyclus deze versies:
 
 ```text
-main:              2.0.1
-develop:           2.1-dev.N
-features/fixes:    2.1-<korte-branchnaam>.N
-release candidate: 2.1-rc.N
-release:           2.1
+main:              2.1
+develop:           2.2-dev.N
+features/fixes:    2.2-<korte-branchnaam>.N
+release candidate: 2.2-rc.N
+release:           2.2
 ```
 
 Dezelfde structuur geldt voor latere releases: `main` bevat altijd de laatst
@@ -157,13 +157,13 @@ branchspecifieke prerelease-naam met een eigen lokale teller; een releasebranch
 gebruikt `-rc.N`; bij de stabiele release vervalt de prerelease-suffix.
 
 Maak een releasecandidate vanaf een actuele `develop` op een branch zoals
-`release/2.1-rc.1`. Voeg daar uitsluitend bugfixes, documentatie en
+`release/2.2-rc.1`. Voeg daar uitsluitend bugfixes, documentatie en
 releasevoorbereidingen aan toe. Nieuwe functionaliteit wacht op de volgende
 ontwikkelcyclus. Iedere commit op de releasebranch die `DocBot.ahk` wijzigt,
 verhoogt `rc.N` met één.
 
-Voorbeelden zijn `2.1-dev.7`, `2.1-ronde-kaarten.3`,
-`2.1-import.5` en `2.1-rc.1`. Houd branchspecifieke prerelease-namen
+Voorbeelden zijn `2.2-dev.7`, `2.2-ronde-kaarten.3`,
+`2.2-import.5` en `2.2-rc.1`. Houd branchspecifieke prerelease-namen
 geschikt voor SemVer: uitsluitend ASCII-letters, cijfers en koppeltekens.
 
 Iedere commit die `DocBot.ahk` wijzigt, moet in dezelfde commit ook
@@ -220,3 +220,10 @@ standaard-hotstrings staan uitsluitend in `DocBot.local.ahk`. Dit bestand
 wordt door Git genegeerd en mag nooit worden gecommit. Gebruik
 `DocBot.local.example.ahk` als veilige structuurtemplate zonder echte
 waarden. Ahk2Exe neemt de lokale include tijdens compilatie op.
+
+
+## Release bijwerkacties
+
+Bij release 2.2 moet de releasebranch met een mergecommit naar `main` worden
+gemerged en moet `main` daarna terug naar `develop`; hiermee wordt de sinds
+release 2.1 afwijkende commitgeschiedenis definitief gesynchroniseerd.
