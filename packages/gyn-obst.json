@@ -1,0 +1,570 @@
+{
+  "schemaVersion": 1,
+  "id": "gyn-obst",
+  "name": "Gynaecologie & obstetrie",
+  "version": "1.0.0",
+  "description": "Afkortingen en termen voor gynaecologie en obstetrie.",
+  "itemCount": 79,
+  "categories": [
+    {
+      "id": "algemeen",
+      "name": "Algemeen",
+      "itemCount": 79
+    }
+  ],
+  "items": [
+    {
+      "id": "gyn-obst-0001",
+      "trigger": "avf",
+      "replacement": "anteversieflexie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0002",
+      "trigger": "rvf",
+      "replacement": "retroversieflexie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0003",
+      "trigger": "zw",
+      "replacement": "zwangerschap",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0004",
+      "trigger": "pihh",
+      "replacement": "zwangerschapsgeïnduceerde hypertensie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0005",
+      "trigger": "pe",
+      "replacement": "pre-eclampsie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0006",
+      "trigger": "hellp",
+      "replacement": "HELLP-syndroom",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0007",
+      "trigger": "ecl",
+      "replacement": "eclampsie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0008",
+      "trigger": "vrgb",
+      "replacement": "vroeggeboorte",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0009",
+      "trigger": "exvrgb",
+      "replacement": "extreme vreoggeboorte",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0010",
+      "trigger": "cer",
+      "replacement": "cerclage",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0011",
+      "trigger": "abdcer",
+      "replacement": "abdominale cerclage",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0012",
+      "trigger": "vagcer",
+      "replacement": "vaginale cerclage",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0013",
+      "trigger": "1ling",
+      "replacement": "eenling",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0014",
+      "trigger": "2ling",
+      "replacement": "tweeling",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0015",
+      "trigger": "3ling",
+      "replacement": "drieling",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0016",
+      "trigger": "MCDAA",
+      "replacement": "monochoriale diamniotische tweeling",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0017",
+      "trigger": "DCDAA",
+      "replacement": "dichoriale diamniotische tweeling",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0018",
+      "trigger": "MCMAA",
+      "replacement": "monochoriale monoamniotische tweeling",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0019",
+      "trigger": "TAE",
+      "replacement": "transabdominale echo",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0020",
+      "trigger": "insp",
+      "replacement": "in speculo",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0021",
+      "trigger": "VTo",
+      "replacement": "vaginaal toucher",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0022",
+      "trigger": "ectr",
+      "replacement": "ectropion",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0023",
+      "trigger": "vbv",
+      "replacement": "vaginaal bloedverlies",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0024",
+      "trigger": "VWV",
+      "replacement": "vruchtwaterverlies",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0025",
+      "trigger": "trandate",
+      "replacement": "labetalol",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0026",
+      "trigger": "adalat",
+      "replacement": "nifedipine",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0027",
+      "trigger": "aldomet",
+      "replacement": "methyldopa",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0028",
+      "trigger": "primperan",
+      "replacement": "metoclopramide",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0029",
+      "trigger": "syntocinon",
+      "replacement": "oxytocine",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0030",
+      "trigger": "pcm",
+      "replacement": "paracetamol",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0031",
+      "trigger": "nihiel",
+      "replacement": "nihil",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0032",
+      "trigger": "uwi",
+      "replacement": "urineweginfectie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0033",
+      "trigger": "lwi",
+      "replacement": "luchtweginfectie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0034",
+      "trigger": "gb",
+      "replacement": "geen bijzonderheden",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0035",
+      "trigger": "ppii",
+      "replacement": "partus prematurus imminens",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0036",
+      "trigger": "fgr",
+      "replacement": "foetale groeirestrictie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0037",
+      "trigger": "tvee",
+      "replacement": "Transvaginale echo: uterus in anteversieflexie, normale grootte, geen intracavitaire pathologie, ovaria beiderzijds zonder afwijkingen, geen vrij vocht in cavum douglasi.",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0038",
+      "trigger": "gag",
+      "replacement": "Geen aanwijzingen voor gynaecologische pathologie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0039",
+      "trigger": "oacc",
+      "replacement": "orale anticonceptie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0040",
+      "trigger": "wb",
+      "replacement": "wat betreft",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0041",
+      "trigger": "partus prematurus imminens",
+      "replacement": "partus praematurus imminens",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0042",
+      "trigger": "dismaturiteit",
+      "replacement": "dysmaturiteit",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0043",
+      "trigger": "dismatuur",
+      "replacement": "dysmatuur",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0044",
+      "trigger": "dycongruentie",
+      "replacement": "discongruentie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0045",
+      "trigger": "dyscongruent",
+      "replacement": "discongruent",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0046",
+      "trigger": "tve/",
+      "replacement": "transvaginale echo:",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0047",
+      "trigger": "patiente",
+      "replacement": "patiënte",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0048",
+      "trigger": "weeen",
+      "replacement": "weeën",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0049",
+      "trigger": "vacuumextractie",
+      "replacement": "vacuümextractie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0050",
+      "trigger": "seriele",
+      "replacement": "seriële",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0051",
+      "trigger": "rvk/",
+      "replacement": "reden van komst: ",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0052",
+      "trigger": "zwangerschapsbeeindiging",
+      "replacement": "zwangerschapsbeëindiging ",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0053",
+      "trigger": "beeindigd",
+      "replacement": "beëindigd",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0054",
+      "trigger": "voorweeen",
+      "replacement": "voorweeën",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0055",
+      "trigger": "seperaat",
+      "replacement": "separaat",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0056",
+      "trigger": "OIN",
+      "replacement": "onderzoek in narcose",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0057",
+      "trigger": "pcc",
+      "replacement": "packed cells",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0058",
+      "trigger": "bvo",
+      "replacement": "bevolkingsonderzoek",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0059",
+      "trigger": "gynonco",
+      "replacement": "gynaecologische oncologie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0060",
+      "trigger": "pmb",
+      "replacement": "postmenopauzaal bloedverlies",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0061",
+      "trigger": "ofo",
+      "replacement": "oriënterend fertiliteitsonderzoek",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0062",
+      "trigger": "hmb",
+      "replacement": "hevig menstrueel bloedverlies",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0063",
+      "trigger": "ssf",
+      "replacement": "sacrospinale fixatie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0064",
+      "trigger": "vaw",
+      "replacement": "voor- en achterwandplastiek",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0065",
+      "trigger": "ls",
+      "replacement": "lichen sclerosis",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0066",
+      "trigger": "sui",
+      "replacement": "stress-urine-incontinentie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0067",
+      "trigger": "dls",
+      "replacement": "diagnostische laparoscopie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0068",
+      "trigger": "maw",
+      "replacement": "met andere woorden",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0069",
+      "trigger": "se",
+      "replacement": "schedelelectrode",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0070",
+      "trigger": "hg",
+      "replacement": "hyperemesis gravidarum",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0071",
+      "trigger": "uzo",
+      "replacement": "uitwendig zwangerenonderzoek",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0072",
+      "trigger": "ovv",
+      "replacement": "op verzoek van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0073",
+      "trigger": "iug",
+      "replacement": "intra-uteriene graviditeit",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0074",
+      "trigger": "agv",
+      "replacement": "als gevolg van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0075",
+      "trigger": "cs",
+      "replacement": "cervixsmear",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0076",
+      "trigger": "ttv",
+      "replacement": "ten tijde van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0077",
+      "trigger": "vgv",
+      "replacement": "vakgroepvergadering",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0078",
+      "trigger": "adhv",
+      "replacement": "aan de hand van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "gyn-obst-0079",
+      "trigger": "nnb",
+      "replacement": "nog niet bekend",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    }
+  ]
+}

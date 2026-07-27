@@ -1,0 +1,59 @@
+; Kopieer dit bestand naar DocBot.local.ahk en vul daar de lokale waarden
+; in. DocBot.local.ahk wordt door .gitignore uitgesloten van Git.
+;
+; Ahk2Exe neemt DocBot.local.ahk tijdens compilatie automatisch op in de
+; executable. Het bestand hoeft daarom niet naast de uitgeleverde EXE te staan.
+
+global LocalConfig := Map(
+    "Telephony", Map(
+        "BaseUrl", "http://VUL-HIER-DE-LOKALE-SERVER-IN/",
+        "AllocateEndpoint", "VUL-HIER-HET-REGISTRATIE-ENDPOINT-IN",
+        "EventEndpoint", "VUL-HIER-HET-EVENT-ENDPOINT-IN",
+        "DialEndpoint", "VUL-HIER-HET-BEL-ENDPOINT-IN"
+    ),
+
+    ; Optionele heartbeat naar Power Automate. De webhook-URL is een geheim
+    ; en hoort uitsluitend in het niet-gevolgde DocBot.local.ahk.
+    "Telemetry", Map(
+        "Enabled", false,
+        "WebhookUrl", "",
+        "HeartbeatIntervalMs", 900000
+    ),
+
+    ; Deze items worden alleen door de bestaande schema-upgrade toegevoegd.
+    ; Een gebruiker-item met dezelfde naam, hetzelfde nummer of dezelfde
+    ; afkorting wordt nooit overschreven.
+    ;
+    ; Let op de komma na het eerste Map-item wanneer je meerdere waarden
+    ; gebruikt. Verwijder de puntkomma's voor de regels die je wilt activeren.
+    "DefaultSpeedDials", [
+        ; Map(
+        ;     "Name", "VUL-HIER-DE-EERSTE-NAAM-IN",
+        ;     "Number", "VUL-HIER-HET-EERSTE-NUMMER-IN",
+        ;     "Enabled", true
+        ; ),
+        ; Map(
+        ;     "Name", "VUL-HIER-DE-TWEEDE-NAAM-IN",
+        ;     "Number", "VUL-HIER-HET-TWEEDE-NUMMER-IN",
+        ;     "Enabled", true
+        ; )
+    ],
+
+    "DefaultHotstrings", [
+        ; Map(
+        ;     "Trigger", "VUL-HIER-DE-EERSTE-AFKORTING-IN",
+        ;     "Replacement", "VUL-HIER-DE-EERSTE-VERVANGTEKST-IN",
+        ;     "Enabled", true,
+        ;     "Id", "default-eerste-unieke-id"
+        ; ),
+        ; Map(
+        ;     "Trigger", "VUL-HIER-DE-TWEEDE-AFKORTING-IN",
+        ;     "Replacement", "VUL-HIER-DE-TWEEDE-VERVANGTEKST-IN",
+        ;     "Enabled", true,
+        ;     "Id", "default-tweede-unieke-id"
+        ; )
+        ;
+        ; Gebruik voor echte regeleinden in een AHK-string:
+        ; "Eerste regel`r`nTweede regel"
+    ]
+)

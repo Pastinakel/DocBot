@@ -1,0 +1,241 @@
+{
+  "schemaVersion": 1,
+  "id": "medisch-algemeen",
+  "name": "Medisch algemeen",
+  "version": "1.0.0",
+  "description": "Algemene medische termen, vaste teksten en veelgebruikte klinische afkortingen.",
+  "itemCount": 32,
+  "categories": [
+    {
+      "id": "algemeen",
+      "name": "Algemeen",
+      "itemCount": 32
+    }
+  ],
+  "items": [
+    {
+      "id": "medisch-algemeen-0001",
+      "trigger": "diagn",
+      "replacement": "diagnostische",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0002",
+      "trigger": "fu",
+      "replacement": "follow-up",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0003",
+      "trigger": "gda",
+      "replacement": "geen duidelijke afwijkingen",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0004",
+      "trigger": "bp",
+      "replacement": "bovengenoemde patiënt",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0005",
+      "trigger": "tc",
+      "replacement": "telefonisch consult",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0006",
+      "trigger": "path",
+      "replacement": "pathologie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0007",
+      "trigger": "su",
+      "replacement": "spreekuur",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0008",
+      "trigger": "chron",
+      "replacement": "chronische",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0009",
+      "trigger": "infc",
+      "replacement": "Procedures, risico’s en alternatieven van de ingreep werden besproken en geïnformeerde toestemming werd verkregen.",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0010",
+      "trigger": "bbznb",
+      "replacement": "Bij bijzonderheden ontvangt U nader bericht",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0011",
+      "trigger": "ht",
+      "replacement": "hypertensie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0012",
+      "trigger": "med/",
+      "replacement": "Medicatie: ",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0013",
+      "trigger": "intox",
+      "replacement": "Intoxicaties: ",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0014",
+      "trigger": "alc",
+      "replacement": "alcohol",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0015",
+      "trigger": "dm",
+      "replacement": "diabetes mellitus",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0016",
+      "trigger": "dm2",
+      "replacement": "diabetes mellitus type 2",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0017",
+      "trigger": "dmii",
+      "replacement": "diabetes mellitus type 2",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0018",
+      "trigger": "dmg",
+      "replacement": "diabetes mellitus gravidarum",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0019",
+      "trigger": "vg/",
+      "replacement": "voorgeschiedenis: ",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0020",
+      "trigger": "ovg/",
+      "replacement": "obstetrische voorgeschiedenis: ",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0021",
+      "trigger": "vgb",
+      "replacement": "Voorgeschiedenis: blanco",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0022",
+      "trigger": "o/",
+      "replacement": "Lichamelijk Onderzoek: ",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0023",
+      "trigger": "a/",
+      "replacement": "Anamnese:",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0024",
+      "trigger": "c/",
+      "replacement": "Conclusie:",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0025",
+      "trigger": "b/",
+      "replacement": "Beleid:",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0026",
+      "trigger": "lab/",
+      "replacement": "Laboratoriumuitslagen:",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0027",
+      "trigger": "ao/",
+      "replacement": "Aanvullend onderzoek:",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0028",
+      "trigger": "rec",
+      "replacement": "recidiverende",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0029",
+      "trigger": "mri",
+      "replacement": "MRI",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0030",
+      "trigger": "sqa",
+      "replacement": "status quo ante",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0031",
+      "trigger": "vpk",
+      "replacement": "verpleegkundige",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "medisch-algemeen-0032",
+      "trigger": "vlk",
+      "replacement": "verloskundige",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    }
+  ]
+}

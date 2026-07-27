@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "id": "nl-taal",
+      "file": "nl-taal.json",
+      "name": "Nederlandse taal",
+      "version": "1.0.1",
+      "description": "Veelgebruikte Nederlandse afkortingen en algemene termen."
+    },
+    {
+      "id": "spelfouten-wikipedia",
+      "file": "spelfouten-wikipedia.json",
+      "name": "Veelgemaakkte spelfouten",
+      "version": "1.0.0",
+      "description": "Correcties voor veelvoorkomende Nederlandse spelfouten, gebaseerd op de aangeleverde Wikipedia-lijst."
+    },
+    {
+      "id": "medisch-algemeen",
+      "file": "medisch-algemeen.json",
+      "name": "Medisch algemeen",
+      "version": "1.0.0",
+      "description": "Algemene medische termen, vaste teksten en veelgebruikte klinische afkortingen."
+    },
+    {
+      "id": "controles",
+      "file": "controles.json",
+      "name": "Controles",
+      "version": "1.0.0",
+      "description": "Veelgebruikte vervolg- en controletermijnen."
+    },
+    {
+      "id": "gyn-obst",
+      "file": "gyn-obst.json",
+      "name": "Gynaecologie & obstetrie",
+      "version": "1.0.0",
+      "description": "Afkortingen en termen voor gynaecologie en obstetrie."
+    }
+  ]
+}

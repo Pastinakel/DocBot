@@ -1,0 +1,584 @@
+{
+  "schemaVersion": 1,
+  "id": "nl-taal",
+  "name": "Nederlandse taal",
+  "version": "1.0.1",
+  "description": "Veelgebruikte Nederlandse afkortingen en algemene termen.",
+  "itemCount": 81,
+  "categories": [
+    {
+      "id": "algemeen",
+      "name": "Algemeen",
+      "itemCount": 81
+    }
+  ],
+  "items": [
+    {
+      "id": "nl-taal-0001",
+      "trigger": "nvt",
+      "replacement": "niet van toepassing",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0002",
+      "trigger": "info",
+      "replacement": "informatie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0003",
+      "trigger": "freq",
+      "replacement": "frequent",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0004",
+      "trigger": "opm",
+      "replacement": "opmerking",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0005",
+      "trigger": "tno",
+      "replacement": "tot nader order",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0006",
+      "trigger": "vd",
+      "replacement": "van de",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0007",
+      "trigger": "aanw",
+      "replacement": "aanwijzing",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0008",
+      "trigger": "afh",
+      "replacement": "afhankelijk",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0009",
+      "trigger": "dwz",
+      "replacement": "dat wil zeggen",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0010",
+      "trigger": "aant",
+      "replacement": "aantekening",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0011",
+      "trigger": "ihkv",
+      "replacement": "in het kader van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0012",
+      "trigger": "ong",
+      "replacement": "ongeveer",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0013",
+      "trigger": "afd",
+      "replacement": "afdeling",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0014",
+      "trigger": "thv",
+      "replacement": "ter hoogte van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0015",
+      "trigger": "itt",
+      "replacement": "in tegenstelling tot",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0016",
+      "trigger": "zkh",
+      "replacement": "ziekenhuis",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0017",
+      "trigger": "afw",
+      "replacement": "afwijkingen",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0018",
+      "trigger": "mbv",
+      "replacement": "met behulp van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0019",
+      "trigger": "tov",
+      "replacement": "ten opzichte van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0020",
+      "trigger": "muv",
+      "replacement": "met uitzondering van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0021",
+      "trigger": "wmb",
+      "replacement": "wat mij betreft",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0022",
+      "trigger": "oid",
+      "replacement": "of iets dergelijks",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0023",
+      "trigger": "mbt",
+      "replacement": "met betrekking tot",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0024",
+      "trigger": "eea",
+      "replacement": "een en ander",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0025",
+      "trigger": "zsm",
+      "replacement": "zo spoedig mogelijk",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0026",
+      "trigger": "idd",
+      "replacement": "inderdaad",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0027",
+      "trigger": "iig",
+      "replacement": "in ieder geval",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0028",
+      "trigger": "tzt",
+      "replacement": "te zijner tijd",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0029",
+      "trigger": "tpv",
+      "replacement": "ter plaatse van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0030",
+      "trigger": "tuv",
+      "replacement": "ter uitsluiting van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0031",
+      "trigger": "tgv",
+      "replacement": "ten gevolge van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0032",
+      "trigger": "tav",
+      "replacement": "ten aanzien van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0033",
+      "trigger": "tnv",
+      "replacement": "ten name van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0034",
+      "trigger": "iom",
+      "replacement": "in overleg met",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0035",
+      "trigger": "ivm",
+      "replacement": "in verband met",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0036",
+      "trigger": "ipv",
+      "replacement": "in plaats van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0037",
+      "trigger": "icm",
+      "replacement": "in combinatie met",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0038",
+      "trigger": "nav",
+      "replacement": "naar aanleiding van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0039",
+      "trigger": "obv",
+      "replacement": "op basis van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0040",
+      "trigger": "oa",
+      "replacement": "onder andere",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0041",
+      "trigger": "bvd",
+      "replacement": "bij voorbaat dank",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0042",
+      "trigger": "evt",
+      "replacement": "eventueel",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0043",
+      "trigger": "wv",
+      "replacement": "waarvoor",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0044",
+      "trigger": "ip",
+      "replacement": "in principe",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0045",
+      "trigger": "mgl",
+      "replacement": "mogelijk",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0046",
+      "trigger": "wrsch",
+      "replacement": "waarschijnlijk",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0047",
+      "trigger": "bdz",
+      "replacement": "beiderzijds",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0048",
+      "trigger": "onv",
+      "replacement": "onvoldoende",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0049",
+      "trigger": "dgn",
+      "replacement": "dagen",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0050",
+      "trigger": "wk",
+      "replacement": "week",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0051",
+      "trigger": "wkn",
+      "replacement": "weken",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0052",
+      "trigger": "mnd",
+      "replacement": "maanden",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0053",
+      "trigger": "jr",
+      "replacement": "jaar",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0054",
+      "trigger": "neg",
+      "replacement": "negatief",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0055",
+      "trigger": "pos",
+      "replacement": "positief",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0056",
+      "trigger": "pt",
+      "replacement": "patiënt",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0057",
+      "trigger": "pte",
+      "replacement": "patiënte",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0058",
+      "trigger": "ptn",
+      "replacement": "patiënten",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0059",
+      "trigger": "pten",
+      "replacement": "patiënten",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0060",
+      "trigger": "sig",
+      "replacement": "sigaretten",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0062",
+      "trigger": "zn",
+      "replacement": "zo nodig",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0063",
+      "trigger": "vna",
+      "replacement": "van",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0064",
+      "trigger": "exp",
+      "replacement": "expectatief",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0065",
+      "trigger": "mn",
+      "replacement": "met name",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0066",
+      "trigger": "gc",
+      "replacement": "Geachte collega,",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0067",
+      "trigger": "tel",
+      "replacement": "telefonisch",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0068",
+      "trigger": "geg",
+      "replacement": "gegevens",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0069",
+      "trigger": "maa",
+      "replacement": "maandag",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0070",
+      "trigger": "dins",
+      "replacement": "dinsdag",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0071",
+      "trigger": "woe",
+      "replacement": "woensdag",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0072",
+      "trigger": "dond",
+      "replacement": "donderdag",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0073",
+      "trigger": "vrijd",
+      "replacement": "vrijdag",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0074",
+      "trigger": "zaterd",
+      "replacement": "zaterdag",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0075",
+      "trigger": "zond",
+      "replacement": "zondag",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0076",
+      "trigger": "feb",
+      "replacement": "februari",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0077",
+      "trigger": "aug",
+      "replacement": "augustus",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0078",
+      "trigger": "sept",
+      "replacement": "september",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0079",
+      "trigger": "okt",
+      "replacement": "oktober",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0080",
+      "trigger": "nov",
+      "replacement": "november",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0081",
+      "trigger": "opp",
+      "replacement": "oppervlakkig",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "nl-taal-0082",
+      "trigger": "nv",
+      "replacement": "niet verricht",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    }
+  ]
+}

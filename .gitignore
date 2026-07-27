@@ -1,0 +1,5 @@
+*.log
+*.tmp
+.vscode/
+# Lokale telefonie- en standaardconfiguratie; bevat interne waarden.
+DocBot.local.ahk

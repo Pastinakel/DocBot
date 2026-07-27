@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "id": "controles",
+  "name": "Controles",
+  "version": "1.0.0",
+  "description": "Veelgebruikte vervolg- en controletermijnen.",
+  "itemCount": 11,
+  "categories": [
+    {
+      "id": "algemeen",
+      "name": "Algemeen",
+      "itemCount": 11
+    }
+  ],
+  "items": [
+    {
+      "id": "controles-0001",
+      "trigger": "co1w",
+      "replacement": "Controle: 1 week",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "controles-0002",
+      "trigger": "co2w",
+      "replacement": "Controle: 2 weken",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "controles-0003",
+      "trigger": "co3w",
+      "replacement": "Controle: 3 weken",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "controles-0004",
+      "trigger": "co4w",
+      "replacement": "Controle: 4 weken",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "controles-0005",
+      "trigger": "co6w",
+      "replacement": "Controle: 6 weken",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "controles-0006",
+      "trigger": "co2m",
+      "replacement": "Controle: 2 maanden",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "controles-0007",
+      "trigger": "co3m",
+      "replacement": "Controle: 3 maanden",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "controles-0008",
+      "trigger": "co4m",
+      "replacement": "Controle: 4 maanden",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "controles-0009",
+      "trigger": "co6m",
+      "replacement": "Controle: 6 maanden",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "controles-0010",
+      "trigger": "co1j",
+      "replacement": "Controle: 1 jaar",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "controles-0011",
+      "trigger": "cozn",
+      "replacement": "Controle: zo nodig",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    }
+  ]
+}
