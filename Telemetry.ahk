@@ -1,5 +1,3 @@
-#Include StorageAccess.ahk
-
 ; =============================================================================
 ; DocBot telemetrie
 ; =============================================================================
@@ -73,20 +71,6 @@ Telemetry_Initialize(configFile, appVersion, statusProvider) {
     TelemetryAppVersion := appVersion
     TelemetryStatusProvider := statusProvider
     TelemetryConfig := Telemetry_BuildConfig()
-
-    try {
-        ValidateUserStorageAccess(TelemetryConfigFile)
-    } catch as storageError {
-        MsgBox(
-            "DocBot kan de gebruikersgegevens niet betrouwbaar opslaan.`n`n"
-            . storageError.Message
-            . "`n`nControleer de rechten, synchronisatie of beveiliging van "
-            . "de genoemde locatie en start DocBot daarna opnieuw.",
-            "DocBot - Opslagfout",
-            "Icon!"
-        )
-        ExitApp()
-    }
 
     TelemetryPhoneActions := Telemetry_ReadCounter("PhoneActions")
     TelemetryLongHotstringActions := Telemetry_ReadCounter("LongHotstringActions")
