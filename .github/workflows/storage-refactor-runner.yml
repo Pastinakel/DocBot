@@ -1,0 +1,234 @@
+name: Apply storage refactor safely
+
+on:
+  pull_request:
+    branches:
+      - StorageLocCheck-runner
+    types:
+      - opened
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out target branch
+        uses: actions/checkout@v4
+        with:
+          ref: StorageLocCheck-fix
+          fetch-depth: 0
+
+      - name: Apply exact storage refactor
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          docbot_path = Path("DocBot.ahk")
+          telemetry_path = Path("Telemetry.ahk")
+          storage_path = Path("StorageAccess.ahk")
+
+          old_blob = subprocess.check_output(
+              ["git", "hash-object", str(docbot_path)], text=True
+          ).strip()
+          if old_blob != "62cec32dbb91a058c377514b90f8d3e84a087f42":
+              raise RuntimeError(f"Unexpected DocBot.ahk blob: {old_blob}")
+
+          docbot = docbot_path.read_bytes()
+
+          old_version = b'global AppVersion := "2.2-dev.3"'
+          new_version = b'global AppVersion := "2.2-storage-loc-check.1"'
+          if docbot.count(old_version) != 1:
+              raise RuntimeError("Expected AppVersion was not found exactly once")
+          docbot = docbot.replace(old_version, new_version, 1)
+
+          old_startup = b"InitializeUserStorage()\nInitializeBundledPackages()"
+          new_startup = '''InitializeUserStorage()
+try ValidateUserStorageAccess()
+catch as storageError {
+    MsgBox(
+        "DocBot kan de gebruikersgegevens niet betrouwbaar opslaan.`n`n"
+        . storageError.Message
+        . "`n`nControleer de rechten, synchronisatie of beveiliging van "
+        . "de genoemde locatie en start DocBot daarna opnieuw.",
+        "DocBot - Opslagfout",
+        "Icon!"
+    )
+    ExitApp()
+}
+InitializeBundledPackages()'''.encode("utf-8")
+          if docbot.count(old_startup) != 1:
+              raise RuntimeError("Startup storage marker was not found exactly once")
+          docbot = docbot.replace(old_startup, new_startup, 1)
+
+          storage_functions = r'''
+
+; Controleer na het voorbereiden van de gebruikersmap of de map zelf en alle
+; bestaande, door DocBot beheerde gegevensbestanden daadwerkelijk schrijfbaar
+; zijn. De echte schrijfacties houden daarnaast hun eigen foutafhandeling.
+ValidateUserStorageAccess() {
+    global UserDataDir, ConfigFile, DefaultHotstringFile
+    global DefaultPackageSettingsFile, DefaultSpeedDialFile
+
+    AssertUserStorageDirectoryWritable(UserDataDir)
+
+    managedFiles := [
+        ConfigFile,
+        DefaultHotstringFile,
+        DefaultPackageSettingsFile,
+        DefaultSpeedDialFile
+    ]
+
+    for _, path in managedFiles {
+        if FileExist(path)
+            AssertUserStorageFileWritable(path)
+    }
+}
+
+AssertUserStorageDirectoryWritable(directory) {
+    if !DirExist(directory) {
+        throw Error(
+            "De gebruikersmap bestaat niet.`n`n"
+            . directory
+        )
+    }
+
+    probePath := directory
+        . "\.docbot-write-test-"
+        . A_NowUTC
+        . "-"
+        . A_TickCount
+        . "-"
+        . Random(100000, 999999)
+        . ".tmp"
+    probeFile := 0
+
+    try {
+        probeFile := FileOpen(probePath, "w", "UTF-8-RAW")
+        if !IsObject(probeFile)
+            throw Error("Het tijdelijke testbestand kon niet worden geopend.")
+
+        probeFile.Write("DocBot schrijftest")
+        probeFile.Close()
+        probeFile := 0
+
+        FileDelete(probePath)
+    } catch as error {
+        if IsObject(probeFile)
+            try probeFile.Close()
+
+        if FileExist(probePath)
+            try FileDelete(probePath)
+
+        throw Error(
+            "DocBot kan niet schrijven in de gebruikersmap.`n`n"
+            . directory
+            . "`n`n"
+            . error.Message
+        )
+    }
+}
+
+AssertUserStorageFileWritable(path) {
+    file := 0
+
+    try {
+        attributes := FileGetAttrib(path)
+
+        if InStr(attributes, "D") {
+            throw Error(
+                "DocBot verwachtte een bestand, maar vond een map.`n`n"
+                . path
+            )
+        }
+
+        if InStr(attributes, "R") {
+            throw Error(
+                "Dit DocBot-bestand is alleen-lezen.`n`n"
+                . path
+            )
+        }
+
+        file := FileOpen(path, "rw")
+        if !IsObject(file) {
+            throw Error(
+                "Het bestand kon niet voor lezen en schrijven worden geopend."
+            )
+        }
+
+        file.Close()
+        file := 0
+    } catch as error {
+        if IsObject(file)
+            try file.Close()
+
+        if InStr(error.Message, path)
+            throw error
+
+        throw Error(
+            "DocBot kan dit bestand niet wijzigen.`n`n"
+            . path
+            . "`n`n"
+            . error.Message
+        )
+    }
+}
+'''.encode("utf-8")
+
+          storage_marker = b"\nRebaseCopiedHotstringPath(sourceDir) {"
+          if docbot.count(storage_marker) != 1:
+              raise RuntimeError("Storage function insertion marker was not found exactly once")
+          docbot = docbot.replace(
+              storage_marker,
+              storage_functions + storage_marker,
+              1,
+          )
+          docbot_path.write_bytes(docbot)
+
+          telemetry = telemetry_path.read_text(encoding="utf-8")
+          if "#Include StorageAccess.ahk" in telemetry:
+              raise RuntimeError("Telemetry still includes StorageAccess.ahk")
+          if "ValidateUserStorageAccess(" in telemetry:
+              raise RuntimeError("General storage validation is still in Telemetry.ahk")
+          if "newInstallationId := Telemetry_CreateInstallationId()" not in telemetry:
+              raise RuntimeError("Telemetry installation-ID persistence protection is missing")
+
+          if not storage_path.exists():
+              raise RuntimeError("StorageAccess.ahk was not found")
+          storage_path.unlink()
+          PY
+
+          git diff --check
+
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' DocBot.ahk StorageAccess.ahk | sort)"
+          if [ "$changed" != "$expected" ]; then
+            printf 'Unexpected changed files:\n%s\n' "$changed" >&2
+            exit 1
+          fi
+
+          grep -F 'global AppVersion := "2.2-storage-loc-check.1"' DocBot.ahk
+          grep -F 'try ValidateUserStorageAccess()' DocBot.ahk
+          grep -F 'ValidateUserStorageAccess() {' DocBot.ahk
+          grep -F '. "\.docbot-write-test-"' DocBot.ahk
+          test ! -e StorageAccess.ahk
+
+      - name: Commit and push target branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DocBot.ahk StorageAccess.ahk
+          git commit -m "Refactor storage validation into DocBot"
+          git push origin HEAD:StorageLocCheck-fix
+
+      - name: Remove temporary branches
+        if: success()
+        continue-on-error: true
+        shell: bash
+        run: |
+          git push origin --delete StorageLocCheck-trigger
+          git push origin --delete StorageLocCheck-runner
