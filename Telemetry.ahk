@@ -82,13 +82,28 @@ Telemetry_Initialize(configFile, appVersion, statusProvider) {
         IniRead(TelemetryConfigFile, "Telemetry", "InstallationId", "")
     )
     if TelemetryInstallationId = "" {
-        TelemetryInstallationId := Telemetry_CreateInstallationId()
-        IniWrite(
-            TelemetryInstallationId,
-            TelemetryConfigFile,
-            "Telemetry",
-            "InstallationId"
-        )
+        newInstallationId := Telemetry_CreateInstallationId()
+
+        try {
+            IniWrite(
+                newInstallationId,
+                TelemetryConfigFile,
+                "Telemetry",
+                "InstallationId"
+            )
+        } catch as installationIdError {
+            TelemetryInstallationId := ""
+            Telemetry_LogError(
+                "Installatie-ID kon niet worden opgeslagen in "
+                . TelemetryConfigFile
+                . ": "
+                . installationIdError.Message
+            )
+            return
+        }
+
+        ; Gebruik het nieuwe ID pas nadat permanente opslag is gelukt.
+        TelemetryInstallationId := newInstallationId
     }
 
     TelemetryStartedAt := Telemetry_UtcTimestamp()
