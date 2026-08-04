@@ -14,9 +14,17 @@ DocBot is een AutoHotkey v2-hulpmiddel voor medewerkers met twee hoofdfuncties:
 ## Bestanden
 
 - `DocBot.ahk` — huidig hoofdscript; werk hieraan voor hotstrings, telefonie en de interface.
-- `JXON.ahk` — JSON-library (TheArkive, MIT), gebruikt voor hotstring-opslag.
+- `ThirdParty/JXON/JXON.ahk` — JSON-library (TheArkive, MIT), gebruikt voor hotstring-opslag.
+- `ThirdParty/ColorButton/ColorButton.ahk` — knopbibliotheek (Nikola Perovic, MIT).
+- `ThirdParty/UIA-v2/UIA.ahk` — UI Automation-library voor interactie met Edge.
+- `ThirdParty/<library>/LICENSE` — oorspronkelijke licentie van de betreffende externe library.
 - `README.md` — volledige documentatie over installatie, functionaliteit, telefonie, diagnostiek en wijzigingen.
-- De historische legacybron staat uitsluitend in de Git-geschiedenis en op `archive/legacy-v2-final`; voeg hem niet opnieuw toe aan actieve branches.
+- Voeg verwijderde legacybestanden niet opnieuw toe aan actieve branches.
+
+Plaats meegeleverde externe libraries altijd in een eigen map onder
+`ThirdParty/`, met hun oorspronkelijke licentiebestand in dezelfde map.
+Pas bij een verplaatsing zowel alle `#Include`-paden als de bestandenlijst
+in `README.md`, `AGENTS.md` en `CLAUDE.md` aan.
 
 ## Hotstringmodel en uitvoer
 
@@ -188,8 +196,8 @@ releasetag.
 ## Releases, versiegeschiedenis en tags
 
 De releasebranch wordt via een pull request naar `main` gemerged. Zet
-`AppVersion` pas voor die definitieve releasecommit van `2.1-rc.N` naar
-de stabiele versie `2.1`.
+`AppVersion` pas voor de definitieve releasecommit van `2.2-rc.N` naar
+de stabiele versie `2.2`.
 
 Bij een stabiele release moet in dezelfde commit-cyclus:
 

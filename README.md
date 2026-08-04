@@ -19,19 +19,16 @@ Bestanden
 - `DocBot.ahk` — ontwikkelversie 2.2 met de huidige GUI,
   telefoniefunctionaliteit, hotstrings, snelkiesnummers en pakketbeheer.
 - `packages/` — versieerbare ingebouwde hotstringpakketten plus manifest.
-- `ColorButton.ahk` — custom-draw ondersteuning voor de moderne knoppen.
-- `JXON.ahk` — JSON-library van TheArkive, gebruikt voor het laden en
-  opslaan van gebruikersgegevens.
+- `ThirdParty/ColorButton/` — custom-draw ondersteuning voor de moderne
+  knoppen, inclusief de oorspronkelijke MIT-licentie.
+- `ThirdParty/JXON/` — JSON-library van TheArkive voor het laden en opslaan
+  van gebruikersgegevens, inclusief de oorspronkelijke MIT-licentie.
 - `ThirdParty/UIA-v2/` — Windows UI Automation-library voor het betrouwbaar
-  activeren van de geconfigureerde Edge-tab en invullen van het SMS-veld.
-- `LICENSE-JXON.md` — MIT-licentie van de JXON-library.
-- `LICENSE` — MIT-licentie van DocBot.
+  activeren van de geconfigureerde Edge-tab en invullen van het SMS-veld,
+  inclusief de oorspronkelijke MIT-licentie.
+- `LICENSE` — PolyForm Noncommercial-licentie van DocBot 2.2 en later.
 - `AGENTS.md` en `CLAUDE.md` — project- en werkinstructies voor
   AI-assistenten.
-
-De verwijderde legacybron blijft beschikbaar in de Git-geschiedenis en op
-de vaste archieftak `archive/legacy-v2-final`; hij maakt geen deel meer uit
-van de actieve ontwikkel- en distributiebestanden.
 
 Er is geen apart bestand voor debug-logging in de repo: dat logbestand wordt
 tijdens het draaien van het script aangemaakt op de gebruikerscomputer (zie
@@ -39,7 +36,7 @@ tijdens het draaien van het script aangemaakt op de gebruikerscomputer (zie
 
 Installatie
 -----------
-Laat `DocBot.ahk` en `JXON.ahk` in dezelfde map staan. Kopieer
+Laat `DocBot.ahk` en de map `ThirdParty/` in de oorspronkelijke structuur staan. Kopieer
 `DocBot.local.example.ahk` naar `DocBot.local.ahk`, vul lokaal de
 telefonieserver, endpointnamen, standaard-snelkiesnummers en
 standaard-hotstrings in en compileer daarna `DocBot.ahk` met AutoHotkey v2.
@@ -270,9 +267,6 @@ Iedere heartbeat bevat:
 Korte hotstrings worden rechtstreeks door AutoHotkey uitgevoerd en tellen
 niet mee in `hotstringActions`. De tellers worden lokaal in
 `settings.ini` bewaard en zijn ook zichtbaar op de Overzicht-pagina.
-Een nieuw installatie-ID wordt pas gebruikt nadat het succesvol in
-`settings.ini` is opgeslagen. Bij een schrijffout wordt geen tijdelijk ID
-verzonden.
 
 DocBot verzendt bewust **geen** computernaam, gebelde telefoonnummers,
 hotstringafkortingen, vervangteksten, pakketinhoud of klembordinhoud. Bij
@@ -294,6 +288,8 @@ Changelog
 
 ### 2.2 — In ontwikkeling
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
+- Externe libraries staan met hun oorspronkelijke MIT-licenties gegroepeerd
+  onder `ThirdParty/`.
 - Nieuwe vierstandeninstelling **Belactie** als vervanging voor AutoCall en
   DirectCall, inclusief een lokaal configureerbare keuze van de SMS-pagina.
   De SMS-keuze wordt alleen aangeboden als minimaal één geldige
