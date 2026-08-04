@@ -1,8 +1,8 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 Persistent true
-#Include JXON.ahk
-#Include ColorButton.ahk
+#Include ThirdParty\JXON\JXON.ahk
+#Include ThirdParty\ColorButton\ColorButton.ahk
 #Include Telemetry.ahk
 #Include ThirdParty\UIA-v2\UIA.ahk
 #Include ThirdParty\UIA-v2\UIA_Browser.ahk
