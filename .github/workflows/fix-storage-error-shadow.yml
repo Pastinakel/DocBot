@@ -1,0 +1,35 @@
+name: Fix storage error shadowing
+
+on:
+  push:
+    branches:
+      - StorageLocCheck-fix
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: StorageLocCheck-fix
+          fetch-depth: 0
+
+      - name: Apply fix
+        run: |
+          python3 .github/scripts/fix-storage-error-shadow.py
+          git diff --check
+          grep -F 'catch as caughtError {' DocBot.ahk
+          test "$(grep -c 'catch as caughtError {' DocBot.ahk)" -ge 2
+
+      - name: Commit fix and remove temporary files
+        run: |
+          rm -f .github/workflows/fix-storage-error-shadow.yml
+          rm -f .github/scripts/fix-storage-error-shadow.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DocBot.ahk .github/workflows/fix-storage-error-shadow.yml .github/scripts/fix-storage-error-shadow.py
+          git commit -m "Voorkom foutvariabeleconflict in opslagcontrole"
+          git push origin StorageLocCheck-fix
