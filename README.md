@@ -290,6 +290,13 @@ Changelog
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
 - Externe libraries staan met hun oorspronkelijke MIT-licenties gegroepeerd
   onder `ThirdParty/`.
+- DocBot controleert direct na het voorbereiden van de gebruikersmap of de map
+  en bestaande beheerde gegevensbestanden schrijfbaar zijn. Bij een probleem
+  toont DocBot het betreffende pad en stopt de opstart, zodat instellingen en
+  gebruikersgegevens niet onbetrouwbaar worden verwerkt. Een nieuw telemetrie-
+  installatie-ID wordt bovendien pas gebruikt nadat het blijvend in
+  `settings.ini` is opgeslagen; bij een schrijffout wordt geen tijdelijk ID
+  verzonden.
 - Nieuwe vierstandeninstelling **Belactie** als vervanging voor AutoCall en
   DirectCall, inclusief een lokaal configureerbare keuze van de SMS-pagina.
   De SMS-keuze wordt alleen aangeboden als minimaal één geldige
