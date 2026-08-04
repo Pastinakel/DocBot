@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - StorageLocCheck-fix
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -19,12 +20,12 @@ jobs:
           fetch-depth: 0
 
       - name: Move generic storage validation to DocBot
-        shell: python
         run: |
+          python - <<'PY'
           from pathlib import Path
 
-          telemetry_path = Path('Telemetry.ahk')
-          telemetry = telemetry_path.read_text(encoding='utf-8')
+          telemetry_path = Path("Telemetry.ahk")
+          telemetry = telemetry_path.read_text(encoding="utf-8")
 
           telemetry_init_block = '''
     try {
@@ -42,8 +43,8 @@ jobs:
     }
 '''
           if telemetry_init_block not in telemetry:
-              raise SystemExit('Telemetry storage validation call block not found')
-          telemetry = telemetry.replace(telemetry_init_block, '', 1)
+              raise SystemExit("Telemetry storage validation call block not found")
+          telemetry = telemetry.replace(telemetry_init_block, "", 1)
 
           storage_section_marker = '''
 ; =============================================================================
@@ -52,12 +53,12 @@ jobs:
 '''
           marker_index = telemetry.find(storage_section_marker)
           if marker_index < 0:
-              raise SystemExit('Telemetry storage validation section not found')
-          telemetry = telemetry[:marker_index].rstrip() + '\n'
-          telemetry_path.write_text(telemetry, encoding='utf-8', newline='\n')
+              raise SystemExit("Telemetry storage validation section not found")
+          telemetry = telemetry[:marker_index].rstrip() + "\n"
+          telemetry_path.write_text(telemetry, encoding="utf-8", newline="\n")
 
-          docbot_path = Path('DocBot.ahk')
-          docbot = docbot_path.read_text(encoding='utf-8')
+          docbot_path = Path("DocBot.ahk")
+          docbot = docbot_path.read_text(encoding="utf-8")
 
           startup_old = '''InitializeUserStorage()
 InitializeBundledPackages()
@@ -78,7 +79,7 @@ catch as storageError {
 InitializeBundledPackages()
 '''
           if startup_old not in docbot:
-              raise SystemExit('DocBot startup insertion point not found')
+              raise SystemExit("DocBot startup insertion point not found")
           docbot = docbot.replace(startup_old, startup_new, 1)
 
           generic_storage_functions = r'''
@@ -110,7 +111,7 @@ ValidateStorageAccess() {
 
 AssertDirectoryWritable(directory) {
     probePath := directory
-        . "\\.docbot-write-test-"
+        . "\.docbot-write-test-"
         . A_NowUTC
         . "-"
         . A_TickCount
@@ -177,15 +178,16 @@ AssertFileWritable(path) {
     }
 }
 '''
-          insertion_marker = '\nRebaseCopiedHotstringPath(sourceDir) {'
+          insertion_marker = "\nRebaseCopiedHotstringPath(sourceDir) {"
           if insertion_marker not in docbot:
-              raise SystemExit('DocBot storage function insertion point not found')
+              raise SystemExit("DocBot storage function insertion point not found")
           docbot = docbot.replace(
               insertion_marker,
               generic_storage_functions + insertion_marker,
               1,
           )
-          docbot_path.write_text(docbot, encoding='utf-8', newline='\n')
+          docbot_path.write_text(docbot, encoding="utf-8", newline="\n")
+          PY
 
       - name: Remove temporary workflow and commit
         run: |
