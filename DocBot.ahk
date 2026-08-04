@@ -6463,7 +6463,7 @@ AssertUserStorageDirectoryWritable(directory) {
         probeFile.Close()
         probeFile := 0
         FileDelete(probePath)
-    } catch as error {
+    } catch as caughtError {
         if IsObject(probeFile)
             try probeFile.Close()
         if FileExist(probePath)
@@ -6473,7 +6473,7 @@ AssertUserStorageDirectoryWritable(directory) {
             "DocBot kan niet schrijven in de gebruikersmap.`n`n"
             . directory
             . "`n`n"
-            . error.Message
+            . caughtError.Message
         )
     }
 }
@@ -6504,18 +6504,18 @@ AssertUserStorageFileWritable(path) {
 
         file.Close()
         file := 0
-    } catch as error {
+    } catch as caughtError {
         if IsObject(file)
             try file.Close()
 
-        if InStr(error.Message, path)
-            throw error
+        if InStr(caughtError.Message, path)
+            throw caughtError
 
         throw Error(
             "DocBot kan dit bestand niet wijzigen.`n`n"
             . path
             . "`n`n"
-            . error.Message
+            . caughtError.Message
         )
     }
 }
