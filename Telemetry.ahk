@@ -72,6 +72,20 @@ Telemetry_Initialize(configFile, appVersion, statusProvider) {
     TelemetryStatusProvider := statusProvider
     TelemetryConfig := Telemetry_BuildConfig()
 
+    try {
+        Telemetry_ValidateStorageAccess(TelemetryConfigFile)
+    } catch as storageError {
+        MsgBox(
+            "DocBot kan de gebruikersgegevens niet betrouwbaar opslaan.`n`n"
+            . storageError.Message
+            . "`n`nControleer de rechten, synchronisatie of beveiliging van "
+            . "de genoemde locatie en start DocBot daarna opnieuw.",
+            "DocBot - Opslagfout",
+            "Icon!"
+        )
+        ExitApp()
+    }
+
     TelemetryPhoneActions := Telemetry_ReadCounter("PhoneActions")
     TelemetryLongHotstringActions := Telemetry_ReadCounter("LongHotstringActions")
 
@@ -297,4 +311,103 @@ Telemetry_Response() {
 
 Telemetry_LogError(message) {
     try DebugLog("✕", "Telemetrie", message)
+}
+
+; =============================================================================
+; Opslagcontrole
+; =============================================================================
+; De gebruikersmap en ieder bestaand DocBot-gegevensbestand worden apart
+; getest. De daadwerkelijke schrijfacties houden daarnaast hun eigen foutvangst.
+
+Telemetry_ValidateStorageAccess(configFile) {
+    SplitPath(configFile, , &storageDir)
+
+    if storageDir = ""
+        throw Error("De gebruikersmap kon niet uit het instellingenpad worden bepaald.`n`n" configFile)
+
+    if !DirExist(storageDir)
+        throw Error("De gebruikersmap bestaat niet.`n`n" storageDir)
+
+    Telemetry_AssertDirectoryWritable(storageDir)
+
+    managedFiles := [
+        configFile,
+        storageDir "\hotstrings.json",
+        storageDir "\package-settings.json",
+        storageDir "\speeddial.json"
+    ]
+
+    for _, path in managedFiles {
+        if FileExist(path)
+            Telemetry_AssertFileWritable(path)
+    }
+}
+
+Telemetry_AssertDirectoryWritable(directory) {
+    probePath := directory
+        . "\.docbot-write-test-"
+        . A_NowUTC
+        . "-"
+        . A_TickCount
+        . "-"
+        . Random(100000, 999999)
+        . ".tmp"
+    probeFile := 0
+
+    try {
+        probeFile := FileOpen(probePath, "w", "UTF-8-RAW")
+        if !IsObject(probeFile)
+            throw Error("Het tijdelijke testbestand kon niet worden geopend.")
+
+        probeFile.Write("DocBot schrijftest")
+        probeFile.Close()
+        probeFile := 0
+        FileDelete(probePath)
+    } catch as error {
+        if IsObject(probeFile)
+            try probeFile.Close()
+        if FileExist(probePath)
+            try FileDelete(probePath)
+
+        throw Error(
+            "DocBot kan niet schrijven in de gebruikersmap.`n`n"
+            . directory
+            . "`n`n"
+            . error.Message
+        )
+    }
+}
+
+Telemetry_AssertFileWritable(path) {
+    file := 0
+
+    try {
+        attributes := FileGetAttrib(path)
+
+        if InStr(attributes, "D")
+            throw Error("DocBot verwachtte een bestand, maar vond een map.`n`n" path)
+
+        if InStr(attributes, "R")
+            throw Error("Dit DocBot-bestand is alleen-lezen.`n`n" path)
+
+        file := FileOpen(path, "rw")
+        if !IsObject(file)
+            throw Error("Het bestand kon niet voor lezen en schrijven worden geopend.`n`n" path)
+
+        file.Close()
+        file := 0
+    } catch as error {
+        if IsObject(file)
+            try file.Close()
+
+        if InStr(error.Message, path)
+            throw error
+
+        throw Error(
+            "DocBot kan dit bestand niet wijzigen.`n`n"
+            . path
+            . "`n`n"
+            . error.Message
+        )
+    }
 }
