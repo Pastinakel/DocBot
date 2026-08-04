@@ -270,6 +270,9 @@ Iedere heartbeat bevat:
 Korte hotstrings worden rechtstreeks door AutoHotkey uitgevoerd en tellen
 niet mee in `hotstringActions`. De tellers worden lokaal in
 `settings.ini` bewaard en zijn ook zichtbaar op de Overzicht-pagina.
+Een nieuw installatie-ID wordt pas gebruikt nadat het succesvol in
+`settings.ini` is opgeslagen. Bij een schrijffout wordt geen tijdelijk ID
+verzonden.
 
 DocBot verzendt bewust **geen** computernaam, gebelde telefoonnummers,
 hotstringafkortingen, vervangteksten, pakketinhoud of klembordinhoud. Bij
