@@ -288,6 +288,13 @@ Changelog
 
 ### 2.2 — In ontwikkeling
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
+- De gebruikersmap wordt waar mogelijk met `attrib -U +P` als altijd lokaal
+  beschikbaar gemarkeerd, zonder dat een mislukte pinactie de start blokkeert.
+- DocBot voert bij het opstarten geen algemene schrijfbaarheidstest meer uit;
+  iedere echte schrijfactie houdt zijn eigen gerichte foutafhandeling.
+- Een ontbrekend telemetrie-installatie-ID wordt pas gebruikt nadat permanente
+  opslag is bevestigd. Bij tijdelijke onbeschikbaarheid volgen vijf pogingen
+  binnen de eerste minuten en daarna ieder uur een nieuwe poging.
 - Externe libraries staan met hun oorspronkelijke MIT-licenties gegroepeerd
   onder `ThirdParty/`.
 - DocBot controleert direct na het voorbereiden van de gebruikersmap of de map
