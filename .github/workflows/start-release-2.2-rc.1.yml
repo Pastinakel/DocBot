@@ -1,0 +1,64 @@
+name: Start release 2.2 RC1
+
+on:
+  push:
+    branches:
+      - release/2.2-rc.1
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/2.2-rc.1
+      - name: Prepare release candidate
+        shell: python
+        run: |
+          from pathlib import Path
+
+          docbot = Path("DocBot.ahk")
+          source = docbot.read_text(encoding="utf-8")
+          old_version = 'global AppVersion := "2.2-dev.5"'
+          new_version = 'global AppVersion := "2.2-rc.1"'
+          if source.count(old_version) != 1:
+              raise SystemExit("Onverwachte AppVersion in DocBot.ahk")
+          docbot.write_text(source.replace(old_version, new_version), encoding="utf-8")
+
+          readme = Path("README.md")
+          text = readme.read_text(encoding="utf-8")
+          old_intro = (
+              "Deze README beschrijft de ontwikkeling van DocBot 2.2 op de\n"
+              "`develop`-branch. Versie 2.1 is de huidige stabiele productieversie op\n"
+              "`main`; nieuwe functionaliteit wordt eerst via afzonderlijke\n"
+              "featurebranches en het testprofiel beproefd."
+          )
+          new_intro = (
+              "Deze README beschrijft releasecandidate 2.2 op de\n"
+              "`release/2.2-rc.1`-branch. Versie 2.1 is de huidige stabiele productieversie op\n"
+              "`main`; op deze releasebranch worden uitsluitend bugfixes, documentatie en\n"
+              "releasevoorbereidingen toegevoegd."
+          )
+          replacements = (
+              (old_intro, new_intro),
+              ("- `DocBot.ahk` — ontwikkelversie 2.2 met de huidige GUI,", "- `DocBot.ahk` — releasecandidate 2.2 met de huidige GUI,"),
+              ("### 2.2 — In ontwikkeling", "### 2.2 — Releasecandidate"),
+          )
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"Onverwachte README-tekst: {old}")
+              text = text.replace(old, new)
+          readme.write_text(text, encoding="utf-8")
+
+          Path(".github/workflows/start-release-2.2-rc.1.yml").unlink()
+      - name: Commit release candidate
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DocBot.ahk README.md .github/workflows/start-release-2.2-rc.1.yml
+          git commit -m "Start releasecandidate 2.2-rc.1"
+          git push origin HEAD:release/2.2-rc.1
