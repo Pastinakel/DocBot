@@ -254,6 +254,14 @@ een Power Automate Teams-webhook. De webhook-URL staat uitsluitend in het
 niet door Git gevolgde `DocBot.local.ahk`. De eerste heartbeat wordt tien
 seconden na het starten verzonden en daarna iedere vijftien minuten.
 
+Bij het starten leest DocBot eerst het bestaande installatie-ID uit
+`settings.ini`. Als dat ID beschikbaar is, wordt niets teruggeschreven en kan
+telemetrie direct starten. Alleen wanneer het ID ontbreekt, maakt DocBot een
+nieuw ID aan. Dat nieuwe ID wordt pas gebruikt nadat schrijven en teruglezen
+zijn gelukt. Bij een tijdelijk niet-beschikbare OneDrive-map probeert DocBot
+dit in totaal vijf keer tijdens de eerste minuten en daarna ieder uur opnieuw;
+de overige functies van DocBot blijven intussen beschikbaar.
+
 Iedere heartbeat bevat:
 
 - een willekeurig, lokaal bewaard installatie-ID;
@@ -288,15 +296,16 @@ Changelog
 
 ### 2.2 — In ontwikkeling
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
+- De gebruikersmap wordt waar mogelijk met `attrib -U +P` als altijd lokaal
+  beschikbaar gemarkeerd, zonder dat een mislukte pinactie de start blokkeert.
+- DocBot voert bij het opstarten geen algemene schrijfbaarheidstest meer uit;
+  iedere echte schrijfactie houdt zijn eigen gerichte foutafhandeling.
+- Een bestaand telemetrie-installatie-ID wordt alleen gelezen en direct gebruikt.
+  Alleen een ontbrekend nieuw ID wordt geschreven en pas na bevestigde opslag
+  actief. Bij tijdelijke onbeschikbaarheid volgen vijf pogingen binnen de eerste
+  minuten en daarna ieder uur een nieuwe poging.
 - Externe libraries staan met hun oorspronkelijke MIT-licenties gegroepeerd
   onder `ThirdParty/`.
-- DocBot controleert direct na het voorbereiden van de gebruikersmap of de map
-  en bestaande beheerde gegevensbestanden schrijfbaar zijn. Bij een probleem
-  toont DocBot het betreffende pad en stopt de opstart, zodat instellingen en
-  gebruikersgegevens niet onbetrouwbaar worden verwerkt. Een nieuw telemetrie-
-  installatie-ID wordt bovendien pas gebruikt nadat het blijvend in
-  `settings.ini` is opgeslagen; bij een schrijffout wordt geen tijdelijk ID
-  verzonden.
 - Nieuwe vierstandeninstelling **Belactie** als vervanging voor AutoCall en
   DirectCall, inclusief een lokaal configureerbare keuze van de SMS-pagina.
   De SMS-keuze wordt alleen aangeboden als minimaal één geldige

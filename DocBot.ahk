@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-dev.4"
+global AppVersion := "2.2-dev.5"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -212,18 +212,7 @@ global PackageManagerStatusText := 0
 global RuntimeHotstrings := Map()
 
 InitializeUserStorage()
-try ValidateUserStorageAccess()
-catch as storageError {
-    MsgBox(
-        "DocBot kan de gebruikersgegevens niet betrouwbaar opslaan.`n`n"
-        . storageError.Message
-        . "`n`nControleer de rechten, synchronisatie of beveiliging van "
-        . "de genoemde locatie en start DocBot daarna opnieuw.",
-        "DocBot - Opslagfout",
-        "Icon!"
-    )
-    ExitApp()
-}
+MarkUserStorageAlwaysAvailable(UserDataDir)
 InitializeBundledPackages()
 LoadAppSettings()
 InitializeHotstringStorage()
@@ -6414,110 +6403,36 @@ InitializeUserStorage() {
 }
 
 
-; Controleer na het voorbereiden van de gebruikersmap of de map zelf en alle
-; bestaande, door DocBot beheerde gegevensbestanden daadwerkelijk schrijfbaar
-; zijn. De echte schrijfacties houden daarnaast hun eigen foutafhandeling.
-ValidateUserStorageAccess() {
-    global UserDataDir, ConfigFile, DefaultHotstringFile
-    global DefaultPackageSettingsFile, DefaultSpeedDialFile
-
-    AssertUserStorageDirectoryWritable(UserDataDir)
-
-    managedFiles := [
-        ConfigFile,
-        DefaultHotstringFile,
-        DefaultPackageSettingsFile,
-        DefaultSpeedDialFile
-    ]
-
-    for _, path in managedFiles {
-        if FileExist(path)
-            AssertUserStorageFileWritable(path)
-    }
-}
-
-AssertUserStorageDirectoryWritable(directory) {
-    if !DirExist(directory) {
-        throw Error(
-            "De gebruikersmap bestaat niet.`n`n"
-            . directory
-        )
-    }
-
-    probePath := directory
-        . "\.docbot-write-test-"
-        . A_NowUTC
-        . "-"
-        . A_TickCount
-        . "-"
-        . Random(100000, 999999)
-        . ".tmp"
-    probeFile := 0
+MarkUserStorageAlwaysAvailable(directory) {
+    if !DirExist(directory)
+        return false
 
     try {
-        probeFile := FileOpen(probePath, "w", "UTF-8-RAW")
-        if !IsObject(probeFile)
-            throw Error("Het tijdelijke testbestand kon niet worden geopend.")
+        exitCode := RunWait(
+            A_ComSpec ' /d /c attrib -U +P "' directory '"',
+            ,
+            "Hide"
+        )
+        if exitCode = 0
+            return true
 
-        probeFile.Write("DocBot schrijftest")
-        probeFile.Close()
-        probeFile := 0
-        FileDelete(probePath)
-    } catch as caughtError {
-        if IsObject(probeFile)
-            try probeFile.Close()
-        if FileExist(probePath)
-            try FileDelete(probePath)
-
-        throw Error(
-            "DocBot kan niet schrijven in de gebruikersmap.`n`n"
-            . directory
-            . "`n`n"
-            . caughtError.Message
+        DebugLog(
+            "!",
+            "OneDrive-map lokaal houden",
+            "attrib -U +P gaf exitcode " exitCode ": " directory
+        )
+    } catch as pinError {
+        DebugLog(
+            "!",
+            "OneDrive-map lokaal houden",
+            directory "`n" pinError.Message
         )
     }
-}
 
-AssertUserStorageFileWritable(path) {
-    file := 0
-
-    try {
-        attributes := FileGetAttrib(path)
-
-        if InStr(attributes, "D") {
-            throw Error(
-                "DocBot verwachtte een bestand, maar vond een map.`n`n"
-                . path
-            )
-        }
-
-        if InStr(attributes, "R") {
-            throw Error(
-                "Dit DocBot-bestand is alleen-lezen.`n`n"
-                . path
-            )
-        }
-
-        file := FileOpen(path, "rw")
-        if !IsObject(file)
-            throw Error("Het bestand kon niet voor lezen en schrijven worden geopend.")
-
-        file.Close()
-        file := 0
-    } catch as caughtError {
-        if IsObject(file)
-            try file.Close()
-
-        if InStr(caughtError.Message, path)
-            throw caughtError
-
-        throw Error(
-            "DocBot kan dit bestand niet wijzigen.`n`n"
-            . path
-            . "`n`n"
-            . caughtError.Message
-        )
-    }
+    ; Niet fataal: gewone lokale mappen en organisatiebeleid mogen de start
+    ; van DocBot niet blokkeren. De echte schrijfacties houden hun eigen
+    ; gerichte foutafhandeling.
+    return false
 }
 
 RebaseCopiedHotstringPath(sourceDir) {
