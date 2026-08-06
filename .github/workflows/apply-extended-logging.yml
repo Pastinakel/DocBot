@@ -1,0 +1,41 @@
+name: Apply extended logging feature
+on:
+  push:
+    branches: [feature/extended-logging]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/extended-logging
+          fetch-depth: 0
+      - name: Apply changes
+        shell: bash
+        run: |
+          cat .github/patch/payload.part* | base64 --decode | gzip --decompress > /tmp/apply.py
+          python3 /tmp/apply.py
+      - name: Validate
+        shell: bash
+        run: |
+          git diff --check
+          test "$(grep -c 'global AppVersion := \"2.2-extended-logging.0\"' DocBot.ahk)" -eq 1
+          grep -q 'ShowProblemReportWindow' DocBot.ahk
+          grep -q 'ExtendedDebugLog' DocBot.ahk
+          grep -q 'Probleem melden en diagnostiek' README.md
+          test -z "$(git diff --name-only -- Telemetry.ahk)"
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' 'DocBot.ahk' 'README.md' | sort)"
+          test "$changed" = "$expected"
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -r .github/patch .github/workflows/apply-extended-logging.yml
+          git add DocBot.ahk README.md
+          git diff --cached --check
+          git commit -m "Voeg probleemrapportage met toestemmingslogging toe"
+          git push origin HEAD:feature/extended-logging
