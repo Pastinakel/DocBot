@@ -9,14 +9,14 @@ van het ziekenhuis, inclusief automatische detectie van telefoonnummers op
 het klembord. Alles draait via één GUI met sidebar-navigatie en een
 tray-icoon.
 
-Deze README beschrijft de ontwikkeling van DocBot 2.2 op de
-`develop`-branch. Versie 2.1 is de huidige stabiele productieversie op
-`main`; nieuwe functionaliteit wordt eerst via afzonderlijke
-featurebranches en het testprofiel beproefd.
+Deze README beschrijft releasecandidate 2.2 op de
+`release/2.2-rc.1`-branch. Versie 2.1 is de huidige stabiele productieversie op
+`main`; op deze releasebranch worden uitsluitend bugfixes, documentatie en
+releasevoorbereidingen toegevoegd.
 
 Bestanden
 ---------
-- `DocBot.ahk` — ontwikkelversie 2.2 met de huidige GUI,
+- `DocBot.ahk` — releasecandidate 2.2 met de huidige GUI,
   telefoniefunctionaliteit, hotstrings, snelkiesnummers en pakketbeheer.
 - `packages/` — versieerbare ingebouwde hotstringpakketten plus manifest.
 - `ThirdParty/ColorButton/` — custom-draw ondersteuning voor de moderne
@@ -294,7 +294,7 @@ laten klaarzetten — zonder dat zij de inhoud zelf hoeven in te zien.
 Changelog
 ---------
 
-### 2.2 — In ontwikkeling
+### 2.2 — Releasecandidate
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
 - De gebruikersmap wordt waar mogelijk met `attrib -U +P` als altijd lokaal
   beschikbaar gemarkeerd, zonder dat een mislukte pinactie de start blokkeert.

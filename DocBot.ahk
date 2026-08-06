@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-dev.5"
+global AppVersion := "2.2-rc.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
