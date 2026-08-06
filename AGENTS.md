@@ -228,10 +228,3 @@ standaard-hotstrings staan uitsluitend in `DocBot.local.ahk`. Dit bestand
 wordt door Git genegeerd en mag nooit worden gecommit. Gebruik
 `DocBot.local.example.ahk` als veilige structuurtemplate zonder echte
 waarden. Ahk2Exe neemt de lokale include tijdens compilatie op.
-
-
-## Release bijwerkacties
-
-Bij release 2.2 moet de releasebranch met een mergecommit naar `main` worden
-gemerged en moet `main` daarna terug naar `develop`; hiermee wordt de sinds
-release 2.1 afwijkende commitgeschiedenis definitief gesynchroniseerd.
