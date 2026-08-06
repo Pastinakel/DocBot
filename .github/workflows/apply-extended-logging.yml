@@ -2,12 +2,12 @@ name: Apply extended logging feature
 on:
   pull_request:
     types: [opened, reopened]
-    branches: [develop]
+    branches: [feature/extended-logging]
 permissions:
   contents: write
 jobs:
   apply:
-    if: github.head_ref == 'feature/extended-logging'
+    if: github.head_ref == 'automation/apply-extended-logging'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
