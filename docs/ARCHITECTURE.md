@@ -1,0 +1,474 @@
+# DocBot — Architecture
+
+_Last updated: 2026-08-07. Repository facts refer to the 2.2 development line unless noted otherwise._
+
+## 1. Architectural style
+
+DocBot is a Windows desktop application written in AutoHotkey v2. The architecture is pragmatic rather than layered in the classic sense:
+
+- `DocBot.ahk` contains most application behavior and UI;
+- `Telemetry.ahk` is a separate optional module;
+- third-party libraries are included directly from `ThirdParty/`;
+- local environment/secrets are injected through ignored `DocBot.local.ahk`;
+- bundled content is stored as JSON under `packages/`;
+- persistent user state is stored as INI/JSON files outside the repository.
+
+The main script is large, but it is organized by subsystem and uses explicit global maps/controls as the primary shared-state mechanism. Refactoring it into many modules may be desirable eventually, but should not be attempted casually because startup order, global initialization, GUI control references, hotstring callbacks, AutoHotkey event binding, and compiled `FileInstall` behavior are tightly coupled.
+
+## 2. Compile-time and startup dependencies
+
+`DocBot.ahk` currently includes, in order:
+
+```text
+ThirdParty/JXON/JXON.ahk
+ThirdParty/ColorButton/ColorButton.ahk
+Telemetry.ahk
+ThirdParty/UIA-v2/UIA.ahk
+ThirdParty/UIA-v2/UIA_Browser.ahk
+DocBot.local.ahk   (optional include at source level; required to pass validation)
+```
+
+`DocBot.local.ahk` is deliberately ignored by Git. It provides the real values for:
+
+- internal telephony base URL and endpoints;
+- local default speed-dial entries;
+- local default hotstrings;
+- SMS action configuration;
+- optional telemetry configuration and webhook URL.
+
+`DocBot.local.example.ahk` is the only safe versioned template.
+
+The application validates local configuration immediately. Missing/invalid required local values produce a blocking configuration error and exit.
+
+## 3. AutoHotkey v2 startup-order constraint
+
+This is a critical implementation detail.
+
+AutoHotkey v2 executes top-level statements in file order. Function definitions are parsed/skipped during auto-execute, but a global variable initializer that appears later in the source has not executed yet when earlier top-level code or GUI construction needs it.
+
+Therefore, all globals used directly or indirectly during initial GUI construction must be initialized in the top globals block before the auto-execute section. Known examples include GUI state plus rendering state such as `RoundQueue`, rounded-control metadata, control-position maps, bitmap/GDI state, and shared dialog state.
+
+Do not move required global initializations into a later subsystem section just because that section is conceptually related.
+
+## 4. High-level component map
+
+```text
+                   +-------------------------+
+                   |   DocBot.local.ahk      |
+                   | local config / secrets  |
+                   +------------+------------+
+                                |
+                                v
++----------------+     +--------+---------+      +------------------+
+| ThirdParty     |---->|    DocBot.ahk    |<---->|  Telemetry.ahk   |
+| JXON           |     | main app + GUI   |      | optional status  |
+| ColorButton    |     +---+---+---+---+--+      +---------+--------+
+| UIA-v2         |         |   |   |   |                   |
++----------------+         |   |   |   |                   |
+                           |   |   |   |                   v
+                           |   |   |   |          Power Automate/
+                           |   |   |   |          Teams webhook
+                           |   |   |   |
+                           |   |   |   +------> Edge/UI Automation
+                           |   |   |            SMS helper
+                           |   |   |
+                           |   |   +----------> internal telephony
+                           |   |                POST endpoints
+                           |   |
+                           |   +--------------> user data
+                           |                    Documents + LocalAppData
+                           |
+                           +------------------> bundled packages
+                                                packages/*.json
+```
+
+## 5. Auto-execute sequence
+
+The current startup flow in `DocBot.ahk` is approximately:
+
+1. validate local configuration;
+2. calculate `AppVersion` and choose user-data profile;
+3. initialize global UI/config/state objects;
+4. `InitializeUserStorage()`;
+5. best-effort pin the user-data folder locally (`MarkUserStorageAlwaysAvailable()`);
+6. initialize bundled package cache/data;
+7. load application settings;
+8. initialize personal hotstring storage/migrations;
+9. initialize package settings/migrations;
+10. initialize speed-dial storage/migrations;
+11. register/reload runtime hotstrings;
+12. initialize telemetry;
+13. process update-restart command-line state if present;
+14. build the main GUI and tray menu;
+15. register Windows messages and exit handler;
+16. show GUI and apply custom visual rendering;
+17. start clipboard polling;
+18. start registration-button countdown timer;
+19. request telephony registration and start chained event polling;
+20. start/check `signal.txt` update/shutdown coordination.
+
+Changing this order can have user-data, UI, or network side effects. Treat initialization order as behavior, not formatting.
+
+## 6. Shared state model
+
+### 6.1 `State`
+
+`State` is the main runtime state map. Important fields include:
+
+- selected call action;
+- selected SMS action title;
+- text replacement enabled/disabled;
+- AutoSave state;
+- active personal-hotstring file;
+- nested `State["IPT"]` telephony state.
+
+`State["IPT"]` tracks values such as:
+
+- linked user telephone number;
+- current registration/link code;
+- update/poll flags;
+- most recently detected clipboard number;
+- last registration request tick.
+
+### 6.2 GUI globals
+
+The application keeps many control references globally because event callbacks and page refresh functions need them. Examples include:
+
+- main GUI/page/nav structures;
+- registration texts and refresh button;
+- call-action selector;
+- hotstring ListView/editor controls;
+- speed-dial ListView/editor controls;
+- package-manager window and ListViews;
+- sidebar status indicators;
+- custom-notification GUI;
+- debug window controls;
+- call/SMS dialog keyboard state.
+
+This is one reason an aggressive module split would require care.
+
+### 6.3 Network request globals
+
+Telephony intentionally uses separate module-level request references:
+
+- registration request;
+- polling request;
+- dial request.
+
+They are separate so a new request cannot overwrite the object reference needed by another unfinished callback.
+
+Telemetry separately holds its own asynchronous request object.
+
+## 7. User-data architecture
+
+### 7.1 Release-channel profiles
+
+`AppVersion` selects one of three Documents profiles:
+
+```text
+stable numeric version       -> %MyDocuments%\DocBot
+-dev or -rc prerelease       -> %MyDocuments%\DocBot-test
+other named prerelease       -> %MyDocuments%\DocBot-dev
+```
+
+Purpose: a feature/fix or RC build must never mutate/migrate production user data simply because it is launched by a developer/tester.
+
+Bootstrap behavior:
+
+- create missing target profile;
+- for test, copy once from stable when appropriate;
+- for dev, prefer copying once from test, otherwise stable;
+- rewrite internal profile paths where needed;
+- then run normal schema migrations;
+- never overwrite an already-existing target profile during bootstrap.
+
+### 7.2 Persistent files
+
+Primary persisted state:
+
+```text
+settings.ini             application settings + telemetry ID/counters
+hotstrings.json          personal hotstrings
+package-settings.json    package enabled/disabled/conflict choices
+speeddial.json           speed-dial entries
+```
+
+Storage routines use defensive patterns such as `.bak`, temporary files, validation, and replacement where implemented.
+
+### 7.3 LocalAppData
+
+LocalAppData is used for machine-local/runtime artifacts, notably:
+
+- `debug.log`;
+- extracted/cached bundled packages.
+
+Development package extraction is separated from production package cache to avoid test builds overwriting production cache.
+
+## 8. Migrations
+
+There is no standalone migrations directory. Schema migrations live in application logic and are keyed by explicit schema versions.
+
+Current global schema concepts include:
+
+- personal hotstring schema;
+- bundled-package schema;
+- package-settings schema;
+- speed-dial schema.
+
+Rules for migrations/default additions:
+
+- migration must be one-time/idempotent;
+- identify logical records by their functional/stable key;
+- never overwrite a user-edited personal value;
+- if a default was intentionally removed by a user, do not re-create it every startup;
+- preserve backwards compatibility with older storage filenames/formats where explicitly supported.
+
+When adding a new default through local configuration, advance the relevant schema and make the addition conditional on the functional key not already existing.
+
+## 9. Hotstring runtime architecture
+
+### 9.1 Sources
+
+Runtime hotstrings are resolved from two conceptual sources:
+
+- personal hotstrings (`hotstrings.json`);
+- bundled package items (`packages/*.json` + package settings).
+
+The system computes effective winners/conflicts before registering dynamic AutoHotkey hotstrings.
+
+### 9.2 Personal model
+
+A personal item keeps one replacement value. Rendering/execution mode is derived, not stored as a separate domain type.
+
+Execution paths:
+
+```text
+short + simple text  -> normal dynamic hotstring replacement
+long/multiline       -> callback -> SendText + explicit Enter handling
+contains key tokens  -> key-command-compatible path
+```
+
+Dynamic tokens such as date/time are expanded at execution time, not when saved.
+
+### 9.3 Clipboard boundary
+
+Hotstring execution must never copy replacement text through the Windows clipboard. Clipboard ownership is an architectural boundary because the telephony feature continuously watches it for numbers. Reusing it for text expansion introduces races and user-data corruption risks.
+
+## 10. Bundled package architecture
+
+`packages/manifest.json` declares the package catalogue. Package files contain stable IDs and items.
+
+At runtime/build:
+
+- package files are bundled/extracted;
+- manifest and package structure are validated;
+- duplicate triggers/item counts/schema consistency are checked;
+- effective conflicts are indexed;
+- the package manager presents package/item states without using display names as storage IDs.
+
+User settings store only choices, not package text. This allows package content to evolve with the application while user overrides remain explicit.
+
+When a user edits or saves a package item as personal, the application writes a complete personal copy. That copy remains valid even if the bundled source later changes or disappears.
+
+## 11. Telephony architecture
+
+### 11.1 Configuration and state
+
+- technical configuration: `IPTConfig`;
+- live state: `State["IPT"]`;
+- real URLs/endpoint names: local config only.
+
+### 11.2 Request lifecycle
+
+All telephony calls are POST.
+
+Core flows:
+
+```text
+IPT_register()
+  -> request registration/link information
+  -> update registration UI/state
+
+IPT_poller()
+  -> issue one long/event poll
+  -> IPT_PollResponse()
+  -> process event/state
+  -> schedule/start next poll after completion
+
+IPT_callNumber()
+  -> normalize/validate number
+  -> ensure linked phone unless this is the linking call
+  -> issue dial request
+  -> update diagnostics/telemetry where appropriate
+```
+
+The event loop is chained rather than a fixed periodic timer to avoid overlapping long polls.
+
+### 11.3 Number normalization
+
+Number normalization is centralized. Internal four-digit numbers intentionally use a distinct policy path because four arbitrary digits have a higher false-positive probability than a full telephone number.
+
+## 12. SMS / Edge automation architecture
+
+SMS support is an assisted workflow, not a messaging service.
+
+Configuration per SMS action includes user-facing and technical fields such as:
+
+- `Title`;
+- `WindowTitle`;
+- target URL;
+- target field `AutomationId` / field identifier.
+
+Flow:
+
+1. user chooses SMS from the call-action dialog;
+2. validate that the number is an eligible mobile number;
+3. locate/activate the configured Edge context;
+4. if the relevant page is a background tab, use UI Automation to select it;
+5. if it does not exist, open the configured URL;
+6. locate the telephone input through UIA and fill it;
+7. JavaScript fallback may be used if UIA cannot complete the field operation;
+8. stop: the user reviews and sends manually.
+
+This preserves a deliberate human-in-the-loop safety boundary.
+
+## 13. GUI and rendering
+
+The UI consists of a fixed main window with sidebar pages, cards, custom buttons/toggles, ListViews, inline editors, and separate modal/auxiliary windows.
+
+Notable rendering behaviors:
+
+- custom colors are held in a shared color map;
+- rounded controls and flat/custom button rendering are applied after GUI creation/show;
+- some controls require an explicit redraw/repaint after show to avoid initial native Windows borders/styles;
+- the call/SMS choice dialog keeps explicit keyboard-selection state and receives `WM_KEYDOWN` centrally.
+
+Managed Windows constraints matter: native shell notifications are not trusted for critical feedback because group policy can suppress them without an AutoHotkey error.
+
+## 14. Telemetry architecture
+
+`Telemetry.ahk` owns configuration, identity, counters, scheduling, payload construction, and its own HTTP request.
+
+### 14.1 Identity
+
+The installation ID is a generated GUID persisted in `settings.ini`.
+
+Algorithm:
+
+```text
+read existing InstallationId
+  -> if present: use immediately, no write
+  -> if absent: generate pending GUID
+      -> IniWrite
+      -> read back
+      -> only promote to active ID if exact value matches
+      -> otherwise retry later
+```
+
+Retry behavior is intentionally asynchronous so temporary OneDrive failure does not block the entire application.
+
+### 14.2 Heartbeat scheduling
+
+Default interval is 15 minutes. Startup heartbeat is delayed briefly so telephony state has time to initialize.
+
+### 14.3 Payload boundary
+
+Telemetry receives only status/counters. It must remain separate from content-bearing data such as clipboard text, telephone numbers, hotstring text, package text, or local secrets.
+
+README disclosure is part of the architecture contract: payload changes and documentation changes belong in the same change series.
+
+## 15. Diagnostics architecture
+
+### 15.1 Baseline logging
+
+The normal application maintains a bounded/buffered background debug log and flush scheduling. It is intended to provide useful troubleshooting context without enabling highly detailed/sensitive tracing all the time.
+
+The developer-only debug UI is gated by Windows account in current code.
+
+### 15.2 Extended problem-reporting branch
+
+The unmerged `feature/extended-logging` introduces a larger reporting session architecture with explicit consent, more detailed session logging, ZIP packaging, and Outlook draft automation/fallback.
+
+Because this feature is not yet merged and recently contained syntax errors, agents should inspect the branch rather than treating this document as an implementation specification for every function name.
+
+Architectural requirements that should survive are:
+
+- consent gate before detailed logging;
+- central redaction/sanitization for standard logs;
+- detailed session ends on process exit/restart;
+- reopening the report UI can reuse the current reporting session;
+- attachment creation is deterministic and understandable to support staff;
+- mail automation failure must degrade to a manual path.
+
+## 16. Update/restart architecture
+
+The deployed app may be running from a central/shared environment. Update coordination uses a `signal.txt` file polled by clients.
+
+The build/deployment batch can:
+
+- request client shutdown through the signal;
+- attempt replacement repeatedly for a bounded period;
+- verify copied executable bytes;
+- always remove the temporary update signal;
+- register/use a one-shot scheduled Windows task to restart the application;
+- preserve whether the application had been active, backgrounded, or minimized.
+
+This mechanism is operationally important; do not replace it with a simple overwrite while the executable may still be running.
+
+## 17. Third-party dependency policy
+
+Bundled external libraries live under one directory per library:
+
+```text
+ThirdParty/<library>/source
+ThirdParty/<library>/LICENSE
+```
+
+Direct include paths point to those locations. Earlier temporary root-level include shims were removed.
+
+When moving or replacing a third-party library, update together:
+
+- source/include paths;
+- the original license file;
+- README file listing;
+- `AGENTS.md`;
+- `CLAUDE.md`.
+
+## 18. Licensing architecture boundary
+
+DocBot's own license and third-party licenses are different concerns.
+
+- DocBot 2.2+ uses the repository's noncommercial project license.
+- Third-party JXON, ColorButton, and UIA-v2 retain their original licenses.
+
+Do not assume the project license can replace third-party notices.
+
+## 19. Testing and validation reality
+
+There is no comprehensive automated test suite today. Validation has historically consisted of some combination of:
+
+- source/diff inspection;
+- GitHub workflow checks;
+- `git diff --check`;
+- manual functional testing by the project owner on Windows;
+- real internal-network testing for telephony;
+- compiled-executable testing for release candidates.
+
+This leaves a known gap: AutoHotkey syntax errors can escape non-Windows editing workflows. A syntax/compile smoke test should be considered a high-value future improvement.
+
+For changes touching internal telephony, SMS/UIA, managed-Windows rendering, build/deployment, or OneDrive behavior, static inspection is not enough.
+
+## 20. Safe extension guidelines
+
+When adding functionality:
+
+1. identify which persistent schema/profile is affected;
+2. preserve stable IDs and user overrides;
+3. avoid adding new global startup dependencies below auto-execute;
+4. do not repurpose the clipboard;
+5. keep optional/network integrations nonfatal unless the core feature truly cannot operate;
+6. keep secrets/local endpoints out of Git;
+7. update telemetry disclosure if and only if payload/configuration behavior changes;
+8. update README changelog for user-visible release changes;
+9. increment branch AppVersion in every commit that changes `DocBot.ahk`;
+10. run an actual AutoHotkey v2/Windows validation before declaring the change complete.
