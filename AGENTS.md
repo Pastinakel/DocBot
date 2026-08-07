@@ -26,6 +26,26 @@ Plaats meegeleverde externe libraries altijd in een eigen map onder
 Pas bij een verplaatsing zowel alle `#Include`-paden als de bestandenlijst
 in `README.md`, `AGENTS.md` en `CLAUDE.md` aan.
 
+## Projectdocumentatie
+
+De map `docs/` bevat duurzame projectkennis die niet uit losse chats of
+agentgeheugen mag worden afgeleid. Gebruik `AGENTS.md` als navigatiekaart en
+lees vóór uitvoering de documenten die voor de taak relevant zijn:
+
+1. Lees `docs/PROJECT_CONTEXT.md` voor productcontext, requirements, bekende
+   bugs en de actuele ontwikkel- en releasestatus.
+2. Lees `docs/ARCHITECTURE.md` voordat je architectuur, opslag, dataflows,
+   componentgrenzen of integraties wijzigt.
+3. Lees `docs/DECISIONS.md` voordat je een bestaande ontwerpkeuze vervangt,
+   terugdraait of opnieuw bespreekt.
+4. Lees `docs/TODO.md` bij werk aan openstaande taken, releaseplanning of
+   bekende vervolgacties.
+
+Behandel deze documenten als duurzame projectcontext, maar controleer vóór
+implementatie altijd of statusgegevens nog overeenkomen met de actuele code,
+branches en pull requests. Werk de relevante `docs/`-bestanden bij wanneer een
+wijziging hun inhoud achterhaald maakt.
+
 ## Hotstringmodel en uitvoer
 
 - Persoonlijke hotstrings gebruiken één `Replacement`-veld. Introduceer geen
