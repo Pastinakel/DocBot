@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-extended-logging.1"
+global AppVersion := "2.2-extended-logging.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -3057,8 +3057,11 @@ StartExtendedProblemLogging(*) {
         if !DirExist(logDir)
             DirCreate(logDir)
 
-        logPath := logDir "\problem-report-"
-            FormatTime(A_Now, "yyyyMMdd-HHmmss") ".log"
+        logPath := (
+            logDir "\problem-report-"
+            . FormatTime(A_Now, "yyyyMMdd-HHmmss")
+            . ".log"
+        )
         if FileExist(logPath)
             FileDelete(logPath)
 
@@ -3298,14 +3301,21 @@ OpenProblemReportEmail(zipPath, description, usedExtended) {
     global AppVersion
 
     subject := "DocBot probleem - versie " AppVersion
-    body :=
+    bodyDescription := (
+        Trim(description) != ""
+            ? description
+            : "<geen beschrijving>"
+    )
+    body := Format(
         "Hoi Nico,`r`n`r`n"
-        "Ik wil het volgende probleem met " A_ScriptName " melden:`r`n`r`n"
-        (Trim(description) != "" ? description : "<geen beschrijving>")
-        "`r`n`r`n"
-        "Diagnosepakket bijgevoegd. Uitgebreide logging gebruikt: "
-        (usedExtended ? "ja" : "nee") ".`r`n`r`n"
-        "Met vriendelijke groet"
+        . "Ik wil het volgende probleem met {1} melden:`r`n`r`n"
+        . "{2}`r`n`r`n"
+        . "Diagnosepakket bijgevoegd. Uitgebreide logging gebruikt: {3}.`r`n`r`n"
+        . "Met vriendelijke groet",
+        A_ScriptName,
+        bodyDescription,
+        usedExtended ? "ja" : "nee"
+    )
 
     try {
         outlook := GetOutlookApplication()
@@ -3395,15 +3405,17 @@ OpenProblemReportFallback(
     body,
     outlookError
 ) {
-    mailto :=
+    fallbackBody := (
+        SubStr(body, 1, 1500)
+        . "`r`n`r`nVoeg handmatig dit diagnosepakket toe:`r`n"
+        . zipPath
+    )
+    mailto := (
         "mailto:n.feenstra@meandermc.nl?subject="
-        UriEncode(subject)
-        "&body="
-        UriEncode(
-            SubStr(body, 1, 1500)
-            "`r`n`r`nVoeg handmatig dit diagnosepakket toe:`r`n"
-            zipPath
-        )
+        . UriEncode(subject)
+        . "&body="
+        . UriEncode(fallbackBody)
+    )
 
     mailOpened := false
     try {
@@ -3430,10 +3442,11 @@ OpenProblemReportFallback(
 }
 
 UriEncode(text) {
-    static safeCharacters :=
+    static safeCharacters := (
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        "abcdefghijklmnopqrstuvwxyz"
-        "0123456789-_.~"
+        . "abcdefghijklmnopqrstuvwxyz"
+        . "0123456789-_.~"
+    )
 
     byteCount := StrPut(text, "UTF-8")
     bytes := Buffer(byteCount, 0)
