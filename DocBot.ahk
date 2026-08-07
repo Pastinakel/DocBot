@@ -1,9 +1,11 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 Persistent true
-#Include JXON.ahk
-#Include ColorButton.ahk
+#Include ThirdParty\JXON\JXON.ahk
+#Include ThirdParty\ColorButton\ColorButton.ahk
 #Include Telemetry.ahk
+#Include ThirdParty\UIA-v2\UIA.ahk
+#Include ThirdParty\UIA-v2\UIA_Browser.ahk
 
 ; De echte lokale configuratie wordt bewust niet door Git gevolgd. Tijdens
 ; compilatie neemt Ahk2Exe dit include-bestand wel in de executable op.
@@ -22,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.1"
+global AppVersion := "2.2-rc.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -78,6 +80,11 @@ global IPTConfig := Map(
     "RegisterMinIntervalMs", 10000
 )
 
+; SmsCallAction mag voor achterwaartse compatibiliteit één Map zijn, of een
+; Array met meerdere Maps. In de GUI wordt uitsluitend Title getoond;
+; WindowTitle blijft een technische waarde voor de Edge/UIA-herkenning.
+global SmsCallActions := GetConfiguredSmsCallActions()
+
 ; Signal.txt-mechanisme voor gecoördineerd afsluiten/herladen vanaf de
 ; centrale netwerklocatie van de executable — zie CheckSignalFile().
 global SignalConfig := Map(
@@ -88,8 +95,8 @@ global SignalConfig := Map(
 )
 
 global State := Map(
-    "AutoCall", true,
-    "DirectCall", false,
+    "CallAction", 1,
+    "SmsCallActionTitle", SmsCallActions.Length ? SmsCallActions[1]["Title"] : "",
     "TextReplacement", true,
     "AutoSave", true,
     "HotstringFile", DefaultHotstringFile,
@@ -153,8 +160,12 @@ global DebugAutoScroll := true
 ; door group policy (geen foutmelding, de balloon verschijnt gewoon niet).
 global NotificationGui := 0
 
-global AutoCallCheck := 0
-global DirectCallCheck := 0
+; Gedeelde toetsenbordstatus voor de belbevestiging en de keuze
+; Annuleren / SMS / Bellen. Links/rechts verplaatst de visuele selectie;
+; Enter voert de geselecteerde echte Button-control uit.
+global PhoneActionDialogState := 0
+
+global CallActionSelector := 0
 global TextReplacementCheck := 0
 global OverviewPhoneActionsText := 0
 global OverviewLongHotstringActionsText := 0
@@ -201,6 +212,7 @@ global PackageManagerStatusText := 0
 global RuntimeHotstrings := Map()
 
 InitializeUserStorage()
+MarkUserStorageAlwaysAvailable(UserDataDir)
 InitializeBundledPackages()
 LoadAppSettings()
 InitializeHotstringStorage()
@@ -215,6 +227,7 @@ if HasCommandLineArgument("--docbot-update-restart")
 BuildMainGui()
 BuildTrayMenu()
 OnMessage(0x404, TrayIconMessage)  ; tray-icon notifications
+OnMessage(0x0100, PhoneActionDialogKeyDown)  ; WM_KEYDOWN voor beide Belactie-dialogen
 OnExit(HandleAppExit)
 showOptions := "w1000 h700 Center"
 if StartupWindowState = "minimized"
@@ -251,7 +264,7 @@ BuildMainGui() {
     global MainGui, C, State, AppVersion
     global RegisteredNumberText, RegistrationNumberText, RegistrationStatusText, RegistrationRefreshButton
     global RegistrationHelperText
-    global AutoCallCheck, DirectCallCheck, TextReplacementCheck
+    global CallActionSelector, TextReplacementCheck
     global OverviewPhoneActionsText, OverviewLongHotstringActionsText
     global HotLV, HotSearch, HotTriggerEdit, HotEnabledCheck
     global HotReplacementSingleGroup, HotReplacementMultiGroup
@@ -319,35 +332,47 @@ BuildMainGui() {
     AddCardLabel("overzicht", 260, 108, 220, 20, "Geregistreerd nummer", "s10 c" C["Muted"])
     RegistrationStatusText := AddCardLabel("overzicht", 792, 108, 148, 20, "", "s9 bold c" C["Success"], "Right")
     RegisteredNumberText := AddCardLabel("overzicht", 260, 132, 340, 42, "", "s28 bold c" C["Text"])
-    RegistrationHelperText := AddCardLabel("overzicht", 260, 184, 320, 26, "Dit nummer is momenteel gekoppeld aan de sessie.", "s9 c" C["Muted"])
+    RegistrationHelperText := AddCardLabel("overzicht", 260, 184, 360, 26, "Dit nummer is momenteel gekoppeld aan de sessie.", "s9 c" C["Muted"])
     AddCardLabel("overzicht", 694, 108, 246, 20, "Bel dit nummer om te registreren", "s10 c" C["Muted"], "Right")
     RegistrationNumberText := AddCardLabel("overzicht", 694, 136, 246, 34, State["IPT"]["UpdateTel"], "s21 bold c" C["Text"], "Right")
     RegistrationRefreshButton := AddFlatButton("overzicht", 740, 180, 200, 36, Chr(0xE72C) "  Verversen", RefreshRegistrationStatus, true)
 
-    AddCard("overzicht", 236, 246, 736, 112)
-    AddCardLabel("overzicht", 260, 262, 180, 22, "Belopties", "s13 bold c" C["Text"])
-    AutoCallCheck := AddToggle("overzicht", 260, 292, "AutoCall", State["AutoCall"], SettingChanged.Bind("AutoCall"))
-    AddCardLabel("overzicht", 260, 320, 330, 26, "Bel het telefoonnummer op het klembord na een actie vanuit HiX.", "s8 c" C["Muted"])
-    DirectCallCheck := AddToggle("overzicht", 606, 292, "DirectCall", State["DirectCall"], SettingChanged.Bind("DirectCall"))
-    AddCardLabel("overzicht", 606, 320, 330, 26, "Bel direct zonder extra bevestiging.", "s8 c" C["Muted"])
+    AddCard("overzicht", 236, 246, 736, 142)
+    AddCardLabel("overzicht", 260, 262, 180, 22, "Belactie", "s13 bold c" C["Text"])
+    CallActionSelector := AddCallActionSelector(
+        "overzicht",
+        State["CallAction"],
+        CallActionChanged
+    )
+    AddCardLabel(
+        "overzicht",
+        606,
+        346,
+        338,
+        34,
+        HasConfiguredSmsCallActions()
+            ? "Bij 'Bellen of sms kiezen' krijgen externe nummers een keuze; interne nummers worden direct gebeld."
+            : "Configureer eerst een SMS-pagina om de keuze tussen bellen en sms beschikbaar te maken.",
+        "s8 c" C["Muted"]
+    )
 
-    AddCard("overzicht", 236, 370, 736, 112)
-    AddCardLabel("overzicht", 260, 386, 240, 22, "Tekstvervanging", "s13 bold c" C["Text"])
-    TextReplacementCheck := AddToggle("overzicht", 260, 416, "Actief", State["TextReplacement"], SettingChanged.Bind("TextReplacement"))
-    AddCardLabel("overzicht", 260, 444, 390, 24, "Vervang opgeslagen afkortingen automatisch tijdens het typen.", "s8 c" C["Muted"])
-    AddFlatButton("overzicht", 756, 414, 200, 36, Chr(0xE8FD) "  Hotstrings beheren", ShowPage.Bind("tekstvervanging"), false)
+    AddCard("overzicht", 236, 400, 736, 104)
+    AddCardLabel("overzicht", 260, 416, 240, 22, "Tekstvervanging", "s13 bold c" C["Text"])
+    TextReplacementCheck := AddToggle("overzicht", 260, 446, "Actief", State["TextReplacement"], SettingChanged.Bind("TextReplacement"))
+    AddCardLabel("overzicht", 260, 474, 390, 20, "Vervang opgeslagen afkortingen automatisch tijdens het typen.", "s8 c" C["Muted"])
+    AddFlatButton("overzicht", 756, 444, 200, 36, Chr(0xE8FD) "  Hotstrings beheren", ShowPage.Bind("tekstvervanging"), false)
 
-    AddCard("overzicht", 236, 494, 736, 128)
-    AddCardLabel("overzicht", 260, 510, 200, 22, "Gebruik", "s13 bold c" C["Text"])
-    phoneUsageIcon := AddCardLabel("overzicht", 270, 546, 36, 34, Chr(0xE717), "s20 c" C["Primary"], "Center")
+    AddCard("overzicht", 236, 516, 736, 128)
+    AddCardLabel("overzicht", 260, 532, 200, 22, "Gebruik", "s13 bold c" C["Text"])
+    phoneUsageIcon := AddCardLabel("overzicht", 270, 568, 36, 34, Chr(0xE717), "s20 c" C["Primary"], "Center")
     phoneUsageIcon.SetFont("s20 c" C["Primary"], "Segoe MDL2 Assets")
-    AddCardLabel("overzicht", 320, 540, 160, 18, "Belacties", "s9 c" C["Muted"])
-    OverviewPhoneActionsText := AddCardLabel("overzicht", 320, 560, 160, 34, Telemetry_GetPhoneActions(), "s22 bold c" C["Text"])
-    hotstringUsageIcon := AddCardLabel("overzicht", 600, 546, 36, 34, Chr(0xE8FD), "s20 c" C["Primary"], "Center")
+    AddCardLabel("overzicht", 320, 562, 160, 18, "Belacties", "s9 c" C["Muted"])
+    OverviewPhoneActionsText := AddCardLabel("overzicht", 320, 582, 160, 34, Telemetry_GetPhoneActions(), "s22 bold c" C["Text"])
+    hotstringUsageIcon := AddCardLabel("overzicht", 600, 568, 36, 34, Chr(0xE8FD), "s20 c" C["Primary"], "Center")
     hotstringUsageIcon.SetFont("s20 c" C["Primary"], "Segoe MDL2 Assets")
-    AddCardLabel("overzicht", 650, 540, 220, 18, "Lange hotstrings", "s9 c" C["Muted"])
-    OverviewLongHotstringActionsText := AddCardLabel("overzicht", 650, 560, 160, 34, Telemetry_GetLongHotstringActions(), "s22 bold c" C["Text"])
-    AddCardLabel("overzicht", 650, 592, 280, 18, "Lange en meerregelige vervangingen", "s8 c" C["Muted"])
+    AddCardLabel("overzicht", 650, 562, 220, 18, "Lange hotstrings", "s9 c" C["Muted"])
+    OverviewLongHotstringActionsText := AddCardLabel("overzicht", 650, 582, 160, 34, Telemetry_GetLongHotstringActions(), "s22 bold c" C["Text"])
+    AddCardLabel("overzicht", 650, 614, 280, 18, "Lange en meerregelige vervangingen", "s8 c" C["Muted"])
 
     overviewFooter := MainGui.AddText("x236 y672 w736 h18 Right Background" C["Window"], "Sluiten verbergt DocBot in het systeemvak")
     overviewFooter.SetFont("s8 c" C["Muted"], "Segoe UI")
@@ -476,7 +501,7 @@ BuildMainGui() {
     ; PAGINA: INSTELLINGEN
     ; -------------------------------------------------------------------------
 
-    AddPageHeader("instellingen", "Instellingen", "Beheer de opslag en import van hotstrings.")
+    AddPageHeader("instellingen", "Instellingen", "Beheer de opslag, import en SMS-integratie.")
 
     AddCard("instellingen", 236, 92, 736, 194)
     AddCardLabel("instellingen", 260, 114, 250, 24, "Hotstringbestand", "s14 bold c" C["Text"])
@@ -491,7 +516,47 @@ BuildMainGui() {
     AddFlatButton("instellingen", 692, 230, 132, 36, "📂  Laden", ManualLoadHotstrings.Bind(filePathEdit), false)
     AddFlatButton("instellingen", 832, 230, 132, 36, "💾  Opslaan", ManualSaveHotstrings.Bind(filePathEdit), true)
 
-    AddFlatButton("instellingen", 824, 304, 140, 38, "Opslaan", SaveSettings.Bind(autoSaveCheck, filePathEdit), true, C["Window"])
+    AddCard("instellingen", 236, 304, 736, 202)
+    AddCardLabel("instellingen", 260, 326, 250, 24, "SMS actie", "s14 bold c" C["Text"])
+    AddCardLabel("instellingen", 260, 366, 200, 20, "SMS-pagina", "s10 c" C["Muted"])
+
+    smsActionTitles := GetSmsCallActionTitles()
+    smsActionOptions := smsActionTitles.Length
+        ? smsActionTitles
+        : ["Geen SMS-pagina's geconfigureerd"]
+    selectedSmsActionIndex := FindSmsCallActionIndexByTitle(State["SmsCallActionTitle"])
+    if selectedSmsActionIndex = 0
+        selectedSmsActionIndex := 1
+
+    smsActionDropDown := MainGui.AddDropDownList(
+        "x260 y390 w688 Choose" selectedSmsActionIndex,
+        smsActionOptions
+    )
+    if smsActionTitles.Length = 0
+        smsActionDropDown.Enabled := false
+    AddPageControl("instellingen", smsActionDropDown)
+
+    AddCardLabel(
+        "instellingen",
+        260, 430, 688, 20,
+        "Deze pagina wordt gebruikt bij de belactie 'Bellen of sms kiezen'.",
+        "s9 c" C["Muted"]
+    )
+    smsAvailabilityText := smsActionTitles.Length = 1
+        ? "1 SMS-pagina beschikbaar via lokale configuratie."
+        : smsActionTitles.Length " SMS-pagina's beschikbaar via lokale configuratie."
+    if smsActionTitles.Length = 0
+        smsAvailabilityText := "Geen SMS-pagina beschikbaar; de bijbehorende belactie is uitgeschakeld."
+    AddCardLabel("instellingen", 260, 462, 688, 20, smsAvailabilityText, "s9 c" C["Muted"])
+
+    AddFlatButton(
+        "instellingen",
+        824, 526, 140, 38,
+        "Opslaan",
+        SaveSettings.Bind(autoSaveCheck, filePathEdit, smsActionDropDown),
+        true,
+        C["Window"]
+    )
 
     ; -------------------------------------------------------------------------
     ; PAGINA: HELP
@@ -509,14 +574,15 @@ BuildMainGui() {
     )
     AddHelpAccordionSection(
         "Hoe bel ik vanuit HiX?",
-        "Zet AutoCall aan op de pagina Overzicht in DocBot."
+        "Kies bij Belactie op de pagina Overzicht wat DocBot met een herkend nummer moet doen."
         "`r`n`r`nKlik linksboven in HiX op het pijltje naast het telefoonnummer van de patiënt. "
-        "Klik vervolgens op het getoonde telefoonnummer. DocBot herkent het nummer en opent de belactie."
-        "`r`n`r`nMet DirectCall in DocBot ingeschakeld wordt direct gebeld. "
-        "Anders vraagt DocBot eerst om bevestiging."
+        "Klik vervolgens op het getoonde telefoonnummer. DocBot herkent het nummer en voert de gekozen belactie uit."
+        "`r`n`r`nJe kunt kiezen voor niets doen, bellen na bevestiging, direct bellen of bij externe nummers kiezen tussen bellen en sms. "
+        "Interne nummers worden bij die laatste keuze direct gebeld."
+        "`r`n`r`nBij een extern Nederlands 06-nummer opent SMS de onder Instellingen gekozen pagina en vult DocBot het telefoonnummer in."
         "`r`n`r`nSoms toont HiX na het kopiëren van het nummer een foutmelding. "
         "Deze melding kun je negeren zonder HiX af te sluiten.",
-        ["AutoCall", "Overzicht", "DirectCall"],
+        ["Belactie", "Overzicht", "niets doen", "bellen na bevestiging", "direct bellen", "bellen en sms", "Interne nummers", "Instellingen", "SMS"],
         Map("Overzicht", "overzicht")
     )
     AddHelpAccordionSection(
@@ -959,7 +1025,7 @@ AddExitButton(y) {
 
 ConfirmExitApp(*) {
     if MsgBox(
-        "DocBot volledig afsluiten? Dit sluit ook het systeemvak-icoon, en AutoCall/DirectCall werken dan niet meer totdat je DocBot opnieuw start.",
+        "DocBot volledig afsluiten? Dit sluit ook het systeemvak-icoon, en automatische belacties werken dan niet meer totdat je DocBot opnieuw start.",
         "DocBot afsluiten",
         "YesNo Icon!"
     ) = "Yes"
@@ -1073,6 +1139,102 @@ RedrawFlatButtons(*) {
             )
         }
     }
+}
+
+AddCallActionSelector(pageKey, initialValue, callback) {
+    options := [
+        Map("Value", 0, "X", 260, "Y", 292, "Width", 260, "Caption", "Niets doen"),
+        Map("Value", 1, "X", 606, "Y", 292, "Width", 320, "Caption", "Bellen na bevestiging"),
+        Map("Value", 2, "X", 260, "Y", 320, "Width", 260, "Caption", "Direct bellen")
+    ]
+    if HasConfiguredSmsCallActions() {
+        options.Push(
+            Map("Value", 3, "X", 606, "Y", 320, "Width", 320, "Caption", "Bellen of sms kiezen")
+        )
+    }
+    return CallActionChoiceGroup(pageKey, options, NormalizeCallAction(initialValue), callback)
+}
+
+class CallActionChoiceGroup {
+    __New(pageKey, options, initialValue, callback) {
+        global MainGui, C
+
+        this._value := initialValue
+        this.Callback := callback
+        this.Choices := []
+        this.UnselectedBitmap := CreateRadioChoiceBitmap(false, C["Primary"], C["Border"], C["Card"])
+        this.SelectedBitmap := CreateRadioChoiceBitmap(true, C["Primary"], C["Border"], C["Card"])
+
+        for _, option in options {
+            picture := MainGui.AddPicture(
+                "x" option["X"] " y" option["Y"] " w20 h20",
+                "HBITMAP:*" this.UnselectedBitmap
+            )
+            AddPageControl(pageKey, picture)
+
+            label := MainGui.AddText(
+                "x" (option["X"] + 28) " y" option["Y"]
+                " w" (option["Width"] - 28) " h22 Background" C["Card"],
+                option["Caption"]
+            )
+            label.SetFont("s10 c" C["Text"], "Segoe UI")
+            AddPageControl(pageKey, label)
+
+            clickHandler := ObjBindMethod(this, "HandleClick", option["Value"])
+            picture.OnEvent("Click", clickHandler)
+            label.OnEvent("Click", clickHandler)
+            this.Choices.Push(Map("Value", option["Value"], "Picture", picture))
+        }
+
+        this.Render()
+    }
+
+    Value {
+        get => this._value
+        set {
+            this._value := value
+            this.Render()
+            return value
+        }
+    }
+
+    HandleClick(value, *) {
+        this.Value := value
+        if IsObject(this.Callback)
+            this.Callback.Call(value)
+    }
+
+    Render() {
+        for _, choice in this.Choices {
+            bitmap := choice["Value"] = this._value ? this.SelectedBitmap : this.UnselectedBitmap
+            choice["Picture"].Value := "HBITMAP:*" bitmap
+            try choice["Picture"].Redraw()
+        }
+    }
+}
+
+CreateRadioChoiceBitmap(isSelected, primaryColor, borderColor, surfaceColor) {
+    pBitmap := UiCreateBitmap(20, 20, &graphics)
+    DllCall("gdiplus\GdipGraphicsClear", "ptr", graphics, "uint", UiArgb(surfaceColor))
+
+    outerBrush := 0
+    DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(isSelected ? primaryColor : borderColor), "ptr*", &outerBrush)
+    DllCall("gdiplus\GdipFillEllipse", "ptr", graphics, "ptr", outerBrush, "float", 1.0, "float", 1.0, "float", 18.0, "float", 18.0)
+    DllCall("gdiplus\GdipDeleteBrush", "ptr", outerBrush)
+
+    innerBrush := 0
+    DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(surfaceColor), "ptr*", &innerBrush)
+    DllCall("gdiplus\GdipFillEllipse", "ptr", graphics, "ptr", innerBrush, "float", 3.0, "float", 3.0, "float", 14.0, "float", 14.0)
+    DllCall("gdiplus\GdipDeleteBrush", "ptr", innerBrush)
+
+    if isSelected {
+        dotBrush := 0
+        DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(primaryColor), "ptr*", &dotBrush)
+        DllCall("gdiplus\GdipFillEllipse", "ptr", graphics, "ptr", dotBrush, "float", 6.0, "float", 6.0, "float", 8.0, "float", 8.0)
+        DllCall("gdiplus\GdipDeleteBrush", "ptr", dotBrush)
+    }
+
+    return UiFinishBitmap(pBitmap, graphics)
 }
 
 AddToggle(pageKey, x, y, caption, initialValue, callback) {
@@ -1518,7 +1680,7 @@ RefreshRegistrationTexts() {
 RefreshSidebarStatuses() {
     global State, SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText, C
 
-    if !State["AutoCall"] {
+    if State["CallAction"] = 0 {
         SidebarPhoneDot.SetFont("s8 c" C["Danger"], "Segoe UI")
         SidebarPhoneText.Value := "Inactief"
     } else if Trim(State["IPT"]["UserTel"]) = "" {
@@ -1563,6 +1725,15 @@ RefreshUsageStatistics() {
         OverviewPhoneActionsText.Value := Telemetry_GetPhoneActions()
     if IsObject(OverviewLongHotstringActionsText)
         OverviewLongHotstringActionsText.Value := Telemetry_GetLongHotstringActions()
+}
+
+CallActionChanged(value, *) {
+    global State
+
+    State["CallAction"] := NormalizeCallAction(value)
+    SaveAppSettings()
+    RefreshSidebarStatuses()
+    BuildTrayMenu()
 }
 
 SettingChanged(key, control, *) {
@@ -2479,32 +2650,38 @@ NormalizePhoneNumberInternal(input) {
 HandleClipboardNumberDetected() {
     global State
 
-    if !State["AutoCall"]
-        return
-
-    if State["DirectCall"] {
-        IPT_callNumber(State["IPT"]["ClipBoardNumber"])
-        return
+    action := State["CallAction"]
+    switch action {
+        case 0:
+            return
+        case 1:
+            ShowCallConfirmationDialog()
+        case 2:
+            IPT_callNumber(State["IPT"]["ClipBoardNumber"])
+        case 3:
+            ShowCallOrSmsChoiceDialog()
     }
-
-    ShowCallConfirmationDialog()
 }
 
-; Interne (4-cijferige) klembordnummers hebben een aanzienlijk hogere kans
-; op een fout-positief (patiëntnummer, kamer, jaartal, postcodefragment)
-; dan een volledig extern nummer. Bevestiging is hier daarom nooit
-; optioneel, ongeacht de DirectCall-instelling.
+; Een intern 4-cijferig nummer volgt dezelfde Belactie, behalve bij de
+; keuze bellen/sms: SMS is alleen beschikbaar voor externe nummers en
+; daarom wordt een intern nummer in stand 3 direct gebeld.
 HandleInternalClipboardNumberDetected() {
     global State
 
-    if !State["AutoCall"]
-        return
-
-    ShowCallConfirmationDialog()
+    action := State["CallAction"]
+    switch action {
+        case 0:
+            return
+        case 1:
+            ShowCallConfirmationDialog()
+        case 2, 3:
+            IPT_callNumber(State["IPT"]["ClipBoardNumber"])
+    }
 }
 
 ShowCallConfirmationDialog() {
-    global MainGui, C, State
+    global MainGui, C, State, PhoneActionDialogState
 
     number := State["IPT"]["ClipBoardNumber"]
 
@@ -2520,21 +2697,576 @@ ShowCallConfirmationDialog() {
     numberValue := dlg.AddText("x28 y83 w304 h42 Center Background" C["Card"], number)
     numberValue.SetFont("s28 bold c" C["Text"], "Segoe UI")
 
-    cancelBtn := dlg.AddText("x28 y156 w140 h40 Center 0x100 0x200 Background" C["Button"], "Annuleren")
-    cancelBtn.SetFont("s10 c" C["Text"], "Segoe UI")
+    ; Echte Button-controls delen dezelfde custom-draw en toetsenbordbediening
+    ; met de keuze Annuleren / SMS / Bellen.
+    cancelBtn := dlg.AddButton("x28 y156 w140 h40 Center", "Annuleren")
+    callBtn := dlg.AddButton("x192 y156 w140 h40 Center Default", "Bellen")
+    cancelBtn._iconGlyph := Chr(0xE711)
+    callBtn._iconGlyph := Chr(0xE717)
 
-    callBtn := dlg.AddText("x192 y156 w140 h40 Center 0x100 0x200 Background" C["Primary"], Chr(0xE717) "  Bellen")
-    callBtn.SetFont("s10 bold cFFFFFF", "Segoe UI")
+    ; Registreer Bellen al vóór de eerste paint als blauwe selectie.
+    for buttonIndex, button in [cancelBtn, callBtn] {
+        selected := buttonIndex = 2
+        background := selected ? C["Primary"] : C["Button"]
+        textColor := selected ? "FFFFFF" : C["Text"]
 
-    cancelBtn.OnEvent("Click", (*) => dlg.Destroy())
-    callBtn.OnEvent("Click", (*) => (IPT_callNumber(number), dlg.Destroy()))
+        button.SetFont("s10 " (selected ? "bold " : "") "c" textColor, "Segoe UI")
+        button.SetColor(
+            "0x" background,
+            "0x" textColor,
+            0,
+            "0x" background,
+            10
+        )
+    }
 
-    dlg.OnEvent("Escape", (*) => dlg.Destroy())
+    cancelBtn.OnEvent("Click", ClosePhoneActionDialog.Bind(dlg))
+    callBtn.OnEvent("Click", ExecutePhoneActionCallChoice.Bind(dlg, number))
+
+    dlg.OnEvent("Close", ClosePhoneActionDialog.Bind(dlg))
+    dlg.OnEvent("Escape", ClosePhoneActionDialog.Bind(dlg))
+
+    PhoneActionDialogState := Map(
+        "Dialog", dlg,
+        "DialogHwnd", dlg.Hwnd,
+        "Buttons", [cancelBtn, callBtn],
+        "Selected", 2
+    )
+
     dlg.Show("w360 h224 Center")
 
+    SetPhoneActionDialogSelection(2)
+    RedrawPhoneActionDialogButtons()
+    DllCall("SetFocus", "ptr", callBtn.Hwnd, "ptr")
+
     RoundControl(numberShell, 16)
-    RoundControl(cancelBtn, 20)
-    RoundControl(callBtn, 20)
+}
+
+ShowCallOrSmsChoiceDialog() {
+    global MainGui, C, State, PhoneActionDialogState
+
+    number := State["IPT"]["ClipBoardNumber"]
+
+    dlg := Gui("+Owner" MainGui.Hwnd " -MaximizeBox -MinimizeBox", "DocBot - Belactie")
+    dlg.BackColor := C["Window"]
+    dlg.SetFont("s10 c" C["Text"], "Segoe UI")
+
+    title := dlg.AddText("x28 y24 w444 h30 Center Background" C["Window"], "Wat wil je doen?")
+    title.SetFont("s18 bold c" C["Text"], "Segoe UI")
+
+    numberShell := dlg.AddText("x28 y72 w444 h64 Background" C["Card"], "")
+    numberValue := dlg.AddText("x28 y83 w444 h42 Center Background" C["Card"], number)
+    numberValue.SetFont("s28 bold c" C["Text"], "Segoe UI")
+
+    ; Echte Button-controls zijn focusbaar en reageren op Enter. Het pictogram
+    ; wordt apart in Segoe MDL2 Assets getekend, zodat er geen puntje ontstaat.
+    cancelBtn := dlg.AddButton("x28 y156 w132 h40 Center", "Annuleren")
+    smsBtn := dlg.AddButton("x184 y156 w132 h40 Center", "SMS")
+    callBtn := dlg.AddButton("x340 y156 w132 h40 Center Default", "Bellen")
+    cancelBtn._iconGlyph := Chr(0xE711)
+    smsBtn._iconGlyph := Chr(0xE8BD)
+    callBtn._iconGlyph := Chr(0xE717)
+
+    ; Registreer de initiële selectie meteen in de custom-draw kleuren.
+    ; Als alle knoppen eerst grijs worden aangemaakt en de selectie pas na
+    ; Show() wijzigt, verwerkt Windows die wijziging soms pas bij de eerste
+    ; hover. Bellen moet daarom al bij de allereerste paint blauw zijn.
+    for buttonIndex, button in [cancelBtn, smsBtn, callBtn] {
+        selected := buttonIndex = 3
+        background := selected ? C["Primary"] : C["Button"]
+        textColor := selected ? "FFFFFF" : C["Text"]
+
+        button.SetFont("s10 " (selected ? "bold " : "") "c" textColor, "Segoe UI")
+        button.SetColor(
+            "0x" background,
+            "0x" textColor,
+            0,
+            "0x" background,
+            10
+        )
+    }
+
+    cancelBtn.OnEvent("Click", ClosePhoneActionDialog.Bind(dlg))
+    smsBtn.OnEvent("Click", StartSmsCallAction.Bind(dlg, number))
+    callBtn.OnEvent("Click", ExecutePhoneActionCallChoice.Bind(dlg, number))
+
+    dlg.OnEvent("Close", ClosePhoneActionDialog.Bind(dlg))
+    dlg.OnEvent("Escape", ClosePhoneActionDialog.Bind(dlg))
+
+    PhoneActionDialogState := Map(
+        "Dialog", dlg,
+        "DialogHwnd", dlg.Hwnd,
+        "Buttons", [cancelBtn, smsBtn, callBtn],
+        "Selected", 3
+    )
+
+    dlg.Show("w500 h224 Center")
+
+    ; SetColor vóór Show() is niet voldoende: Windows toont dan eerst kort de
+    ; native knoprand en stuurt pas bij hover een betrouwbare custom-draw.
+    ; Pas de selectie daarom toe op het zichtbare venster en forceer WM_PAINT.
+    SetPhoneActionDialogSelection(3)
+    RedrawPhoneActionDialogButtons()
+    DllCall("SetFocus", "ptr", callBtn.Hwnd, "ptr")
+
+    RoundControl(numberShell, 16)
+}
+
+RedrawPhoneActionDialogButtons() {
+    global PhoneActionDialogState
+
+    if !IsObject(PhoneActionDialogState)
+        return
+
+    for _, button in PhoneActionDialogState["Buttons"] {
+        if !DllCall("IsWindowVisible", "ptr", button.Hwnd, "int")
+            continue
+
+        DllCall(
+            "SetWindowPos",
+            "ptr", button.Hwnd,
+            "ptr", 0,  ; HWND_TOP
+            "int", 0, "int", 0, "int", 0, "int", 0,
+            "uint", 0x1 | 0x2 | 0x10  ; NOSIZE | NOMOVE | NOACTIVATE
+        )
+        DllCall(
+            "RedrawWindow",
+            "ptr", button.Hwnd,
+            "ptr", 0,
+            "ptr", 0,
+            "uint", 0x1 | 0x4 | 0x100 | 0x400
+        )
+    }
+}
+
+SetPhoneActionDialogSelection(index) {
+    global PhoneActionDialogState, C
+
+    if !IsObject(PhoneActionDialogState)
+        return
+
+    buttons := PhoneActionDialogState["Buttons"]
+    if index < 1
+        index := buttons.Length
+    else if index > buttons.Length
+        index := 1
+
+    PhoneActionDialogState["Selected"] := index
+
+    for buttonIndex, button in buttons {
+        selected := buttonIndex = index
+        background := selected ? C["Primary"] : C["Button"]
+        textColor := selected ? "FFFFFF" : C["Text"]
+
+        button.BackColor := "0x" background
+        button.TextColor := "0x" textColor
+        button.SetFont("s10 " (selected ? "bold " : "") "c" textColor, "Segoe UI")
+        button.Redraw()
+    }
+
+    DllCall("SetFocus", "ptr", buttons[index].Hwnd, "ptr")
+}
+
+PhoneActionDialogKeyDown(wParam, lParam, message, hwnd) {
+    global PhoneActionDialogState
+
+    if !IsObject(PhoneActionDialogState)
+        return
+    if !WinActive("ahk_id " PhoneActionDialogState["DialogHwnd"])
+        return
+
+    switch wParam {
+        case 0x25:  ; VK_LEFT
+            SetPhoneActionDialogSelection(PhoneActionDialogState["Selected"] - 1)
+            return 1
+        case 0x27:  ; VK_RIGHT
+            SetPhoneActionDialogSelection(PhoneActionDialogState["Selected"] + 1)
+            return 1
+        case 0x0D:  ; VK_RETURN
+            button := PhoneActionDialogState["Buttons"][PhoneActionDialogState["Selected"]]
+            DllCall(
+                "PostMessageW",
+                "ptr", button.Hwnd,
+                "uint", 0x00F5,  ; BM_CLICK
+                "ptr", 0,
+                "ptr", 0
+            )
+            return 1
+    }
+}
+
+ClosePhoneActionDialog(dialog, *) {
+    global PhoneActionDialogState
+
+    if IsObject(PhoneActionDialogState)
+        && PhoneActionDialogState["DialogHwnd"] = dialog.Hwnd {
+        PhoneActionDialogState := 0
+    }
+
+    try dialog.Destroy()
+}
+
+ExecutePhoneActionCallChoice(dialog, number, *) {
+    ClosePhoneActionDialog(dialog)
+    IPT_callNumber(number)
+}
+
+StartSmsCallAction(dialog, number, *) {
+    ClosePhoneActionDialog(dialog)
+
+    smsNumber := NormalizeSmsPhoneNumber(number)
+    if smsNumber = "" {
+        ShowNotification(
+            "SMS versturen is alleen mogelijk naar een Nederlands 06-nummer.",
+            4500,
+            "warning"
+        )
+        DebugLog(
+            "✕",
+            "SMS actie geweigerd",
+            "Het herkende externe nummer is geen geldig Nederlands 06-nummer."
+        )
+        return
+    }
+
+    smsConfig := GetSelectedSmsCallAction()
+    if !IsObject(smsConfig) {
+        ShowNotification(
+            "Er is geen geldige SMS-pagina geselecteerd. Controleer Instellingen.",
+            4500,
+            "warning"
+        )
+        DebugLog("✕", "SMS actie geweigerd", "Geen geselecteerde SmsCallAction gevonden.")
+        return
+    }
+
+    try {
+        ; Succes is direct zichtbaar doordat Edge met het ingevulde veld op de
+        ; voorgrond staat. Toon alleen nog een melding als de actie mislukt.
+        if !RunSmsCallAction(smsConfig, smsNumber) {
+            ShowNotification(
+                "De SMS-pagina of het telefoonveld kon niet worden gevonden.",
+                5000,
+                "error"
+            )
+        }
+    } catch as smsError {
+        DebugLog("✕", "SMS actie", smsError.Message)
+        ShowNotification(
+            "De SMS-actie is mislukt. Controleer het debuglog voor details.",
+            5000,
+            "error"
+        )
+    }
+}
+
+RunSmsCallAction(smsConfig, number) {
+    previousTitleMatchMode := A_TitleMatchMode
+    previousDetectHiddenWindows := A_DetectHiddenWindows
+    previousDetectHiddenText := A_DetectHiddenText
+
+    ; WindowTitle mag als deel van de volledige Edge-titel voorkomen. Deze
+    ; instellingen worden na de actie hersteld om andere DocBot-routes niet
+    ; onbedoeld te beïnvloeden.
+    SetTitleMatchMode(2)
+    DetectHiddenWindows(true)
+    DetectHiddenText(true)
+
+    DebugLog(
+        "→",
+        "SMS actie",
+        "Start voor '" smsConfig["Title"] "' met nummer "
+            MaskSmsPhoneNumber(number) ". Eerst WinActivate(WindowTitle), daarna UIA."
+    )
+
+    try {
+        edge := ActivateSmsEdgeWindowByTitle(smsConfig["WindowTitle"])
+
+        if !IsObject(edge)
+            edge := ActivateSmsEdgeTabByTitle(smsConfig["WindowTitle"])
+
+        if !IsObject(edge)
+            edge := OpenSmsPage(smsConfig["Url"], smsConfig["WindowTitle"])
+
+        if !IsObject(edge) {
+            DebugLog(
+                "✕",
+                "SMS vensterselectie",
+                "WinActivate, UIA-tabselectie en URL-fallback vonden geen bruikbare Edge-tab."
+            )
+            return false
+        }
+
+        if FillSmsPhoneFieldWithUIA(edge, smsConfig["FieldId"], number) {
+            DebugLog(
+                "✓",
+                "SMS veldinvulling",
+                "AutomationId '" smsConfig["FieldId"] "' via UI Automation ingevuld."
+            )
+            return true
+        }
+
+        DebugLog(
+            "→",
+            "SMS veldinvulling",
+            "UIA Edit-element niet gevonden; JavaScriptfallback wordt uitgevoerd."
+        )
+        return FillSmsDomFieldWithJavaScript(
+            edge,
+            smsConfig["FieldId"],
+            number
+        )
+    } finally {
+        SetTitleMatchMode(previousTitleMatchMode)
+        DetectHiddenWindows(previousDetectHiddenWindows)
+        DetectHiddenText(previousDetectHiddenText)
+    }
+}
+
+ActivateSmsEdgeWindowByTitle(targetTitle) {
+    startedAt := A_TickCount
+
+    try WinActivate(targetTitle)
+    catch as activateError {
+        DebugLog(
+            "←",
+            "SMS WinActivate",
+            "Geen titelmatch na " (A_TickCount - startedAt) " ms: "
+                activateError.Message
+        )
+        return 0
+    }
+
+    hwnd := WinWaitActive(targetTitle, , 1)
+    if !hwnd {
+        DebugLog(
+            "←",
+            "SMS WinActivate",
+            "Titelmatch werd niet binnen 1 seconde actief."
+        )
+        return 0
+    }
+
+    try {
+        edge := UIA_Browser(hwnd)
+        DebugLog(
+            "✓",
+            "SMS WinActivate",
+            "Edge-venster actief en UIA_Browser gekoppeld in "
+                (A_TickCount - startedAt) " ms."
+        )
+        return edge
+    } catch as browserError {
+        DebugLog(
+            "✕",
+            "SMS WinActivate",
+            "Venster actief, maar UIA_Browser koppelen mislukte: "
+                browserError.Message
+        )
+        return 0
+    }
+}
+
+GetUsableEdgeBrowserWindows() {
+    windows := []
+
+    for hwnd in WinGetList("ahk_exe msedge.exe ahk_class Chrome_WidgetWin_1") {
+        if !DllCall("IsWindowVisible", "Ptr", hwnd, "Int")
+            continue
+
+        try title := Trim(WinGetTitle("ahk_id " hwnd))
+        catch
+            continue
+
+        if title = ""
+            continue
+
+        windows.Push(hwnd)
+    }
+
+    return windows
+}
+
+ActivateSmsEdgeTabByTitle(targetTitle) {
+    startedAt := A_TickCount
+    edgeWindows := GetUsableEdgeBrowserWindows()
+
+    DebugLog(
+        "→",
+        "SMS UIA-tabselectie",
+        edgeWindows.Length " bruikbare Edge-browservenster(s) gevonden; "
+            "TabExist wordt per venster uitgevoerd."
+    )
+
+    for index, hwnd in edgeWindows {
+        try {
+            if WinGetMinMax("ahk_id " hwnd) = -1
+                WinRestore("ahk_id " hwnd)
+
+            edge := UIA_Browser(hwnd)
+            tab := edge.TabExist(targetTitle, 2, false)
+            if !tab
+                continue
+
+            edge.SelectTab(tab)
+            WinActivate("ahk_id " hwnd)
+            if WinWaitActive("ahk_id " hwnd, , 2) {
+                DebugLog(
+                    "✓",
+                    "SMS UIA-tabselectie",
+                    "Tab gevonden in Edge-browservenster " index
+                        " en geactiveerd in " (A_TickCount - startedAt) " ms."
+                )
+                return edge
+            }
+        } catch as windowError {
+            DebugLog(
+                "←",
+                "SMS UIA-tabselectie",
+                "Edge-browservenster " index " overgeslagen: "
+                    windowError.Message
+            )
+        }
+    }
+
+    DebugLog(
+        "←",
+        "SMS UIA-tabselectie",
+        "Geen passende tab gevonden in " edgeWindows.Length
+            " bruikbare Edge-browservenster(s), duur "
+            (A_TickCount - startedAt) " ms."
+    )
+    return 0
+}
+
+OpenSmsPage(url, targetTitle) {
+    DebugLog(
+        "→",
+        "SMS URL-fallback",
+        "Geen bestaande tab gevonden; de lokaal geconfigureerde pagina wordt in Edge geopend."
+    )
+
+    try Run('msedge.exe "' url '"')
+    catch as runError {
+        DebugLog("✕", "SMS URL-fallback", "Edge starten mislukte: " runError.Message)
+        return 0
+    }
+
+    ; Bewust uitsluitend WindowTitle gebruiken. De POC heeft aangetoond dat
+    ; een samengestelde query met ahk_exe in deze werkomgeving niet betrouwbaar is.
+    hwnd := WinWaitActive(targetTitle, , 10)
+    if !hwnd {
+        DebugLog(
+            "✕",
+            "SMS URL-fallback",
+            "De geconfigureerde WindowTitle werd niet binnen 10 seconden actief."
+        )
+        return 0
+    }
+
+    try {
+        edge := UIA_Browser(hwnd)
+        DebugLog("✓", "SMS URL-fallback", "Nieuwe Edge-tab actief en UIA_Browser gekoppeld.")
+        return edge
+    } catch as browserError {
+        DebugLog(
+            "✕",
+            "SMS URL-fallback",
+            "UIA_Browser koppelen aan de nieuwe tab mislukte: " browserError.Message
+        )
+        return 0
+    }
+}
+
+FillSmsPhoneFieldWithUIA(edge, fieldId, value, timeoutMs := 5000) {
+    deadline := A_TickCount + timeoutMs
+    attempts := 0
+    lastError := ""
+
+    while A_TickCount < deadline {
+        attempts += 1
+        try {
+            document := edge.GetCurrentDocumentElement()
+            field := document.FindElement({
+                Type: "Edit",
+                AutomationId: fieldId
+            })
+
+            field.Value := value
+            field.SetFocus()
+            DebugLog(
+                "✓",
+                "SMS UIA-veldinvulling",
+                "Veld gevonden en ingevuld na " attempts " poging(en)."
+            )
+            return true
+        } catch as fieldError {
+            lastError := fieldError.Message
+            Sleep(250)
+        }
+    }
+
+    DebugLog(
+        "←",
+        "SMS UIA-veldinvulling",
+        "Veld niet gevonden na " attempts " poging(en) en " timeoutMs
+            " ms. Laatste fout: " lastError
+    )
+    return false
+}
+
+FillSmsDomFieldWithJavaScript(edge, fieldId, value) {
+    escapedFieldId := EscapeSmsJavaScriptString(fieldId)
+    escapedValue := EscapeSmsJavaScriptString(value)
+
+    js := "(()=>{"
+        . "const e=document.getElementById('" escapedFieldId "');"
+        . "if(!e){throw new Error('DocBot: SMS-veld niet gevonden');}"
+        . "const s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;"
+        . "s.call(e,'" escapedValue "');"
+        . "e.dispatchEvent(new Event('input',{bubbles:true}));"
+        . "e.dispatchEvent(new Event('change',{bubbles:true}));"
+        . "e.focus();"
+        . "return true;"
+        . "})()"
+
+    try {
+        edge.JSExecute(js)
+        DebugLog(
+            "✓",
+            "SMS JavaScriptfallback",
+            "Veld '" fieldId "' ingevuld; input- en change-events verstuurd."
+        )
+        return true
+    } catch as jsError {
+        DebugLog("✕", "SMS JavaScriptfallback", jsError.Message)
+        return false
+    }
+}
+
+NormalizeSmsPhoneNumber(input) {
+    digits := RegExReplace(Trim(input), "\D")
+
+    if RegExMatch(digits, "^316\d{8}$")
+        digits := "0" SubStr(digits, 3)
+    else if RegExMatch(digits, "^00316\d{8}$")
+        digits := "0" SubStr(digits, 5)
+
+    return RegExMatch(digits, "^06\d{8}$") ? digits : ""
+}
+
+MaskSmsPhoneNumber(number) {
+    return StrLen(number) >= 4
+        ? SubStr(number, 1, 2) "******" SubStr(number, -2)
+        : "<afgeschermd>"
+}
+
+EscapeSmsJavaScriptString(value) {
+    value := StrReplace(value, "\", "\\")
+    value := StrReplace(value, "'", "\'")
+    value := StrReplace(value, Chr(13), "\r")
+    value := StrReplace(value, Chr(10), "\n")
+    return value
 }
 
 ; =============================================================================
@@ -5447,6 +6179,7 @@ ValidateLocalConfiguration() {
     }
 
     Telemetry_ValidateConfiguration(LocalConfig)
+    ValidateSmsCallActionsConfiguration(LocalConfig)
 
     if !(LocalConfig["DefaultSpeedDials"] is Array)
         throw Error("DefaultSpeedDials moet een Array zijn.")
@@ -5469,6 +6202,105 @@ ValidateLocalConfiguration() {
         if !item.Has("Replacement") || item["Replacement"] = ""
             throw Error("DefaultHotstrings item " index " mist Replacement.")
     }
+}
+
+ValidateSmsCallActionsConfiguration(config) {
+    if !config.Has("SmsCallAction")
+        return
+
+    source := config["SmsCallAction"]
+    if source is Map {
+        ValidateSmsCallActionItem(source, 1)
+        return
+    }
+
+    if !(source is Array)
+        throw Error("SmsCallAction moet een Map of een Array met Maps zijn.")
+
+    titles := Map()
+    for index, item in source {
+        ValidateSmsCallActionItem(item, index)
+        normalizedTitle := StrLower(Trim(item["Title"]))
+        if titles.Has(normalizedTitle)
+            throw Error("SmsCallAction bevat de dubbele Title '" item["Title"] "'.")
+        titles[normalizedTitle] := true
+    }
+}
+
+ValidateSmsCallActionItem(item, index) {
+    if !(item is Map)
+        throw Error("SmsCallAction item " index " moet een Map zijn.")
+
+    for _, key in ["Title", "Url", "FieldId", "WindowTitle"] {
+        if !item.Has(key) || Trim(item[key]) = ""
+            throw Error("SmsCallAction item " index " mist een ingevulde waarde voor '" key "'.")
+    }
+}
+
+GetConfiguredSmsCallActions() {
+    global LocalConfig
+
+    actions := []
+    if !IsSet(LocalConfig) || !(LocalConfig is Map) || !LocalConfig.Has("SmsCallAction")
+        return actions
+
+    source := LocalConfig["SmsCallAction"]
+    if source is Map {
+        actions.Push(source)
+        return actions
+    }
+
+    if source is Array {
+        for _, item in source
+            actions.Push(item)
+    }
+    return actions
+}
+
+GetSmsCallActionTitles() {
+    global SmsCallActions
+
+    titles := []
+    for _, action in SmsCallActions
+        titles.Push(action["Title"])
+    return titles
+}
+
+HasConfiguredSmsCallActions() {
+    global SmsCallActions
+    return SmsCallActions.Length > 0
+}
+
+FindSmsCallActionIndexByTitle(title) {
+    global SmsCallActions
+
+    wanted := StrLower(Trim(title))
+    for index, action in SmsCallActions {
+        if StrLower(Trim(action["Title"])) = wanted
+            return index
+    }
+    return 0
+}
+
+ResolveSmsCallActionTitle(title) {
+    global SmsCallActions
+
+    index := FindSmsCallActionIndexByTitle(title)
+    if index > 0
+        return SmsCallActions[index]["Title"]
+    return SmsCallActions.Length ? SmsCallActions[1]["Title"] : ""
+}
+
+GetSelectedSmsCallAction() {
+    global State, SmsCallActions
+
+    index := FindSmsCallActionIndexByTitle(State["SmsCallActionTitle"])
+    return index > 0 ? SmsCallActions[index] : 0
+}
+
+NormalizeCallAction(value, fallback := 1) {
+    value := ParseCallActionSetting(value, fallback)
+    return value = 3 && !HasConfiguredSmsCallActions() ? fallback : value
 }
 
 GetUserDataProfile(appVersion) {
@@ -5570,6 +6402,39 @@ InitializeUserStorage() {
     }
 }
 
+
+MarkUserStorageAlwaysAvailable(directory) {
+    if !DirExist(directory)
+        return false
+
+    try {
+        exitCode := RunWait(
+            A_ComSpec ' /d /c attrib -U +P "' directory '"',
+            ,
+            "Hide"
+        )
+        if exitCode = 0
+            return true
+
+        DebugLog(
+            "!",
+            "OneDrive-map lokaal houden",
+            "attrib -U +P gaf exitcode " exitCode ": " directory
+        )
+    } catch as pinError {
+        DebugLog(
+            "!",
+            "OneDrive-map lokaal houden",
+            directory "`n" pinError.Message
+        )
+    }
+
+    ; Niet fataal: gewone lokale mappen en organisatiebeleid mogen de start
+    ; van DocBot niet blokkeren. De echte schrijfacties houden hun eigen
+    ; gerichte foutafhandeling.
+    return false
+}
+
 RebaseCopiedHotstringPath(sourceDir) {
     global ConfigFile, UserDataDir
 
@@ -5634,12 +6499,34 @@ LoadAppSettings() {
             "File",
             State["HotstringFile"]
         )
-        State["AutoCall"] := ParseBooleanSetting(
-            IniRead(ConfigFile, "Features", "AutoCall", State["AutoCall"])
+        storedCallAction := Trim(
+            IniRead(ConfigFile, "Features", "CallAction", "")
         )
-        State["DirectCall"] := ParseBooleanSetting(
-            IniRead(ConfigFile, "Features", "DirectCall", State["DirectCall"])
+        if storedCallAction != "" {
+            State["CallAction"] := ParseCallActionSetting(
+                storedCallAction,
+                State["CallAction"]
+            )
+        } else {
+            legacyAutoCall := ParseBooleanSetting(
+                IniRead(ConfigFile, "Features", "AutoCall", 1)
+            )
+            legacyDirectCall := ParseBooleanSetting(
+                IniRead(ConfigFile, "Features", "DirectCall", 0)
+            )
+            State["CallAction"] := !legacyAutoCall
+                ? 0
+                : (legacyDirectCall ? 2 : 1)
+        }
+        State["SmsCallActionTitle"] := ResolveSmsCallActionTitle(
+            IniRead(
+                ConfigFile,
+                "Features",
+                "SmsCallActionTitle",
+                State["SmsCallActionTitle"]
+            )
         )
+        State["CallAction"] := NormalizeCallAction(State["CallAction"])
         State["TextReplacement"] := ParseBooleanSetting(
             IniRead(
                 ConfigFile,
@@ -5657,8 +6544,10 @@ SaveAppSettings() {
     try {
         IniWrite(State["AutoSave"] ? 1 : 0, ConfigFile, "Hotstrings", "AutoSave")
         IniWrite(State["HotstringFile"], ConfigFile, "Hotstrings", "File")
-        IniWrite(State["AutoCall"] ? 1 : 0, ConfigFile, "Features", "AutoCall")
-        IniWrite(State["DirectCall"] ? 1 : 0, ConfigFile, "Features", "DirectCall")
+        IniWrite(State["CallAction"], ConfigFile, "Features", "CallAction")
+        IniWrite(State["SmsCallActionTitle"], ConfigFile, "Features", "SmsCallActionTitle")
+        try IniDelete(ConfigFile, "Features", "AutoCall")
+        try IniDelete(ConfigFile, "Features", "DirectCall")
         IniWrite(
             State["TextReplacement"] ? 1 : 0,
             ConfigFile,
@@ -5681,11 +6570,22 @@ ParseBooleanSetting(value) {
     return value = "1" || value = "true" || value = "yes" || value = "aan"
 }
 
-SaveSettings(autoSaveCheck, filePathEdit, *) {
+ParseCallActionSetting(value, fallback := 1) {
+    value := Trim(value "")
+    if !RegExMatch(value, "^[0-3]$")
+        return fallback
+
+    return Number(value)
+}
+
+SaveSettings(autoSaveCheck, filePathEdit, smsActionDropDown, *) {
     global State
 
     State["AutoSave"] := autoSaveCheck.Value = 1
     State["HotstringFile"] := Trim(filePathEdit.Value)
+    State["SmsCallActionTitle"] := HasConfiguredSmsCallActions()
+        ? ResolveSmsCallActionTitle(smsActionDropDown.Text)
+        : ""
 
     if State["HotstringFile"] = "" {
         MsgBox("Kies eerst een JSON-bestand.", "DocBot", "Icon!")
@@ -5761,14 +6661,23 @@ BuildTrayMenu() {
     ; (ToggleMainWindow via TrayIconMessage), wat geen probleem is.
     A_TrayMenu.Default := "DocBot"
 
-    A_TrayMenu.Add("AutoCall", ToggleTraySetting.Bind("AutoCall"))
-    A_TrayMenu.Add("DirectCall", ToggleTraySetting.Bind("DirectCall"))
+    callActionMenu := Menu()
+    callActionLabels := [
+        "Niets doen",
+        "Bellen na bevestiging",
+        "Direct bellen"
+    ]
+    if HasConfiguredSmsCallActions()
+        callActionLabels.Push("Bellen of sms kiezen")
+
+    State["CallAction"] := NormalizeCallAction(State["CallAction"])
+    for value, label in callActionLabels
+        callActionMenu.Add(label, SetTrayCallAction.Bind(value - 1))
+    callActionMenu.Check(callActionLabels[State["CallAction"] + 1])
+
+    A_TrayMenu.Add("Belactie", callActionMenu)
     A_TrayMenu.Add("Tekstvervanging", ToggleTraySetting.Bind("TextReplacement"))
 
-    if State["AutoCall"]
-        A_TrayMenu.Check("AutoCall")
-    if State["DirectCall"]
-        A_TrayMenu.Check("DirectCall")
     if State["TextReplacement"]
         A_TrayMenu.Check("Tekstvervanging")
 
@@ -5815,16 +6724,24 @@ CallSpeedDialEntry(nummer, *) {
     IPT_callNumber(nummer)
 }
 
+SetTrayCallAction(value, *) {
+    global State, CallActionSelector
+
+    State["CallAction"] := NormalizeCallAction(value)
+    if IsObject(CallActionSelector)
+        CallActionSelector.Value := value
+
+    SaveAppSettings()
+    RefreshSidebarStatuses()
+    BuildTrayMenu()
+}
+
 ToggleTraySetting(key, *) {
-    global State, AutoCallCheck, DirectCallCheck, TextReplacementCheck
+    global State, TextReplacementCheck
 
     State[key] := !State[key]
 
-    if key = "AutoCall"
-        AutoCallCheck.Value := State[key]
-    else if key = "DirectCall"
-        DirectCallCheck.Value := State[key]
-    else if key = "TextReplacement" {
+    if key = "TextReplacement" {
         TextReplacementCheck.Value := State[key]
         ReloadRuntimeHotstrings(true)
     }
