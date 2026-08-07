@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-extended-logging.0"
+global AppVersion := "2.2-extended-logging.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -3199,16 +3199,24 @@ BuildProblemReportPackage(includeExtended) {
             DirDelete(reportDir, true)
         DirCreate(reportDir)
 
-        reportText :=
-            "DocBot-probleemrapport`r`n"
-            "Versie: " AppVersion "`r`n"
-            "Aangemaakt: " FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") "`r`n"
-            "Uitgebreide logging gebruikt: "
-            (includeExtended ? "ja" : "nee") "`r`n`r`n"
-            "Beschrijving van de gebruiker:`r`n"
-            (Trim(ProblemReportSession["Description"]) != ""
+        description := (
+            Trim(ProblemReportSession["Description"]) != ""
                 ? ProblemReportSession["Description"]
-                : "<geen beschrijving>")
+                : "<geen beschrijving>"
+        )
+
+        reportText := Format(
+            "DocBot-probleemrapport`r`n"
+            . "Versie: {1}`r`n"
+            . "Aangemaakt: {2}`r`n"
+            . "Uitgebreide logging gebruikt: {3}`r`n`r`n"
+            . "Beschrijving van de gebruiker:`r`n"
+            . "{4}",
+            AppVersion,
+            FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss"),
+            includeExtended ? "ja" : "nee",
+            description
+        )
 
         FileAppend(
             reportText,
