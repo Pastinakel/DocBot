@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-extended-logging.4"
+global AppVersion := "2.2-extended-logging.5"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -166,7 +166,8 @@ global ProblemReportSession := Map(
     "ExtendedActive", false,
     "StartedAt", "",
     "Description", "",
-    "ExtendedLogPath", ""
+    "ExtendedLogPath", "",
+    "Finalizing", false
 )
 
 ; Eigen, altijd-zichtbaar meldingsvenstertje i.p.v. TrayTip() — zie
@@ -2467,11 +2468,14 @@ GetUniversalNetworkPath(path) {
 ; DIAGNOSTIEK, LOGGING & PROBLEEMRAPPORTAGE
 ; =============================================================================
 
-; De standaardlog is bewust beperkt en centraal geschoond. Gedetailleerde
-; SMS/UIA-tracing wordt uitsluitend via ExtendedDebugLog() geschreven nadat
-; de gebruiker in het probleemrapportagevenster expliciet toestemming gaf.
+; De standaardlog is bewust beperkt en centraal geschoond. Na expliciete
+; toestemming kopieert DebugLog() dezelfde gebeurtenis met de oorspronkelijke
+; waarden naar het tijdelijke uitgebreide log. Aanvullende SMS/UIA- en
+; hotstringdetails worden uitsluitend rechtstreeks via ExtendedDebugLog()
+; geschreven zolang die toegestane sessie actief is.
 DebugLog(richting, label, tekst := "") {
     global DebugLogBuffer, DebugFlushPending, DebugLogEdit, DebugAutoScroll
+    global ProblemReportSession
 
     veiligeLabel := SanitizeLogText(label)
     veiligeTekst := SanitizeStandardLogText(veiligeLabel, tekst)
@@ -2484,6 +2488,16 @@ DebugLog(richting, label, tekst := "") {
     }
 
     AppendDebugWindowLine(regel)
+
+    if ProblemReportSession["ExtendedActive"] {
+        ; De telemetrie-webhook blijft ook tijdens een toegestane sessie een
+        ; lokaal geheim. Voor alle overige bestaande diagnosegebeurtenissen
+        ; bewaart het uitgebreide log juist de oorspronkelijke waarden.
+        extendedText := StrLower(label "") = "telemetrie"
+            ? SanitizeLogText(tekst)
+            : tekst
+        ExtendedDebugLog(richting, label, extendedText)
+    }
 }
 
 ExtendedDebugLog(richting, label, tekst := "") {
@@ -2495,8 +2509,8 @@ ExtendedDebugLog(richting, label, tekst := "") {
 
     regel := BuildDebugLogLine(
         richting,
-        SanitizeLogText(label),
-        SanitizeLogText(tekst)
+        label "",
+        tekst ""
     )
     ExtendedDebugLogBuffer .= regel
 
@@ -2820,13 +2834,13 @@ BuildProblemReportStartState(gui) {
     )
     privacyTitle := gui.AddText(
         "x50 y264 w570 h22 Background" C["PrimarySoft"],
-        "Privacy en toestemming"
+        "Privacy en expliciete toestemming"
     )
     privacyTitle.SetFont("s11 bold c" C["Text"], "Segoe UI")
     privacyText := gui.AddText(
         "x50 y288 w570 h30 Background" C["PrimarySoft"],
-        "Uitgebreide logging staat standaard uit. DocBot schakelt deze alleen "
-        "tijdelijk in nadat jij daarvoor toestemming geeft."
+        "Met toestemming logt DocBot tijdelijk ook volledige serverresponsen, "
+        "telefoonnummers en gebruikte hotstringteksten."
     )
     privacyText.SetFont("s9 c" C["Text"], "Segoe UI")
 
@@ -2871,7 +2885,7 @@ BuildProblemReportStartState(gui) {
 
     ProblemReportConsentCheck := gui.AddCheckbox(
         "x50 y520 w400 h24 Background" C["PrimarySoft"],
-        "Ik geef toestemming voor tijdelijke uitgebreide logging."
+        "Ik geef toestemming om gevoelige inhoud tijdelijk te loggen."
     )
     ProblemReportConsentCheck.OnEvent(
         "Click",
@@ -3074,7 +3088,7 @@ StartExtendedProblemLogging(*) {
             "DocBot uitgebreid diagnose-log`r`n"
             "Versie: " AppVersion "`r`n"
             "Gestart: " FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") "`r`n"
-            "Toestemming: expliciet gegeven in Probleem melden`r`n"
+            "Toestemming: expliciet gegeven voor ongeschoonde uitgebreide logging`r`n"
             "───`r`n",
             logPath,
             "UTF-8"
@@ -3084,6 +3098,7 @@ StartExtendedProblemLogging(*) {
             "Probleemrapport",
             "Uitgebreide logging gestart na expliciete toestemming."
         )
+        ReloadRuntimeHotstrings(false)
     } catch as logError {
         if IsSet(logPath) && FileExist(logPath)
             try FileDelete(logPath)
@@ -3126,6 +3141,7 @@ StopExtendedProblemLogging(
     FlushExtendedDebugLog()
     ProblemReportSession["ExtendedActive"] := false
     ProblemReportSession["Phase"] := "captured"
+    ReloadRuntimeHotstrings(false)
     BuildTrayMenu()
 
     if showMessage
@@ -3175,33 +3191,42 @@ ShutdownProblemReportLogging() {
 FinalizeProblemReport(includeExtended, *) {
     global ProblemReportSession
 
-    CaptureProblemReportDescription()
-
-    ; Werk het venster meteen bij. Outlook en de handmatige mailfallback zijn
-    ; externe vervolgstappen en mogen nooit een oude status "logging actief"
-    ; in DocBot achterlaten wanneer een van die stappen niet beschikbaar is.
-    if includeExtended && ProblemReportSession["ExtendedActive"]
-        StopExtendedProblemLogging(false, true)
-
-    FlushDebugLog()
-    FlushExtendedDebugLog()
-
-    zipPath := BuildProblemReportPackage(includeExtended)
-    if zipPath = ""
+    if ProblemReportSession["Finalizing"]
         return
+    ProblemReportSession["Finalizing"] := true
 
-    if OpenProblemReportEmail(
-        zipPath,
-        ProblemReportSession["Description"],
-        includeExtended
-    )
-        ResetProblemReportAfterCompletion()
+    try {
+        CaptureProblemReportDescription()
+
+        ; Werk het venster meteen bij. Outlook en de handmatige mailfallback zijn
+        ; externe vervolgstappen en mogen nooit een oude status "logging actief"
+        ; in DocBot achterlaten wanneer een van die stappen niet beschikbaar is.
+        if includeExtended && ProblemReportSession["ExtendedActive"]
+            StopExtendedProblemLogging(false, true)
+
+        FlushDebugLog()
+        FlushExtendedDebugLog()
+
+        zipPath := BuildProblemReportPackage(includeExtended)
+        if zipPath = ""
+            return
+
+        if OpenProblemReportEmail(
+            zipPath,
+            ProblemReportSession["Description"],
+            includeExtended
+        )
+            ResetProblemReportAfterCompletion()
+    } finally {
+        ProblemReportSession["Finalizing"] := false
+    }
 }
 
 BuildProblemReportPackage(includeExtended) {
     global AppVersion, ProblemReportSession
 
     stamp := FormatTime(A_Now, "yyyyMMdd_HHmmss")
+        . "_" Format("{:03}", A_MSec)
     reportDir := A_Temp "\DocBot_diagnose_" stamp
     zipPath := A_Temp "\DocBot_diagnose_" stamp ".zip"
 
@@ -3274,35 +3299,105 @@ BuildProblemReportPackage(includeExtended) {
 }
 
 CompressDirectoryContents(sourceDirectory, zipPath) {
-    if FileExist(zipPath)
-        FileDelete(zipPath)
-
-    header := Buffer(22, 0)
-    NumPut("UChar", 0x50, header, 0)
-    NumPut("UChar", 0x4B, header, 1)
-    NumPut("UChar", 0x05, header, 2)
-    NumPut("UChar", 0x06, header, 3)
-
-    file := FileOpen(zipPath, "w")
-    file.RawWrite(header)
-    file.Close()
-
     shell := ComObject("Shell.Application")
     sourceFolder := shell.NameSpace(sourceDirectory)
-    zipFolder := shell.NameSpace(zipPath)
-    if !IsObject(sourceFolder) || !IsObject(zipFolder)
+    if !IsObject(sourceFolder)
         return false
 
-    expectedItems := sourceFolder.Items().Count
-    zipFolder.CopyHere(sourceFolder.Items(), 0x4 | 0x10)
+    sourceItems := sourceFolder.Items()
+    expectedCount := sourceItems.Count
+    if expectedCount = 0
+        return false
 
-    Loop 100 {
-        if zipFolder.Items().Count >= expectedItems
-            return true
+    ; Explorer herkent een zojuist aangemaakte lege ZIP niet altijd meteen
+    ; als Shell-map. Maak hem zo nodig nogmaals en wacht expliciet totdat de
+    ; namespace beschikbaar is voordat CopyHere wordt gestart.
+    zipFolder := 0
+    Loop 2 {
+        if !CreateEmptyZipArchive(zipPath)
+            continue
+        zipFolder := WaitForShellNamespace(shell, zipPath, 3000)
+        if IsObject(zipFolder)
+            break
+    }
+    if !IsObject(zipFolder)
+        return false
+
+    try zipFolder.CopyHere(sourceItems, 0x4 | 0x10)
+    catch
+        return false
+
+    ; Items().Count kan al kloppen terwijl Explorer nog gegevens schrijft.
+    ; Controleer daarom ook naam en ongecomprimeerde bestandsgrootte en eis
+    ; drie opeenvolgende complete metingen.
+    completeChecks := 0
+    deadline := A_TickCount + 30000
+    while A_TickCount < deadline {
+        if ZipArchiveContainsSourceItems(sourceItems, zipFolder) {
+            completeChecks += 1
+            if completeChecks >= 3
+                return FileExist(zipPath) && FileGetSize(zipPath) > 22
+        } else {
+            completeChecks := 0
+        }
         Sleep(100)
     }
 
-    return zipFolder.Items().Count >= expectedItems
+    return false
+}
+
+CreateEmptyZipArchive(zipPath) {
+    try {
+        if FileExist(zipPath)
+            FileDelete(zipPath)
+
+        header := Buffer(22, 0)
+        NumPut("UChar", 0x50, header, 0)
+        NumPut("UChar", 0x4B, header, 1)
+        NumPut("UChar", 0x05, header, 2)
+        NumPut("UChar", 0x06, header, 3)
+
+        file := FileOpen(zipPath, "w")
+        file.RawWrite(header)
+        file.Close()
+        return true
+    } catch {
+        return false
+    }
+}
+
+WaitForShellNamespace(shell, path, timeoutMs) {
+    deadline := A_TickCount + timeoutMs
+    while A_TickCount < deadline {
+        try folder := shell.NameSpace(path)
+        catch
+            folder := 0
+
+        if IsObject(folder)
+            return folder
+
+        Sleep(100)
+    }
+    return 0
+}
+
+ZipArchiveContainsSourceItems(sourceItems, zipFolder) {
+    try {
+        if zipFolder.Items().Count < sourceItems.Count
+            return false
+
+        Loop sourceItems.Count {
+            sourceItem := sourceItems.Item(A_Index - 1)
+            archivedItem := zipFolder.ParseName(sourceItem.Name)
+            if !IsObject(archivedItem)
+                return false
+            if archivedItem.Size != sourceItem.Size
+                return false
+        }
+        return true
+    } catch {
+        return false
+    }
 }
 
 OpenProblemReportEmail(zipPath, description, usedExtended) {
@@ -3491,7 +3586,8 @@ ResetProblemReportAfterCompletion() {
         "ExtendedActive", false,
         "StartedAt", "",
         "Description", "",
-        "ExtendedLogPath", ""
+        "ExtendedLogPath", "",
+        "Finalizing", false
     )
 
     if IsObject(ProblemReportGui)
@@ -5136,7 +5232,7 @@ DeleteSelectedHotstring(*) {
 ; =============================================================================
 
 ReloadRuntimeHotstrings(showErrors := false) {
-    global RuntimeHotstrings, State
+    global RuntimeHotstrings, State, ProblemReportSession
 
     UnregisterRuntimeHotstrings()
 
@@ -5162,15 +5258,23 @@ ReloadRuntimeHotstrings(showErrors := false) {
         try {
             mode := GetHotstringInsertionMode(item)
             if mode = "direct-text" {
-                callback := SendHotstringText.Bind(replacement)
+                callback := SendHotstringText.Bind(trigger, replacement)
                 Hotstring(hotstringSpec, callback, true)
                 RuntimeHotstrings[hotstringSpec] := callback
             } else if mode = "dynamic-text" {
-                callback := SendDynamicHotstringText.Bind(replacement)
+                callback := SendDynamicHotstringText.Bind(trigger, replacement)
                 Hotstring(hotstringSpec, callback, true)
                 RuntimeHotstrings[hotstringSpec] := callback
             } else if mode = "dynamic-keys" {
-                callback := SendDynamicHotstringKeys.Bind(replacement)
+                callback := SendDynamicHotstringKeys.Bind(trigger, replacement)
+                Hotstring(hotstringSpec, callback, true)
+                RuntimeHotstrings[hotstringSpec] := callback
+            } else if mode = "keys" && ProblemReportSession["ExtendedActive"] {
+                callback := SendDiagnosticHotstringKeys.Bind(trigger, replacement)
+                Hotstring(hotstringSpec, callback, true)
+                RuntimeHotstrings[hotstringSpec] := callback
+            } else if mode = "normal" && ProblemReportSession["ExtendedActive"] {
+                callback := SendDiagnosticHotstringText.Bind(trigger, replacement)
                 Hotstring(hotstringSpec, callback, true)
                 RuntimeHotstrings[hotstringSpec] := callback
             } else {
@@ -5255,14 +5359,16 @@ IsLongOrMultilineHotstring(replacement) {
         || StrLen(replacement) >= DirectTextReplacementThreshold
 }
 
-SendHotstringText(replacement, *) {
+SendHotstringText(trigger, replacement, *) {
+    LogExtendedHotstringExecution(trigger, replacement, "tekst")
     Telemetry_RecordLongHotstring()
     RefreshUsageStatistics()
     SendPlainHotstringText(replacement)
 }
 
-SendDynamicHotstringText(replacement, *) {
+SendDynamicHotstringText(trigger, replacement, *) {
     expanded := ExpandDynamicHotstringCodes(replacement)
+    LogExtendedHotstringExecution(trigger, expanded, "dynamische tekst")
 
     if IsLongOrMultilineHotstring(expanded) {
         Telemetry_RecordLongHotstring()
@@ -5272,8 +5378,30 @@ SendDynamicHotstringText(replacement, *) {
     SendPlainHotstringText(expanded)
 }
 
-SendDynamicHotstringKeys(replacement, *) {
-    Send(ExpandDynamicHotstringCodes(replacement))
+SendDynamicHotstringKeys(trigger, replacement, *) {
+    expanded := ExpandDynamicHotstringCodes(replacement)
+    LogExtendedHotstringExecution(trigger, expanded, "dynamische toetsen")
+    Send(expanded)
+}
+
+SendDiagnosticHotstringText(trigger, replacement, *) {
+    LogExtendedHotstringExecution(trigger, replacement, "korte tekst")
+    SendPlainHotstringText(replacement)
+}
+
+SendDiagnosticHotstringKeys(trigger, replacement, *) {
+    LogExtendedHotstringExecution(trigger, replacement, "toetsen")
+    Send(replacement)
+}
+
+LogExtendedHotstringExecution(trigger, replacement, insertionMode) {
+    ExtendedDebugLog(
+        "→",
+        "Hotstring uitgevoerd",
+        "Modus: " insertionMode
+            . "`r`nAfkorting: " trigger
+            . "`r`nVervangtekst:`r`n" replacement
+    )
 }
 
 SendPlainHotstringText(replacement) {

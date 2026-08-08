@@ -1,6 +1,6 @@
 # DocBot — Decisions
 
-_Last updated: 2026-08-07. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
+_Last updated: 2026-08-08. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
 
 ## How to read this file
 
@@ -486,8 +486,12 @@ Diagnostics must be useful without turning normal operation into unrestricted se
 
 **Consequences**
 
-- standard logs should use central redaction/sanitization;
-- detailed SMS/UIA traces only belong to the consented session;
+- standard logs use central redaction/sanitization;
+- after explicit consent, the temporary detailed log may contain raw
+  telephony URLs/responses, complete called numbers, actually executed
+  hotstring triggers/replacements, and detailed SMS/UIA traces;
+- telemetry secrets stay protected and local configuration files are not
+  packaged;
 - process exit/restart ends detailed logging.
 
 ---

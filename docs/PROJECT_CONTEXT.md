@@ -1,6 +1,6 @@
 # DocBot — Project Context
 
-_Last updated: 2026-08-07. This document combines the repository state on `develop` with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
+_Last updated: 2026-08-08. This document combines the repository state on `develop` with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
 
 ## 1. Purpose
 
@@ -177,7 +177,11 @@ The unmerged `feature/extended-logging` expands this into a user-facing `Problee
 - the reporting session may stay active when its window is closed and reopened;
 - restarting or exiting DocBot ends extended logging;
 - normal background logging remains intentionally limited and centrally redacted;
-- detailed SMS/UIA logging exists only during the consented session;
+- the consented session may contain raw telephony URLs/responses, complete
+  called numbers, actually used hotstring triggers/replacements, and detailed
+  SMS/UIA diagnostics; standard logging remains centrally redacted;
+- the telemetry webhook remains protected and local configuration files are
+  never packaged;
 - diagnostic output is packaged as a ZIP;
 - Classic Outlook may be started and awaited with retries before a draft mail with attachment is opened;
 - if Outlook automation is unavailable, provide a clear manual fallback rather than losing the report.

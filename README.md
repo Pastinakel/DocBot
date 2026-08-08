@@ -301,18 +301,26 @@ een nieuw probleemrapport terechtkomen.
 
 Voor problemen die opnieuw kunnen worden uitgevoerd kan de gebruiker in het
 probleemrapportagevenster expliciet toestemming geven voor **uitgebreide
-logging**. Uitgebreide logging staat standaard uit en wordt uitsluitend voor de huidige
-DocBot-sessie ingeschakeld. Het venster mag tijdens het reproduceren worden
-gesloten: bij opnieuw openen blijft duidelijk zichtbaar dat logging actief is
-en welke vervolgstappen nodig zijn. Afsluiten of herstarten van DocBot stopt
-de uitgebreide logging automatisch en verwijdert het tijdelijke uitgebreide
-logbestand.
+logging**. Uitgebreide logging staat standaard uit en wordt uitsluitend voor
+de huidige DocBot-sessie ingeschakeld. Na toestemming bevat dit tijdelijke log
+bewust ongeschoonde technische inhoud, waaronder volledige telefonie-URL's en
+serverresponsen, volledige gebelde telefoonnummers en de afkorting en
+vervangtekst van hotstrings die tijdens de sessie daadwerkelijk worden
+uitgevoerd. Ook foutmeldingen en SMS/UIA-details kunnen volledige technische
+waarden bevatten. De telemetrie-webhook blijft afgeschermd en het lokale
+configuratiebestand zelf wordt nooit opgenomen.
+
+Het venster mag tijdens het reproduceren worden gesloten: bij opnieuw openen
+blijft duidelijk zichtbaar dat logging actief is en welke vervolgstappen nodig
+zijn. Afsluiten of herstarten van DocBot stopt de uitgebreide logging
+automatisch en verwijdert het tijdelijke uitgebreide logbestand.
 
 Bij **Probleemrapport afronden** stopt DocBot eerst de uitgebreide logging en
 maakt daarna een ZIP-bestand met alleen het probleemrapport, de beperkte
 standaardlog en — wanneer daarvoor toestemming was gegeven — het tijdelijke
-uitgebreide log. `settings.ini`, hotstrings, lokale configuratie en
-telemetrie-ID worden nooit toegevoegd.
+uitgebreide log. `settings.ini`, `hotstrings.json`, lokale configuratie en
+telemetrie-ID worden nooit als bestand toegevoegd. Gebruikte hotstringinhoud
+kan na toestemming wel in het uitgebreide log staan, zoals hierboven vermeld.
 
 DocBot opent vervolgens een conceptbericht in Classic Outlook met het
 diagnosepakket als bijlage. Als Outlook nog niet actief is, start DocBot
@@ -334,6 +342,9 @@ Changelog
   toestemming. Een actieve sessie blijft herkenbaar wanneer het venster wordt
   gesloten en opnieuw geopend, maar wordt bij afsluiten of herstarten van
   DocBot altijd beëindigd.
+- Na expliciete toestemming bevat het uitgebreide log ook ongeschoonde
+  telefonieresponsen, volledige gebelde nummers en daadwerkelijk gebruikte
+  hotstringafkortingen en vervangteksten; het standaardlog blijft geschoond.
 - Standaardlogging is beperkt en centraal geschoond; volledige
   telefoonnummers, klembordinhoud, volledige URL's, ruwe serverresponsen,
   gebruikersnaam en computernaam worden afgeschermd of niet opgenomen.
@@ -342,6 +353,8 @@ Changelog
   Outlook-fout volgt een zichtbare handmatige fallback.
 - Bij stoppen of afronden wordt de status van uitgebreide logging direct in
   het rapportagevenster bijgewerkt, ook wanneer Outlook niet beschikbaar is.
+- ZIP-opbouw wacht voortaan totdat Windows Explorer het archief herkent en
+  alle rapportbestanden met de verwachte grootte heeft overgenomen.
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
 - De gebruikersmap wordt waar mogelijk met `attrib -U +P` als altijd lokaal
   beschikbaar gemarkeerd, zonder dat een mislukte pinactie de start blokkeert.
