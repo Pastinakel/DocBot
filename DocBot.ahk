@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-extended-logging.5"
+global AppVersion := "2.2-extended-logging.6"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2828,38 +2828,22 @@ BuildProblemReportStartState(gui) {
         "Wat gaat er mis? Wanneer gebeurt het?"
     )
 
-    privacyCard := gui.AddText(
-        "x28 y250 w624 h78 Background" C["PrimarySoft"],
-        ""
-    )
-    privacyTitle := gui.AddText(
-        "x50 y264 w570 h22 Background" C["PrimarySoft"],
-        "Privacy en expliciete toestemming"
-    )
-    privacyTitle.SetFont("s11 bold c" C["Text"], "Segoe UI")
-    privacyText := gui.AddText(
-        "x50 y288 w570 h30 Background" C["PrimarySoft"],
-        "Met toestemming logt DocBot tijdelijk ook volledige serverresponsen, "
-        "telefoonnummers en gebruikte hotstringteksten."
-    )
-    privacyText.SetFont("s9 c" C["Text"], "Segoe UI")
-
     directCard := gui.AddText(
-        "x28 y344 w624 h82 BackgroundFFFFFF",
+        "x28 y250 w624 h82 BackgroundFFFFFF",
         ""
     )
     directTitle := gui.AddText(
-        "x50 y356 w330 h22 BackgroundFFFFFF",
+        "x50 y262 w330 h22 BackgroundFFFFFF",
         "Probleem direct melden"
     )
     directTitle.SetFont("s11 bold c" C["Text"], "Segoe UI")
     directText := gui.AddText(
-        "x50 y382 w360 h28 BackgroundFFFFFF",
+        "x50 y288 w360 h28 BackgroundFFFFFF",
         "Gebruik alleen de beperkte standaardlog die al beschikbaar is."
     )
     directText.SetFont("s9 c" C["Muted"], "Segoe UI")
     directButton := gui.AddButton(
-        "x462 y366 w166 h38",
+        "x462 y272 w166 h38",
         "Direct melden"
     )
     directButton.OnEvent(
@@ -2868,23 +2852,35 @@ BuildProblemReportStartState(gui) {
     )
 
     extendedCard := gui.AddText(
-        "x28 y442 w624 h116 Background" C["PrimarySoft"],
+        "x28 y348 w624 h210 Background" C["PrimarySoft"],
         ""
     )
     extendedTitle := gui.AddText(
-        "x50 y454 w360 h22 Background" C["PrimarySoft"],
+        "x50 y360 w360 h22 Background" C["PrimarySoft"],
         "Probleem opnieuw reproduceren"
     )
     extendedTitle.SetFont("s11 bold c" C["Text"], "Segoe UI")
     extendedText := gui.AddText(
-        "x50 y480 w570 h34 Background" C["PrimarySoft"],
+        "x50 y386 w570 h34 Background" C["PrimarySoft"],
         "Schakel tijdelijk uitgebreide logging in, voer het probleem opnieuw "
         "uit en rond daarna het rapport af."
     )
     extendedText.SetFont("s9 c" C["Text"], "Segoe UI")
 
+    privacyTitle := gui.AddText(
+        "x50 y426 w570 h22 Background" C["PrimarySoft"],
+        "Privacy en Expliciete toestemming:"
+    )
+    privacyTitle.SetFont("s10 bold c" C["Text"], "Segoe UI")
+    privacyText := gui.AddText(
+        "x50 y452 w570 h42 Background" C["PrimarySoft"],
+        "Met toestemming logt DocBot tijdelijk ook volledige serverresponsen, "
+        "telefoonnummers en gebruikte hotstringteksten."
+    )
+    privacyText.SetFont("s9 c" C["Text"], "Segoe UI")
+
     ProblemReportConsentCheck := gui.AddCheckbox(
-        "x50 y520 w400 h24 Background" C["PrimarySoft"],
+        "x50 y510 w400 h24 Background" C["PrimarySoft"],
         "Ik geef toestemming om gevoelige inhoud tijdelijk te loggen."
     )
     ProblemReportConsentCheck.OnEvent(
@@ -2893,7 +2889,7 @@ BuildProblemReportStartState(gui) {
     )
 
     startButton := gui.AddButton(
-        "x462 y516 w166 h34 Disabled vProblemReportStartButton",
+        "x462 y506 w166 h34 Disabled vProblemReportStartButton",
         "Logging starten"
     )
     startButton.OnEvent("Click", StartExtendedProblemLogging)
@@ -2904,7 +2900,7 @@ BuildProblemReportStartState(gui) {
     )
     cancelButton.OnEvent("Click", HideProblemReportWindow)
 
-    for card in [privacyCard, directCard, extendedCard]
+    for card in [directCard, extendedCard]
         RoundControl(card, 12)
 }
 
