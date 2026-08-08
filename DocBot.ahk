@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-extended-logging.2"
+global AppVersion := "2.2-extended-logging.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2957,7 +2957,7 @@ BuildProblemReportProgressState(gui) {
         "x28 y232 w624 h48 Center 0x200 BackgroundFFFFFF",
         "Logging gestart: " startedAt
         "    ·    Status: "
-        (isActive ? "Wacht op reproductie" : "Gereed om af te ronden")
+        . (isActive ? "Wacht op reproductie" : "Gereed om af te ronden")
     )
     sessionInfo.SetFont("s10 c" C["Text"], "Segoe UI")
 
@@ -3428,12 +3428,13 @@ OpenProblemReportFallback(
 
     MsgBox(
         "Classic Outlook kon het conceptbericht niet automatisch openen."
-        "`n`nHet diagnosepakket is in Verkenner geselecteerd."
-        (mailOpened
+        . "`n`nHet diagnosepakket is in Verkenner geselecteerd."
+        . (mailOpened
             ? " Er is daarnaast een nieuw e-mailbericht zonder bijlage geopend."
             : "")
-        "`nVoeg het ZIP-bestand handmatig toe en verstuur het bericht."
-        "`n`nTechnische melding: " SanitizeLogText(outlookError),
+        . "`nVoeg het ZIP-bestand handmatig toe en verstuur het bericht."
+        . "`n`nTechnische melding: "
+        . SanitizeLogText(outlookError),
         "DocBot - Probleem melden",
         "Icon!"
     )
