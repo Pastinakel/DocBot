@@ -340,6 +340,8 @@ Changelog
 - Probleemrapporten starten Classic Outlook zo nodig, wachten tot Outlook
   gereed is en openen daarna een conceptmail met ZIP-bijlage. Bij een
   Outlook-fout volgt een zichtbare handmatige fallback.
+- Bij stoppen of afronden wordt de status van uitgebreide logging direct in
+  het rapportagevenster bijgewerkt, ook wanneer Outlook niet beschikbaar is.
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
 - De gebruikersmap wordt waar mogelijk met `attrib -U +P` als altijd lokaal
   beschikbaar gemarkeerd, zonder dat een mislukte pinactie de start blokkeert.

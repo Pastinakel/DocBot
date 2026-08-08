@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-extended-logging.3"
+global AppVersion := "2.2-extended-logging.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -3110,8 +3110,13 @@ StopExtendedProblemLogging(
 ) {
     global ProblemReportSession
 
-    if !ProblemReportSession["ExtendedActive"]
+    if !ProblemReportSession["ExtendedActive"] {
+        ; Herstel ook een eventueel verouderd venster. Dit kan gebeuren als
+        ; de mail- of Outlook-fallback afbreekt nadat de sessie al is gestopt.
+        if rebuildWindow
+            BuildProblemReportWindow()
         return
+    }
 
     ExtendedDebugLog(
         "i",
@@ -3172,8 +3177,11 @@ FinalizeProblemReport(includeExtended, *) {
 
     CaptureProblemReportDescription()
 
+    ; Werk het venster meteen bij. Outlook en de handmatige mailfallback zijn
+    ; externe vervolgstappen en mogen nooit een oude status "logging actief"
+    ; in DocBot achterlaten wanneer een van die stappen niet beschikbaar is.
     if includeExtended && ProblemReportSession["ExtendedActive"]
-        StopExtendedProblemLogging(false, false)
+        StopExtendedProblemLogging(false, true)
 
     FlushDebugLog()
     FlushExtendedDebugLog()
