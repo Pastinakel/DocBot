@@ -345,7 +345,8 @@ Changelog
 - Na expliciete toestemming bevat het uitgebreide log ook ongeschoonde
   telefonieresponsen, volledige gebelde nummers en daadwerkelijk gebruikte
   hotstringafkortingen en vervangteksten; het standaardlog blijft geschoond.
-  De privacywaarschuwing staat direct boven het toestemmingsvakje.
+  De rood en vet benadrukte privacymelding staat inline met de waarschuwing,
+  direct boven het toestemmingsvakje.
 - Standaardlogging is beperkt en centraal geschoond; volledige
   telefoonnummers, klembordinhoud, volledige URL's, ruwe serverresponsen,
   gebruikersnaam en computernaam worden afgeschermd of niet opgenomen.

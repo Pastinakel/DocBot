@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-extended-logging.6"
+global AppVersion := "2.2-extended-logging.7"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2868,16 +2868,20 @@ BuildProblemReportStartState(gui) {
     extendedText.SetFont("s9 c" C["Text"], "Segoe UI")
 
     privacyTitle := gui.AddText(
-        "x50 y426 w570 h22 Background" C["PrimarySoft"],
+        "x50 y426 w218 h22 Background" C["PrimarySoft"],
         "Privacy en Expliciete toestemming:"
     )
-    privacyTitle.SetFont("s10 bold c" C["Text"], "Segoe UI")
+    privacyTitle.SetFont("s9 bold c" C["Danger"], "Segoe UI")
     privacyText := gui.AddText(
-        "x50 y452 w570 h42 Background" C["PrimarySoft"],
-        "Met toestemming logt DocBot tijdelijk ook volledige serverresponsen, "
-        "telefoonnummers en gebruikte hotstringteksten."
+        "x268 y426 w352 h22 Background" C["PrimarySoft"],
+        "Met toestemming logt DocBot tijdelijk ook"
     )
     privacyText.SetFont("s9 c" C["Text"], "Segoe UI")
+    privacyTextContinuation := gui.AddText(
+        "x50 y450 w570 h22 Background" C["PrimarySoft"],
+        "volledige serverresponsen, telefoonnummers en gebruikte hotstringteksten."
+    )
+    privacyTextContinuation.SetFont("s9 c" C["Text"], "Segoe UI")
 
     ProblemReportConsentCheck := gui.AddCheckbox(
         "x50 y510 w400 h24 Background" C["PrimarySoft"],
