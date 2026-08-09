@@ -166,6 +166,8 @@ klikbaar en openen direct de betreffende pagina. Er kan steeds één onderwerp
 tegelijk worden geopend. De
 uitleg staat in een eigen verticaal scrollbaar tekstvlak, zodat langere
 instructies binnen het vaste hoofdvenster leesbaar blijven.
+De eerdere tekstfooter is vervangen door de knop **Probleem melden...**,
+zonder de Help-layout of instructiekaarten in te korten.
 
 Functionaliteit — Telefonie
 -----------------------------
@@ -281,21 +283,81 @@ hotstringafkortingen, vervangteksten, pakketinhoud of klembordinhoud. Bij
 toekomstige wijzigingen aan de telemetrie blijft deze melding aanwezig en
 wordt zij aangepast aan de werkelijk verzonden gegevens.
 
-Diagnostiek
------------
-Er is een stille achtergrond-logfunctie voor troubleshooting van de
-telefonie-integratie. Deze loopt altijd mee en schrijft naar
-`%LocalAppData%\DocBot\debug.log`. Daarnaast is er een los debugvenster met
-live logweergave, alleen zichtbaar voor de CMIO (gekoppeld aan het
-Windows-account), en een "Diagnostische gegevens verzenden"-knop waarmee
-gewone gebruikers het logbestand als bijlage in een conceptmail kunnen
-laten klaarzetten — zonder dat zij de inhoud zelf hoeven in te zien.
+Probleem melden en diagnostiek
+------------------------------
+De herkenbare gebruikersfunctie heet **Probleem melden...** en is bereikbaar
+via het rechtermuisknopmenu van het DocBot-pictogram en via de knop onderaan
+de Help-pagina. Beide ingangen openen exact hetzelfde probleemrapportagevenster.
+
+DocBot houdt standaard uitsluitend een beperkte, lokaal opgeslagen en centraal
+geschoonde log bij in `%LocalAppData%\DocBot\debug.log`. Volledige
+telefoonnummers, klembordinhoud, volledige URL's, ruwe serverresponsen,
+Windows-gebruikersnaam en computernaam worden daarin afgeschermd of niet
+opgenomen. De precieze omvang van de standaardlogging blijft bewust beperkt
+tot globale technische gebeurtenissen en foutcategorieën. Bij de eerste start
+van deze versie verwijdert DocBot een eventueel ouder, nog niet centraal
+geschoond debuglog, zodat historische URL's of responsinhoud niet alsnog in
+een nieuw probleemrapport terechtkomen.
+
+Voor problemen die opnieuw kunnen worden uitgevoerd kan de gebruiker in het
+probleemrapportagevenster expliciet toestemming geven voor **uitgebreide
+logging**. Uitgebreide logging staat standaard uit en wordt uitsluitend voor
+de huidige DocBot-sessie ingeschakeld. Na toestemming bevat dit tijdelijke log
+bewust ongeschoonde technische inhoud, waaronder volledige telefonie-URL's en
+serverresponsen, volledige gebelde telefoonnummers en de afkorting en
+vervangtekst van hotstrings die tijdens de sessie daadwerkelijk worden
+uitgevoerd. Ook foutmeldingen en SMS/UIA-details kunnen volledige technische
+waarden bevatten. De telemetrie-webhook blijft afgeschermd en het lokale
+configuratiebestand zelf wordt nooit opgenomen.
+
+Het venster mag tijdens het reproduceren worden gesloten: bij opnieuw openen
+blijft duidelijk zichtbaar dat logging actief is en welke vervolgstappen nodig
+zijn. Afsluiten of herstarten van DocBot stopt de uitgebreide logging
+automatisch en verwijdert het tijdelijke uitgebreide logbestand.
+
+Bij **Probleemrapport afronden** stopt DocBot eerst de uitgebreide logging en
+maakt daarna een ZIP-bestand met alleen het probleemrapport, de beperkte
+standaardlog en — wanneer daarvoor toestemming was gegeven — het tijdelijke
+uitgebreide log. `settings.ini`, `hotstrings.json`, lokale configuratie en
+telemetrie-ID worden nooit als bestand toegevoegd. Gebruikte hotstringinhoud
+kan na toestemming wel in het uitgebreide log staan, zoals hierboven vermeld.
+
+DocBot opent vervolgens een conceptbericht in Classic Outlook met het
+diagnosepakket als bijlage. Als Outlook nog niet actief is, start DocBot
+Outlook en wacht het totdat de MAPI-sessie gereed is. De gebruiker controleert
+het bericht en klikt zelf op **Verzenden**. Wanneer Classic Outlook niet
+beschikbaar is, opent DocBot een nieuw e-mailbericht zonder bijlage en toont
+het het ZIP-bestand in Verkenner, zodat de gebruiker dit handmatig kan
+toevoegen. Het ontwikkelaarsdebugvenster blijft alleen zichtbaar voor het
+daarvoor ingerichte Windows-account.
 
 Changelog
 ---------
 
 ### 2.2 — Releasecandidate
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
+- Nieuwe gebruikersflow **Probleem melden...** via zowel het systeemvakmenu
+  als een knop die de bestaande Help-footer vervangt. Beide openen dezelfde
+  rapportsessie met een optionele probleembeschrijving.
+- Uitgebreide SMS/UIA-logging staat standaard uit en vereist expliciete
+  toestemming. Een actieve sessie blijft herkenbaar wanneer het venster wordt
+  gesloten en opnieuw geopend, maar wordt bij afsluiten of herstarten van
+  DocBot altijd beëindigd.
+- Na expliciete toestemming bevat het uitgebreide log ook ongeschoonde
+  telefonieresponsen, volledige gebelde nummers en daadwerkelijk gebruikte
+  hotstringafkortingen en vervangteksten; het standaardlog blijft geschoond.
+  De rood en vet benadrukte privacymelding staat inline met de waarschuwing,
+  direct boven het toestemmingsvakje.
+- Standaardlogging is beperkt en centraal geschoond; volledige
+  telefoonnummers, klembordinhoud, volledige URL's, ruwe serverresponsen,
+  gebruikersnaam en computernaam worden afgeschermd of niet opgenomen.
+- Probleemrapporten starten Classic Outlook zo nodig, wachten tot Outlook
+  gereed is en openen daarna een conceptmail met ZIP-bijlage. Bij een
+  Outlook-fout volgt een zichtbare handmatige fallback.
+- Bij stoppen of afronden wordt de status van uitgebreide logging direct in
+  het rapportagevenster bijgewerkt, ook wanneer Outlook niet beschikbaar is.
+- ZIP-opbouw wacht voortaan totdat Windows Explorer het archief herkent en
+  alle rapportbestanden met de verwachte grootte heeft overgenomen.
 - De gebruikersmap wordt waar mogelijk met `attrib -U +P` als altijd lokaal
   beschikbaar gemarkeerd, zonder dat een mislukte pinactie de start blokkeert.
 - DocBot voert bij het opstarten geen algemene schrijfbaarheidstest meer uit;
