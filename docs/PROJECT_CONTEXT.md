@@ -1,6 +1,6 @@
 # DocBot — Project Context
 
-_Last updated: 2026-08-08. This document combines the repository state on `develop` with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
+_Last updated: 2026-08-09. This document combines the repository state on the 2.2 development and release-candidate lines with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
 
 ## 1. Purpose
 
@@ -17,7 +17,7 @@ The project is deliberately optimized for a managed Windows workplace. Several d
 
 Treat the repository as the source of truth when this document and code ever disagree.
 
-Current top-level structure on `develop`:
+Current top-level structure on the 2.2 development/release-candidate lines:
 
 - `DocBot.ahk` — the main application. It is large and still intentionally monolithic.
 - `Telemetry.ahk` — optional telemetry module.
@@ -35,17 +35,17 @@ There is currently no conventional `tests/` directory and no `migrations/` direc
 
 ## 3. Branch and release status at handover
 
-Repository state checked on 2026-08-07:
+Repository state checked locally on 2026-08-09:
 
 - `main` is the production line and represents stable DocBot 2.1.
-- `develop` is the central 2.2 development line and currently contains `AppVersion = 2.2-dev.5`.
-- `release/2.2-rc.1` exists and contains `AppVersion = 2.2-rc.1`.
-- draft PR #10, `Releasecandidate DocBot 2.2-rc.1`, is open from the release branch to `main`.
-- `feature/extended-logging` still exists and contains `AppVersion = 2.2-extended-logging.2`.
+- `develop` is the central 2.2 development line and contains `AppVersion = 2.2-dev.6` at merge commit `aecb888`.
+- The consent-based extended-logging work was integrated into `develop` through its preserved merge history.
+- `release/2.2-rc` contains that updated development state through merge commit `f0b67f3` and currently has `AppVersion = 2.2-rc.2`.
+- `feature/extended-logging` is no longer the branch to test or integrate; the current RC code is the source of truth for release validation.
 
-The release candidate was already created when the project owner explicitly approved one late exception to the feature freeze: the new problem-reporting / consent-based extended-logging feature may still enter 2.2. After that feature is merged into `develop`, it is intended to be merged into the release branch and the RC version must become `2.2-rc.2`, followed by a complete new RC test.
+The project owner approved problem reporting and consent-based extended logging as a late exception to the 2.2 feature freeze. That integration and the RC2 version transition are complete in Git. This does **not** mean RC2 has passed acceptance: a complete compiled Windows test, including managed-workplace behavior, Outlook fallback, ZIP creation, telephony, and the internal-network paths, remains required before stable 2.2.
 
-Do not treat `feature/extended-logging` as release-ready merely because its latest commits attempt to fix the reported syntax errors. The recent project conversation contains repeated AutoHotkey v2 syntax failures caused by multiline string concatenation. The latest branch commit is named `Corrigeer multiline concatenaties in probleemrapportage`, but a real AHK v2 parse/compile/run on Windows still needs to confirm the branch before merge.
+Do not infer functional validation from source integration alone. The earlier feature work contained repeated AutoHotkey v2 multiline-concatenation failures, so the integrated RC must still pass a real AHK v2 parse/compile/run and functional test on Windows.
 
 ## 4. Product requirements that must survive refactors
 
@@ -169,24 +169,19 @@ Installation-ID durability is important:
 
 ### 4.9 Diagnostics and problem reporting
 
-Baseline diagnostics on `develop` already include a bounded/buffered background log at `%LocalAppData%\DocBot\debug.log`, a developer-only live debug window, and a route for ordinary users to prepare diagnostic data for support.
+Baseline diagnostics include a bounded/buffered background log at `%LocalAppData%\DocBot\debug.log` and a developer-only live debug window. The current 2.2 development and RC lines also contain the user-facing `Probleem melden...` flow through Help and the tray menu.
 
-The unmerged `feature/extended-logging` expands this into a user-facing `Probleem melden...` flow accessible from Help and the tray menu. The intended design from the project discussion is:
+The implementation has two reporting paths:
 
-- extended/detailed logging only after explicit user consent;
-- the reporting session may stay active when its window is closed and reopened;
-- restarting or exiting DocBot ends extended logging;
-- normal background logging remains intentionally limited and centrally redacted;
-- the consented session may contain raw telephony URLs/responses, complete
-  called numbers, actually used hotstring triggers/replacements, and detailed
-  SMS/UIA diagnostics; standard logging remains centrally redacted;
-- the telemetry webhook remains protected and local configuration files are
-  never packaged;
-- diagnostic output is packaged as a ZIP;
-- Classic Outlook may be started and awaited with retries before a draft mail with attachment is opened;
-- if Outlook automation is unavailable, provide a clear manual fallback rather than losing the report.
+- **Direct reporting** packages the optional description and centrally redacted standard log without enabling extended logging.
+- **Reproduce with extended logging** requires an explicit consent checkbox. The in-memory session survives closing/reopening the window, but process exit/restart stops the session and deletes its temporary detailed log.
+- During a consented session, existing diagnostic events are additionally written with original values, except that the telemetry webhook remains redacted. Actually executed hotstring triggers/replacements and detailed SMS/UIA traces are logged only while the session is active.
+- Starting or stopping the session reloads runtime hotstrings so normal and key-command hotstrings can pass through diagnostic callbacks only for the consented interval.
+- Finalization stops extended logging before package/mail handling, flushes both logs, and creates a ZIP in `%TEMP%` containing `probleemrapport.txt`, the standard log when available, and the extended log only when requested and present.
+- Classic Outlook is started/awaited when necessary and receives a draft with the ZIP attached. If automation fails, DocBot opens a mail fallback where possible, selects the ZIP in Explorer, and gives explicit manual attachment instructions.
+- Local configuration files are not packaged. The temporary extended log is removed on shutdown, on a new session, and after successful report preparation; the ZIP remains available for the user/mail workflow.
 
-Treat the implementation details as provisional until the feature passes syntax and functional validation.
+Treat these as implemented source behavior, while keeping the corresponding RC2 Windows acceptance tests open until they have actually passed.
 
 ## 5. Build and deployment constraints
 

@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-08. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-09. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -10,21 +10,18 @@ _Last updated: 2026-08-08. This file is a handover backlog, not a promise that e
 
 ---
 
-## P0 — Validate and finish `feature/extended-logging`
+## P0 — Validate integrated problem reporting on RC2
 
 ### Current state
 
-- Branch exists: `feature/extended-logging`.
-- Current branch AppVersion at handover: `2.2-extended-logging.2`.
-- The feature is ahead of `develop` and modifies `DocBot.ahk` plus `README.md`.
-- The earlier feature PR #12 was closed and is not the active integration vehicle anymore.
-- Recent commits fixed reported AutoHotkey multiline-concatenation errors, including a latest commit named `Corrigeer multiline concatenaties in probleemrapportage`.
-- The project conversation shows that syntax errors recurred more than once. Therefore the branch must still be treated as **unverified** until a real AHK v2 Windows validation succeeds.
+- The feature history is integrated into `develop` (`2.2-dev.6`) and into `release/2.2-rc` (`2.2-rc.2`).
+- Test the current RC code; `feature/extended-logging` is no longer an integration target.
+- Source integration is complete, but the flow remains **unverified as a release candidate** until real AHK v2/compiled Windows validation succeeds.
 
 ### Required validation
 
-- [ ] Check out the current remote branch and confirm there are no uncommitted local edits before testing.
-- [ ] Confirm `global AppVersion` matches the branch and current commit history.
+- [ ] Check out the current `release/2.2-rc` and confirm there are no uncommitted local edits before testing.
+- [ ] Confirm `global AppVersion` is the expected RC version (`2.2-rc.2` unless a later RC source fix has incremented it).
 - [ ] Run an AutoHotkey v2 parse/compile check on Windows.
 - [ ] Search the entire newly added problem-reporting code for the multiline assignment/concatenation pattern that caused the recent syntax errors; do not fix only the first reported line.
 - [ ] Start the application and open the problem-reporting flow from **Help**.
@@ -50,36 +47,11 @@ _Last updated: 2026-08-08. This file is a handover backlog, not a promise that e
 
 ### If another source fix is needed
 
-The current branch counter is `.2` at handover. If a new commit changes `DocBot.ahk`, increment the branch-specific AppVersion in that same commit (expected next value `.3`, unless the branch changed after this document was written).
-
-Do not change AppVersion for a docs-only commit.
-
-### Integration after successful test
-
-- [ ] Create/open a clean PR from `feature/extended-logging` to the current `develop`.
-- [ ] Use a normal merge commit; do not squash or rebase the tested feature history.
-- [ ] During integration, replace the feature prerelease version with a new central `2.2-dev.N` that is higher than the then-current develop value. At handover develop is `2.2-dev.5`, so the next central number would be at least `2.2-dev.6` if no intervening code commits occur.
-- [ ] Re-check README/changelog in the integration commit.
-- [ ] Re-check telemetry documentation only if telemetry code/config/payload actually changed.
-
----
-
-## P0 — Promote the validated feature into the 2.2 release candidate
-
-### Current state
-
-- Release branch: `release/2.2-rc.1`.
-- Draft PR #10 from release branch to `main` is open.
-- The project owner explicitly approved extended logging as an exception to the RC feature freeze.
-
-### Required flow
-
-- [ ] First merge validated extended logging into `develop`.
-- [ ] Bring the updated `develop` state into `release/2.2-rc.1` with a merge commit.
-- [ ] Resolve versioning on the release branch to `2.2-rc.2` in the same commit sequence that changes `DocBot.ahk`.
-- [ ] Do not add unrelated new functionality under cover of the approved exception.
-- [ ] Update the release PR description/status so it no longer describes RC1 as the code under final test.
-- [ ] Run the **full** RC test again; do not rely on the earlier RC1 test because the release code has materially changed.
+Apply it on the release branch under the release freeze. A commit that changes
+`DocBot.ahk` must increment `rc.N` in that same commit (the next value after
+the current source state would be `2.2-rc.3`). A docs-only commit must not
+change AppVersion. Bring release-only fixes back to `develop` through the
+normal PR/merge flow.
 
 ---
 
@@ -377,6 +349,7 @@ These problems are important historical context but are not open TODOs unless th
 - **Shared telephony XHR reference:** replaced by independent request objects.
 - **Fixed-interval long polling:** replaced by chained polling after response completion.
 - **Clipboard-based hotstring expansion:** deliberately removed/prohibited.
+- **Extended-logging integration status in durable docs:** synchronized with the integrated `develop`/RC2 source; obsolete feature-branch promotion tasks were removed while RC2 acceptance tests remain open.
 
 ---
 

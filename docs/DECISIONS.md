@@ -1,6 +1,6 @@
 # DocBot — Decisions
 
-_Last updated: 2026-08-08. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
+_Last updated: 2026-08-09. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
 
 ## How to read this file
 
@@ -476,9 +476,9 @@ New fields or broader collection require explicit project-owner approval.
 
 ## D-031 — Standard logging is limited; detailed logging requires consent
 
-**Status:** Provisional for the extended-logging feature, but the principle is accepted
+**Status:** Accepted; integrated in the 2.2 development and RC2 lines
 
-Baseline troubleshooting logging exists continuously, but detailed session logging is intended to be enabled only after explicit user consent in the `Probleem melden...` workflow.
+Baseline troubleshooting logging exists continuously, but detailed session logging can be enabled only after explicit user consent in the `Probleem melden...` workflow.
 
 **Reason**
 
@@ -498,9 +498,9 @@ Diagnostics must be useful without turning normal operation into unrestricted se
 
 ## D-032 — Problem reporting should degrade to a manual mail path
 
-**Status:** Provisional
+**Status:** Accepted; integrated in the 2.2 development and RC2 lines
 
-The extended-logging feature intends to create a ZIP and prepare a Classic Outlook draft. If Outlook automation cannot be used, the user must get a clear manual fallback.
+Problem reporting creates a ZIP and prepares a Classic Outlook draft. If Outlook automation cannot be used, the user receives a manual fallback that selects the ZIP in Explorer, attempts to open a message without attachment, and explains that the ZIP must be attached manually.
 
 **Rejected alternative:** fail the whole report because Outlook automation is unavailable.
 
@@ -576,17 +576,16 @@ Do not conflate "the patch was edited and pushed successfully" with "DocBot was 
 
 ## D-038 — Release 2.2 may include extended logging as an explicit freeze exception
 
-**Status:** Provisional until integrated
+**Status:** Accepted; integration completed for RC2
 
 The 2.2 RC branch was created under a feature freeze. The project owner explicitly approved the extended problem-reporting/logging feature as an exception.
 
-**Intended integration**
+**Integration outcome**
 
-1. validate/fix the feature on `feature/extended-logging`;
-2. merge it to `develop` using a merge commit;
-3. bring the updated develop state to the release branch with a merge commit;
-4. increment release candidate to `2.2-rc.2`;
-5. run the complete RC test again;
-6. only after approval, prepare stable `2.2` and tag `v2.2`.
+The feature history was merged into `develop`; the updated development state
+was then merged into `release/2.2-rc`, where `AppVersion` is `2.2-rc.2`.
+The exception is therefore integrated. A complete compiled Windows RC2 test
+remains a release gate; only after explicit acceptance may stable `2.2` and
+tag `v2.2` be prepared.
 
 Do not use this exception as permission to add unrelated new functionality to the release branch.

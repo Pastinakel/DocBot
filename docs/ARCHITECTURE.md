@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-08-08. Repository facts refer to the 2.2 development line unless noted otherwise._
+_Last updated: 2026-08-09. Repository facts refer to the current 2.2 development and RC2 lines unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -385,24 +385,53 @@ The normal application maintains a bounded/buffered background debug log and flu
 
 The developer-only debug UI is gated by Windows account in current code.
 
-### 15.2 Extended problem-reporting branch
+### 15.2 Integrated problem reporting and extended logging
 
-The unmerged `feature/extended-logging` introduces a larger reporting session architecture with explicit consent, more detailed session logging, ZIP packaging, and Outlook draft automation/fallback.
+The current 2.2 development and RC2 code contains the `Probleem melden...`
+flow. Help and the tray menu open the same reporting GUI and session state.
+`ProblemReportSession` is held in memory and tracks the phase, consented logging
+state, start time, user description, temporary log path, and finalization lock.
 
-Because this feature is not yet merged and recently contained syntax errors, agents should inspect the branch rather than treating this document as an implementation specification for every function name.
+The data flow is:
 
-Architectural requirements that should survive are:
+```text
+direct report
+  -> optional user description + redacted standard log
+  -> temporary report directory
+  -> ZIP in %TEMP%
+  -> Outlook draft or explicit manual fallback
 
-- consent gate before unredacted detailed logging;
-- central redaction/sanitization for standard logs;
-- raw copies of existing diagnostic events plus actually executed hotstring
-  triggers/replacements and detailed SMS/UIA traces only during that session;
-- telemetry secrets remain redacted and local configuration files are never
-  included in the package;
-- detailed session ends on process exit/restart;
-- reopening the report UI can reuse the current reporting session;
-- attachment creation is deterministic and understandable to support staff;
-- mail automation failure must degrade to a manual path.
+explicit consent
+  -> temporary extended log under %LocalAppData%\DocBot
+  -> raw copies of diagnostic events (telemetry webhook remains redacted)
+  -> executed hotstring trigger/replacement + detailed SMS/UIA events
+  -> stop logging and flush buffers before packaging
+  -> description + standard log + extended log
+  -> ZIP in %TEMP%
+  -> Outlook draft or explicit manual fallback
+```
+
+Architectural boundaries:
+
+- the standard log remains centrally sanitized at all times;
+- unredacted detailed logging cannot start without the explicit checkbox;
+- runtime hotstrings are re-registered on session start/stop so modes that
+  normally use native replacement can be observed only during consent;
+- closing the GUI preserves the in-memory reporting session, while process
+  exit/restart stops it and deletes the temporary extended log;
+- local configuration is never added to the report package;
+- ZIP construction waits for the Windows Shell namespace and verifies copied
+  item names/sizes before accepting the archive;
+- finalization stops extended logging before Outlook or fallback work, so an
+  external mail failure cannot leave the UI claiming that logging is active;
+- successful completion resets the session and removes its detailed log;
+  the ZIP remains for the mail/manual-send workflow;
+- Outlook automation failure degrades to `mailto:` where possible, Explorer
+  selection of the ZIP, and visible manual attachment instructions.
+
+This section describes integrated source behavior, not completed acceptance.
+The compiled RC2 flow still requires Windows testing, including ZIP timing,
+Outlook-present/absent cases, session reset, and sensitive-data boundaries.
 
 ## 16. Update/restart architecture
 
