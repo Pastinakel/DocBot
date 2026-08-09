@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-08-07. Repository facts refer to the 2.2 development line unless noted otherwise._
+_Last updated: 2026-08-08. Repository facts refer to the 2.2 development line unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -393,8 +393,12 @@ Because this feature is not yet merged and recently contained syntax errors, age
 
 Architectural requirements that should survive are:
 
-- consent gate before detailed logging;
+- consent gate before unredacted detailed logging;
 - central redaction/sanitization for standard logs;
+- raw copies of existing diagnostic events plus actually executed hotstring
+  triggers/replacements and detailed SMS/UIA traces only during that session;
+- telemetry secrets remain redacted and local configuration files are never
+  included in the package;
 - detailed session ends on process exit/restart;
 - reopening the report UI can reuse the current reporting session;
 - attachment creation is deterministic and understandable to support staff;
