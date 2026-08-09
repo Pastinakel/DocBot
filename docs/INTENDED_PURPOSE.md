@@ -51,10 +51,13 @@ DocBot verwerkt als functionele invoer:
 - gebruikerskeuzes zoals bevestigen, bellen of SMS kiezen;
 - vrije tekst die de gebruiker aan een probleemrapport toevoegt.
 
-In de huidige ziekenhuisomgeving kunnen telefoonnummers, hotstringinhoud en
-probleemrapporten persoonsgegevens en potentieel gezondheidsinformatie
-bevatten. De afzonderlijke telemetriemelding in `README.md` bepaalt welke
-gegevens de optionele telemetrie wel en niet verzendt.
+In de huidige ziekenhuisomgeving kunnen telefoonnummers en probleemrapporten
+persoonsgegevens en potentieel gezondheidsinformatie bevatten.
+Hotstringinhoud kan persoonsgegevens van de medewerker bevatten, zoals een
+naam, telefoonnummer of e-mailadres. Klinische hotstringtekst is bedoeld als
+generieke, herbruikbare formulering en is niet aan één patiënt gebonden. De
+afzonderlijke telemetriemelding in `README.md` bepaalt welke gegevens de
+optionele telemetrie wel en niet verzendt.
 
 ## 5. Uitvoer en acties
 

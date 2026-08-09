@@ -205,7 +205,7 @@ klembordinhoud te verzenden.
 | Gegeven | Bron en verwerking | Opslag of overdracht | Beoordeling |
 | --- | --- | --- | --- |
 | Patiënttelefoonnummer | Onder andere uit een EPD gekopieerd, via het klembord herkend en genormaliseerd | Tijdelijk in geheugen; bij bellen naar de telefonieserver; bij SMS in Edge | Persoonsgegeven en door patiënt-/zorgcontext mogelijk onderdeel van gezondheidsinformatie |
-| Hotstringafkorting en vervangtekst | Door gebruiker gekozen of gemaakt; ingevoegd in actieve applicatie | Persoonlijke hotstrings in lokale JSON; gebruikte tekst kan na toestemming in uitgebreide log staan | Kan klinische of patiëntgebonden inhoud bevatten |
+| Hotstringafkorting en vervangtekst | Door gebruiker gekozen of gemaakt; ingevoegd in actieve applicatie | Persoonlijke hotstrings in lokale JSON; gebruikte tekst kan na toestemming in uitgebreide log staan | Kan persoonsgegevens van de medewerker bevatten; klinische tekst is bedoeld als generieke formulering en is zonder patiëntkoppeling geen patiënt- of gezondheidsgegeven |
 | Probleembeschrijving | Vrije invoer door gebruiker | In rapport en ZIP; daarna eventueel per e-mail | Kan onbedoeld patiënt- of gezondheidsinformatie bevatten |
 | Ruwe telefonierespons en URL | Interne telefonieserver en aanvraagpad | Alleen in uitgebreide log na toestemming | Kan nummer, servergegevens of gevoelige context bevatten |
 | Snelkiesnaam en nummer | Standaard of door gebruiker ingevoerd | Lokale JSON | Persoons- of organisatiedata, afhankelijk van invoer |

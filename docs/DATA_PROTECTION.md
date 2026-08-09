@@ -54,7 +54,7 @@ Afhankelijk van het releasekanaal staan deze bestanden onder
 | Bestand | Inhoud | Mogelijke persoonsgegevens |
 | --- | --- | --- |
 | `settings.ini` | Instellingen, installatie-ID en gebruikstellers | Installatie-ID en gebruiksstatus van een medewerker/installatie |
-| `hotstrings.json` | Persoonlijke afkortingen en vervangteksten | Medewerkerinhoud en mogelijk patiënt- of gezondheidsinformatie |
+| `hotstrings.json` | Persoonlijke afkortingen en vervangteksten | Mogelijke persoonsgegevens van de medewerker, zoals naam, telefoonnummer of e-mailadres; klinische tekst is generiek en niet patiëntgebonden |
 | `package-settings.json` | Pakketstatussen en conflictkeuzes | Normaal geen directe persoonsgegevens |
 | `speeddial.json` | Namen, nummers en actiefstatus | Persoons-, medewerker- of organisatienummers |
 
@@ -171,7 +171,18 @@ DocBot de vervangtekst naar de actieve applicatie. Hotstringuitvoer gebruikt
 niet het Windows-klembord.
 
 **Gegevens:** afkorting, vervangtekst, pakketkeuze en optioneel datum/tijd.
-Vervangteksten kunnen medewerker-, patiënt- of gezondheidsinformatie bevatten.
+Vervangteksten zijn bedoeld als generieke, herbruikbare formuleringen. Zij
+kunnen persoonsgegevens van de medewerker bevatten, zoals een naam,
+telefoonnummer, e-mailadres of ondertekening. Klinische formuleringen zoals
+`geen afwijkingen` of `Op {{datum}} zag ik uw patiënt` beschrijven geen
+geïdentificeerde of identificeerbare patiënt en zijn daardoor op zichzelf geen
+patiënt- of gezondheidsgegevens.
+
+Patiëntidentificerende of patiëntspecifieke informatie is niet beoogd als
+inhoud van `hotstrings.json` en hoort daar niet in te worden opgeslagen. Het
+vrije `Replacement`-veld bevat momenteel geen technische controle die dit
+afdwingt; naleving berust daarom op gebruikersinstructie en organisatorisch
+beleid.
 
 **Ontvanger:** de actieve applicatie en het actieve veld; in de huidige
 ziekenhuisomgeving kan dit een EPD zijn.
@@ -185,7 +196,9 @@ controleert niet of de juiste patiënt, applicatie of het juiste veld actief is.
 
 **OPENSTAAND:** organisatorische bewaartermijn, verwijdering bij
 uitdiensttreding/functiewijziging, toegangsbeheer OneDrive/back-ups,
-inhoudseigenaarschap van medische pakketten en toepasselijke grondslag.
+inhoudseigenaarschap van medische pakketten, gebruikersinstructie die
+patiëntspecifieke inhoud uitsluit en toepasselijke grondslag voor eventuele
+medewerkergegevens.
 
 ### 3.5 Snelkiesnummers en instellingen
 
@@ -434,7 +447,7 @@ Officiële bronnen:
 
 | Criterium | Voorlopige beoordeling | Onderbouwing/open punt |
 | --- | --- | --- |
-| Bijzondere/zeer persoonlijke gegevens | Ja in huidige ziekenhuisinzet | Telefoonnummers kunnen patiëntgebonden zijn; hotstrings/logs kunnen gezondheidsinformatie bevatten |
+| Bijzondere/zeer persoonlijke gegevens | Ja in huidige ziekenhuisinzet | Telefoonnummers en probleemrapporten/uitgebreide logs kunnen patiëntgebonden informatie bevatten; generieke klinische hotstringtekst is op zichzelf geen gezondheidsgegeven |
 | Kwetsbare betrokkenen | Ja mogelijk | Patiënten; concrete patiëntgroepen OPENSTAAND |
 | Grootschaligheid | Waarschijnlijk via ziekenhuiscontext | Aantal gebruikers, patiënten, locaties en frequentie OPENSTAAND |
 | Systematische monitoring | Mogelijk | DocBot bewaakt klembordwijzigingen; bepaal of dit organisatorisch als monitoring van medewerkers/betrokkenen geldt |
