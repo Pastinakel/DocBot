@@ -29,6 +29,9 @@ Bestanden
 - `LICENSE` — PolyForm Noncommercial-licentie van DocBot 2.2 en later.
 - `AGENTS.md` en `CLAUDE.md` — project- en werkinstructies voor
   AI-assistenten.
+- `docs/REGULATORY_ASSESSMENT.md` — voorlopige, versiegebonden beoordeling van
+  DocBot als software, zorgsoftware en mogelijke Medical Device Software,
+  inclusief de relevantie van NEN 7510, IEC 62304, ISO 14971 en ISO 13485.
 
 Er is geen apart bestand voor debug-logging in de repo: dat logbestand wordt
 tijdens het draaien van het script aangemaakt op de gebruikerscomputer (zie
@@ -331,6 +334,22 @@ beschikbaar is, opent DocBot een nieuw e-mailbericht zonder bijlage en toont
 het het ZIP-bestand in Verkenner, zodat de gebruiker dit handmatig kan
 toevoegen. Het ontwikkelaarsdebugvenster blijft alleen zichtbaar voor het
 daarvoor ingerichte Windows-account.
+
+Regelgeving, informatiebeveiliging en patiëntveiligheid
+-------------------------------------------------------
+De actuele repositoryanalyse van de intended purpose, gegevensverwerking,
+autonome acties, mogelijke kwalificatie als Medical Device Software en de
+relevantie van NEN 7510, IEC 62304, ISO 14971 en ISO 13485 staat in
+`docs/REGULATORY_ASSESSMENT.md`. De huidige beoordeling is dat DocBot wel
+zorgsoftware is die persoonsgegevens en potentieel gezondheidsinformatie
+verwerkt, maar op basis van de huidige functie waarschijnlijk geen eigen
+medisch doel heeft onder de MDR.
+
+Deze beoordeling is voorlopig en geen juridisch of gecertificeerd
+conformiteitsoordeel. Nieuwe patiëntspecifieke analyse, klinische aanbeveling,
+alarmering, medicatie- of behandelbeslissing of aansturing van een medisch
+hulpmiddel vereist vóór implementatie een nieuwe kwalificatie- en
+risicoanalyse.
 
 Changelog
 ---------

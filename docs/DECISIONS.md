@@ -589,3 +589,32 @@ remains a release gate; only after explicit acceptance may stable `2.2` and
 tag `v2.2` be prepared.
 
 Do not use this exception as permission to add unrelated new functionality to the release branch.
+
+---
+
+## D-039 — DocBot is currently treated as healthcare software, not as MDSW
+
+**Status:** Accepted as a provisional repository-based qualification
+
+DocBot is software used in a hospital workflow and processes personal data and
+potential health information. Based on the currently documented intended
+purpose and implemented behavior, it is not presently treated as Medical
+Device Software under Regulation (EU) 2017/745. Its rules support text entry,
+communication, storage, diagnostics, and application management; they do not
+analyze patient-specific medical data to produce a diagnosis, prognosis,
+treatment recommendation, dosage, clinical alarm, or medical-device control.
+
+The complete reasoning, evidence, limitations, standards relevance, and
+reassessment triggers are recorded in `docs/REGULATORY_ASSESSMENT.md`.
+
+**Consequences**
+
+- NEN 7510 and systematic patient-safety risk management remain relevant even
+  without MDSW qualification.
+- Clinical package content requires controlled ownership and review because an
+  incorrect insertion can affect a patient record.
+- Any patient-specific clinical analysis, recommendation, alarm, or
+  medical-device control requires reassessment before implementation.
+- This decision is not a legal opinion or certified conformity finding and may
+  be superseded by external product claims, deployment facts, or a formal
+  regulatory review.

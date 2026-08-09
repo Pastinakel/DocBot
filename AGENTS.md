@@ -40,11 +40,21 @@ lees vóór uitvoering de documenten die voor de taak relevant zijn:
    terugdraait of opnieuw bespreekt.
 4. Lees `docs/TODO.md` bij werk aan openstaande taken, releaseplanning of
    bekende vervolgacties.
+5. Lees `docs/REGULATORY_ASSESSMENT.md` vóór wijzigingen aan de intended
+   purpose, patiëntgegevens, klinische pakketinhoud, beslislogica, autonome
+   acties, logging/telemetrie of integraties die de MDR-kwalificatie,
+   patiëntveiligheid of NEN 7510-scope kunnen beïnvloeden.
 
 Behandel deze documenten als duurzame projectcontext, maar controleer vóór
 implementatie altijd of statusgegevens nog overeenkomen met de actuele code,
 branches en pull requests. Werk de relevante `docs/`-bestanden bij wanneer een
 wijziging hun inhoud achterhaald maakt.
+
+`docs/REGULATORY_ASSESSMENT.md` is een voorlopige repositoryanalyse en geen
+juridisch of gecertificeerd conformiteitsoordeel. Pas de daarin vastgelegde
+kwalificatie niet stilzwijgend toe op nieuwe medische functionaliteit: voer bij
+een genoemde herbeoordelingstrigger eerst een nieuwe kwalificatie- en
+risicoanalyse uit.
 
 ## Hotstringmodel en uitvoer
 
