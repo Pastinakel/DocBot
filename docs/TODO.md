@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-07. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-08. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -34,6 +34,11 @@ _Last updated: 2026-08-07. This file is a handover backlog, not a promise that e
 - [ ] Close and reopen the reporting window and confirm the active session state is intentionally preserved.
 - [ ] Exit/restart DocBot and confirm extended logging is disabled/reset.
 - [ ] Confirm ordinary/background logging remains limited and redacted.
+- [ ] During a consented session, confirm full telephony responses and called
+      numbers appear only in the temporary extended log.
+- [ ] During a consented session, confirm the trigger and replacement of an
+      actually executed short, long, multiline, dynamic, and key-command
+      hotstring appear only in the temporary extended log.
 - [ ] Exercise the SMS/UIA path during a consented session and inspect that detailed logging occurs only there.
 - [ ] Create the diagnostic ZIP and inspect its contents for expected files and absence of unnecessary sensitive data.
 - [ ] Test Classic Outlook already running.
