@@ -30,7 +30,7 @@ fabrikant beoogde gebruik.
 | Niveau | Beoordeling | Hoofdreden |
 | --- | --- | --- |
 | Software | Ja, zonder twijfel | DocBot verwerkt invoer, bewaart toestand, genereert uitvoer, communiceert over het netwerk en stuurt andere applicaties aan. |
-| Zorgsoftware die gezondheidsinformatie verwerkt | Ja | DocBot wordt gebruikt in een ziekenhuisworkflow, verwerkt patiënttelefoonnummers, kan klinische tekst in HiX invoegen en kan gevoelige diagnostische logs verzamelen. |
+| Zorgsoftware die gezondheidsinformatie verwerkt | Ja | DocBot kan gebruikt worden in een ziekenhuisworkflow, patiënttelefoonnummers verwerken, kan klinische tekst in een EPD invoegen en kan gevoelige diagnostische logs verzamelen. |
 | MDSW onder de huidige intended purpose | Waarschijnlijk niet | De aangetroffen functies analyseren geen patiëntspecifieke medische gegevens en geven geen diagnose, prognose, monitoring, behandelkeuze of doseringsadvies. De beslisregels zijn technisch en administratief. |
 
 DocBot heeft wel reële informatiebeveiligings- en patiëntveiligheidsrisico's.
@@ -64,12 +64,13 @@ vallen buiten de onderzochte repositorybasis.
 
 De meest concrete omschrijving staat in `README.md:6-10` en wordt bevestigd
 door `docs/PROJECT_CONTEXT.md:5-15`: DocBot is een AutoHotkey v2-hulpmiddel
-voor ziekenhuismedewerkers met twee hoofdfuncties:
+voor bedrijfsmedewerkers met twee hoofdfuncties:
 
 1. tekstvervanging door persoonlijke en meegeleverde hotstrings;
 2. telefonieondersteuning via de interne IP-telefonie, inclusief detectie van
    telefoonnummers op het Windows-klembord.
 
+DocBot is generiek toepasbaar maar wordt in de context van een ziekenhuis ingezet.
 Aanvullende functies zijn snelkiezen, pakketbeheer, SMS-assistentie via Edge,
 telemetrie, probleemrapportage en gecontroleerd afsluiten, herstarten en
 updaten.
@@ -191,17 +192,17 @@ klembordinhoud te verzenden.
 
 | Gegeven | Bron en verwerking | Opslag of overdracht | Beoordeling |
 | --- | --- | --- | --- |
-| Patiënttelefoonnummer | Onder andere uit HiX gekopieerd, via het klembord herkend en genormaliseerd | Tijdelijk in geheugen; bij bellen naar de telefonieserver; bij SMS in Edge | Persoonsgegeven en door patiënt-/zorgcontext mogelijk onderdeel van gezondheidsinformatie |
+| Patiënttelefoonnummer | Onder andere uit een EPD gekopieerd, via het klembord herkend en genormaliseerd | Tijdelijk in geheugen; bij bellen naar de telefonieserver; bij SMS in Edge | Persoonsgegeven en door patiënt-/zorgcontext mogelijk onderdeel van gezondheidsinformatie |
 | Hotstringafkorting en vervangtekst | Door gebruiker gekozen of gemaakt; ingevoegd in actieve applicatie | Persoonlijke hotstrings in lokale JSON; gebruikte tekst kan na toestemming in uitgebreide log staan | Kan klinische of patiëntgebonden inhoud bevatten |
 | Probleembeschrijving | Vrije invoer door gebruiker | In rapport en ZIP; daarna eventueel per e-mail | Kan onbedoeld patiënt- of gezondheidsinformatie bevatten |
 | Ruwe telefonierespons en URL | Interne telefonieserver en aanvraagpad | Alleen in uitgebreide log na toestemming | Kan nummer, servergegevens of gevoelige context bevatten |
 | Snelkiesnaam en nummer | Standaard of door gebruiker ingevoerd | Lokale JSON | Persoons- of organisatiedata, afhankelijk van invoer |
 | Telemetrie-identificatie en gebruik | DocBot-installatie en Windows-account | Lokale INI en optionele HTTPS-webhook | Medewerker-/apparaatgegevens; geen patiëntinhoud beoogd |
 
-DocBot leest geen volledig patiëntdossier in en bewaart geen gestructureerde
+DocBot leest geen patiëntdossier in en bewaart geen gestructureerde
 diagnoses, uitslagen of medicatielijst als eigen patiëntendatabase. Het staat
 wel in de gegevensstroom van zorgdocumentatie en patiëntcommunicatie. Daarom
-is het zorgsoftware die persoonsgegevens en potentieel gezondheidsinformatie
+is het software die persoonsgegevens en potentieel gezondheidsinformatie
 verwerkt.
 
 Lokale instellingen en inhoud worden als INI/JSON opgeslagen onder Documents;
@@ -223,7 +224,7 @@ beheerde werkplekomgeving.
 | Edge-tab activeren en SMS-veld vullen | Communicatieondersteuning | Nee |
 | Afsluiten, herladen of updatepad starten | Applicatiebeheer | Nee |
 
-DocBot verricht geen aangetroffen regel die patiëntkenmerken omzet in een
+DocBot bevat geen regels die patiëntkenmerken omzet in een
 diagnose, prognose, behandeladvies, dosering, klinische score of medisch alarm.
 
 ## 8. MDR- en MDSW-beoordeling
