@@ -119,6 +119,68 @@ Only after RC2 is explicitly accepted.
 
 ---
 
+## P1 — Make HTTPS mandatory for internal telephony
+
+An exploratory test on 2026-08-09 showed that changing the local telephony
+`BaseUrl` from `http://` to `https://` still delivered a registration/link
+code and successfully established a test call. Treat this as evidence that the
+HTTPS migration path is viable, not yet as complete acceptance or proof for
+every managed Windows workstation.
+
+### Application and documentation
+
+- [ ] Change `DocBot.local.example.ahk` so the telephony `BaseUrl` example uses
+  `https://`.
+- [ ] Extend `ValidateLocalConfiguration()` to reject a telephony `BaseUrl`
+  that does not use HTTPS. Do not add a production certificate-validation
+  bypass or silent HTTP fallback.
+- [ ] Keep registration, event polling, and dialing on the same validated HTTPS
+  base URL unless the server contract is deliberately redesigned.
+- [ ] Document the HTTPS-only production invariant in `README.md`,
+  `AGENTS.md`, `CLAUDE.md`, `docs/ARCHITECTURE.md`, and where relevant
+  `docs/REGULATORY_ASSESSMENT.md` and `docs/DECISIONS.md`.
+- [ ] Confirm separately whether the server provides strong client/server
+  authentication; TLS transport encryption alone does not establish client
+  authorization. Record any additional authentication work as an explicit
+  scoped task.
+
+### Infrastructure dependencies
+
+- [ ] Confirm that the production hostname, certificate subject/SAN, full
+  certificate chain, TLS version, and listening port are correct for managed
+  Windows workstations.
+- [ ] Confirm that the issuing root/intermediate CA certificates are deployed
+  through the normal hospital trust-store management and that no client needs
+  to ignore certificate errors.
+- [ ] Confirm that reverse-proxy or server timeouts support the long-polling
+  event endpoint.
+- [ ] Assign ownership and monitoring for certificate renewal/expiry.
+- [ ] After the HTTPS rollout is accepted, disable the unsecured HTTP listener
+  rather than relying on an HTTP-to-HTTPS redirect. Coordinate this with the
+  telephony/server owner; it is not a DocBot-only change.
+
+### Acceptance evidence
+
+- [x] Exploratory HTTPS test: registration/link code received.
+- [x] Exploratory HTTPS test: test call successfully established.
+- [ ] Registration/link-code request succeeds in a compiled test build on a
+  representative managed Windows workstation.
+- [ ] Event polling remains active over time, does not overlap, and recovers
+  after the known stop/restart scenarios through HTTPS.
+- [ ] Linking and a controlled call to a designated test number succeed.
+- [ ] Certificate-name, trust-chain, expiry, and TLS failures are rejected and
+  produce a clear, non-sensitive diagnostic instead of falling back to HTTP.
+- [ ] The final release/preflight checklist records the HTTPS base URL and
+  certificate validation result without recording the confidential hostname,
+  endpoints, telephone numbers, or certificate private material in Git.
+
+This is a real `DocBot.ahk` behavior change. Implement it on a dedicated
+feature/fix branch from the then-current `develop`, update the branch-specific
+`AppVersion` in every commit that changes `DocBot.ahk`, and validate the
+compiled result on Windows and the internal network before integration.
+
+---
+
 ## P1 — Change user-data profile selection to build mode
 
 ### Desired rule
