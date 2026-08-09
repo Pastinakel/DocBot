@@ -4,14 +4,16 @@ _Status: voorlopige repositoryanalyse, geen juridisch advies of formeel conformi
 
 _Beoordelingsdatum: 2026-08-09._
 
-_Onderzochte basis: branch `release/2.2-rc`, commit `67d5965`, `AppVersion = 2.2-rc.2`._
+_Onderzochte basis: branch `release/2.2-rc`, uitgangscommit `d3d83ff`,
+`AppVersion = 2.2-rc.3`. De wijzigingen na deze uitgangscommit verduidelijken
+de intended purpose en wijzigen geen functioneel gedrag._
 
 ## 1. Doel en status
 
 Dit document legt de beoordeling vast of DocBot:
 
 1. software is;
-2. zorgsoftware is die gezondheidsinformatie verwerkt;
+2. bij de huidige zorgtoepassing gezondheidsinformatie verwerkt;
 3. mogelijk Medical Device Software (MDSW) is onder Verordening (EU) 2017/745 (MDR).
 
 Het beschrijft daarnaast de mogelijke relevantie van NEN 7510, IEC 62304,
@@ -30,7 +32,7 @@ fabrikant beoogde gebruik.
 | Niveau | Beoordeling | Hoofdreden |
 | --- | --- | --- |
 | Software | Ja, zonder twijfel | DocBot verwerkt invoer, bewaart toestand, genereert uitvoer, communiceert over het netwerk en stuurt andere applicaties aan. |
-| Zorgsoftware die gezondheidsinformatie verwerkt | Ja | DocBot kan gebruikt worden in een ziekenhuisworkflow, patiënttelefoonnummers verwerken, kan klinische tekst in een EPD invoegen en kan gevoelige diagnostische logs verzamelen. |
+| Toepassing binnen zorgprocessen | Ja | DocBot wordt toegepast in een ziekenhuisomgeving en kan daar patiënttelefoonnummers verwerken, klinische tekst in een EPD invoegen en gevoelige diagnostische logs verzamelen. |
 | MDSW onder de huidige intended purpose | Waarschijnlijk niet | De aangetroffen functies analyseren geen patiëntspecifieke medische gegevens en geven geen diagnose, prognose, monitoring, behandelkeuze of doseringsadvies. De beslisregels zijn technisch en administratief. |
 
 DocBot heeft wel reële informatiebeveiligings- en patiëntveiligheidsrisico's.
@@ -42,6 +44,11 @@ De beoordeling steunt onder meer op:
 
 - `README.md`: productbeschrijving, installatie, functionele uitleg,
   telemetrie en diagnostiek;
+- `docs/INTENDED_PURPOSE.md`: goedgekeurde verklaring van het beoogde gebruik,
+  de grenzen en de uitgesloten medische toepassingen;
+- `docs/DATA_PROTECTION.md`: technische gegevensstromen en openstaande
+  organisatorische beoordeling van rollen, grondslagen, ontvangers,
+  bewaartermijnen, autorisaties, transportbeveiliging en DPIA-noodzaak;
 - `DocBot.ahk`: feitelijke hotstring-, telefonie-, SMS-, opslag-, logging-,
   rapportage- en updatefunctionaliteit;
 - `Telemetry.ahk`: telemetrieconfiguratie, lokale tellers en payload;
@@ -62,18 +69,23 @@ vallen buiten de onderzochte repositorybasis.
 
 ### 4.1 Aangetroffen productdoel
 
-De meest concrete omschrijving staat in `README.md:6-10` en wordt bevestigd
-door `docs/PROJECT_CONTEXT.md:5-15`: DocBot is een AutoHotkey v2-hulpmiddel
-voor bedrijfsmedewerkers met twee hoofdfuncties:
+De primaire verklaring staat in `docs/INTENDED_PURPOSE.md` en wordt in
+`README.md` en `docs/PROJECT_CONTEXT.md` weerspiegeld: DocBot is
+productiviteitssoftware voor medewerkers
+in een beheerde bedrijfsomgeving. De software ondersteunt tekstinvoer door
+ingestelde afkortingen (hotstrings) te vervangen en ondersteunt communicatie
+door telefoonnummers op het Windows-klembord technisch te herkennen en te
+normaliseren. Afhankelijk van de gebruikersinstelling kan DocBot een herkend
+nummer doorgeven aan een geconfigureerde interne telefoniedienst of invullen
+in een geconfigureerde SMS-webapplicatie. DocBot verzendt zelf geen
+SMS-berichten.
 
-1. tekstvervanging door persoonlijke en meegeleverde hotstrings;
-2. telefonieondersteuning via de interne IP-telefonie, inclusief detectie van
-   telefoonnummers op het Windows-klembord.
-
-DocBot is generiek toepasbaar maar wordt in de context van een ziekenhuis ingezet.
-Aanvullende functies zijn snelkiezen, pakketbeheer, SMS-assistentie via Edge,
-telemetrie, probleemrapportage en gecontroleerd afsluiten, herstarten en
-updaten.
+DocBot is ontstaan vanuit behoeften in een ziekenhuisomgeving en wordt daar
+ook toegepast. De software heeft geen beoogd medisch doel: zij verricht geen
+medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft
+geen diagnose-, behandel-, doserings- of monitoringsadvies. Aanvullende functies zijn
+snelkiezen, pakketbeheer, telemetrie, probleemrapportage en gecontroleerd
+afsluiten, herstarten en updaten.
 
 ### 4.2 Niet aangetroffen als productdoel
 
@@ -86,10 +98,10 @@ In de repository is geen intended purpose aangetroffen voor:
 - klinische alarmering op basis van patiëntparameters;
 - aansturing of beïnvloeding van een medisch hulpmiddel.
 
-Er is evenmin een formele, goedgekeurde intended-purposeverklaring met
-gebruikersgroep, gebruiksomgeving, invoer, uitvoer, beperkingen en expliciete
-uitsluitingen aangetroffen. De huidige kwalificatie is daarom afgeleid uit
-documentatie én implementatie en moet als voorlopig worden behandeld.
+De intended-purposeverklaring legt de gebruikersgroep, gebruiksomgeving,
+hoofdinvoer, hoofduitvoer en uitgesloten medische toepassingen vast. De
+regulatoire kwalificatie blijft voorlopig: zij is gebaseerd op documentatie én
+implementatie en is geen extern juridisch of gecertificeerd oordeel.
 
 ## 5. Feitelijke functionaliteit
 
@@ -199,7 +211,7 @@ klembordinhoud te verzenden.
 | Snelkiesnaam en nummer | Standaard of door gebruiker ingevoerd | Lokale JSON | Persoons- of organisatiedata, afhankelijk van invoer |
 | Telemetrie-identificatie en gebruik | DocBot-installatie en Windows-account | Lokale INI en optionele HTTPS-webhook | Medewerker-/apparaatgegevens; geen patiëntinhoud beoogd |
 
-DocBot leest geen patiëntdossier in en bewaart geen gestructureerde
+DocBot leest geen patiëntdossier als gegevensbron uit en bewaart geen gestructureerde
 diagnoses, uitslagen of medicatielijst als eigen patiëntendatabase. Het staat
 wel in de gegevensstroom van zorgdocumentatie en patiëntcommunicatie. Daarom
 is het software die persoonsgegevens en potentieel gezondheidsinformatie
@@ -399,39 +411,38 @@ conformiteit met een norm of de MDR.
 
 ## 11. Belangrijkste hiaten
 
-1. Er ontbreekt een formeel goedgekeurde intended-purposeverklaring.
-2. Er is geen formele MDR-kwalificatie buiten deze voorlopige analyse.
-3. Er is geen traceerbaar informatiebeveiligings- en
+1. Er is geen formele MDR-kwalificatie buiten deze voorlopige analyse.
+2. Er is geen traceerbaar informatiebeveiligings- en
    patiëntveiligheidsrisicodossier aangetroffen.
-4. Klinische pakketinhoud heeft in de repository geen zichtbare klinische
+3. Klinische pakketinhoud heeft in de repository geen zichtbare klinische
    eigenaar, bron, vierogenbeoordeling of formele inhoudelijke vrijgave.
-5. Tekst wordt naar de actieve applicatie gestuurd zonder aantoonbare
+4. Tekst wordt naar de actieve applicatie gestuurd zonder aantoonbare
    patiënt-, applicatie- of veldcontrole.
-6. Direct bellen kan na klemborddetectie zonder nieuwe bevestiging plaatsvinden.
-7. De voorbeeldconfiguratie gebruikt een `http://`-basisadres voor telefonie;
+5. Direct bellen kan na klemborddetectie zonder nieuwe bevestiging plaatsvinden.
+6. De voorbeeldconfiguratie gebruikt een `http://`-basisadres voor telefonie;
    de productiebeveiliging is niet uit de repository vast te stellen
    (`DocBot.local.example.ahk:8-12`).
-8. Lokale INI/JSON/logbestanden hebben geen applicatie-eigen versleuteling of
+7. Lokale INI/JSON/logbestanden hebben geen applicatie-eigen versleuteling of
    zichtbare ACL-inrichting.
-9. Voor centrale update-/signaalopdrachten is geen cryptografische
+8. Voor centrale update-/signaalopdrachten is geen cryptografische
    authenticatie in de clientcode aangetroffen.
-10. Er ontbreekt een geautomatiseerde regressie-, integratie- en
+9. Er ontbreekt een geautomatiseerde regressie-, integratie- en
     veiligheidstestsuite.
-11. Duurzame projectdocumentatie kan achterlopen op code; statusclaims moeten
+10. Duurzame projectdocumentatie kan achterlopen op code; statusclaims moeten
     tegen de actuele branch worden gecontroleerd.
 
 ## 12. Aanbevolen vervolgacties
 
-1. Stel een goedgekeurde intended-purposeverklaring vast met gebruikers,
-   omgeving, invoer, uitvoer, autonome acties, beperkingen en uitgesloten
-   medische toepassingen.
+1. Beheer de vastgelegde intended purpose consistent in de README,
+   gebruikersinterface, projectdocumentatie, distributie en externe claims.
 2. Laat de MDR-kwalificatie beoordelen door de verantwoordelijke voor medische
    hulpmiddelen of een daarvoor gekwalificeerde specialist.
 3. Neem DocBot expliciet op in de NEN 7510-scope, gegevensclassificatie en
    risicoanalyse van de zorgorganisatie.
-4. Documenteer gegevensstromen, rollen, grondslagen, ontvangers,
-   bewaartermijnen, autorisaties en transportbeveiliging en bepaal of een DPIA
-   nodig is.
+4. Vul de openstaande organisatorische onderdelen in
+   `docs/DATA_PROTECTION.md` aan, laat rollen, grondslagen, ontvangers,
+   bewaartermijnen, autorisaties en transportbeveiliging goedkeuren en laat de
+   verwerkingsverantwoordelijke en FG het DPIA-besluit vastleggen.
 5. Maak een traceerbare patiëntveiligheids- en informatiebeveiligingsanalyse,
    ook zolang DocBot geen MDSW is.
 6. Breng klinische standaardteksten onder inhoudelijk eigenaarschap,

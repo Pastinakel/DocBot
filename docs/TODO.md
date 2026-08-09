@@ -10,7 +10,7 @@ _Last updated: 2026-08-09. This file is a handover backlog, not a promise that e
 
 ---
 
-## P0 — Full 2.2 RC2 acceptance test
+## P0 — Full 2.2 RC3 acceptance test
 
 At minimum, validate the following on the managed Windows environment and, where required, on the internal hospital network.
 
@@ -104,7 +104,7 @@ At minimum, validate the following on the managed Windows environment and, where
 
 ## P1 — Finalize stable 2.2 release
 
-Only after RC2 is explicitly accepted.
+Only after the current RC3 is explicitly accepted.
 
 - [ ] On the release branch, set `AppVersion` from the final `2.2-rc.N` to stable `2.2` in the definitive release commit.
 - [ ] Change README status from release candidate/development wording to stable 2.2 wording.
@@ -366,7 +366,7 @@ These problems are important historical context but are not open TODOs unless th
 - **Shared telephony XHR reference:** replaced by independent request objects.
 - **Fixed-interval long polling:** replaced by chained polling after response completion.
 - **Clipboard-based hotstring expansion:** deliberately removed/prohibited.
-- **Extended-logging integration status in durable docs:** synchronized with the integrated `develop`/RC2 source; obsolete feature-branch promotion tasks were removed while RC2 acceptance tests remain open.
+- **Extended-logging integration status in durable docs:** synchronized with the integrated `develop`/RC2 source; obsolete feature-branch promotion tasks were removed while broader release-candidate acceptance remains open.
 - **Integrated problem reporting on RC2:** the dedicated compiled-Windows validation checklist was completed by the project owner on 2026-08-09, including consent/privacy boundaries, session behavior, diagnostic content, ZIP creation, and Outlook/manual fallback paths.
 
 ---

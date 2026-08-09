@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-rc.2"
+global AppVersion := "2.2-rc.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -591,10 +591,12 @@ BuildMainGui() {
         Map("Overzicht", "overzicht")
     )
     AddHelpAccordionSection(
-        "Hoe bel ik vanuit HiX?",
+        "Hoe bel of sms ik vanuit een applicatie?",
         "Kies bij Belactie op de pagina Overzicht wat DocBot met een herkend nummer moet doen."
-        "`r`n`r`nKlik linksboven in HiX op het pijltje naast het telefoonnummer van de patiënt. "
-        "Klik vervolgens op het getoonde telefoonnummer. DocBot herkent het nummer en voert de gekozen belactie uit."
+        "`r`n`r`nKopieer in de gebruikte applicatie het gewenste telefoonnummer. "
+        "DocBot herkent het nummer en voert de gekozen belactie uit."
+        "`r`n`r`nIn HiX klik je linksboven op het pijltje naast het telefoonnummer van de patiënt "
+        "en vervolgens op het getoonde telefoonnummer."
         "`r`n`r`nJe kunt kiezen voor niets doen, bellen na bevestiging, direct bellen of bij externe nummers kiezen tussen bellen en sms. "
         "Interne nummers worden bij die laatste keuze direct gebeld."
         "`r`n`r`nBij een extern Nederlands 06-nummer opent SMS de onder Instellingen gekozen pagina en vult DocBot het telefoonnummer in."
@@ -1535,7 +1537,8 @@ BuildAboutText() {
     global AppVersion
 
     text := "DocBot versie " AppVersion "`r`n`r`n"
-    text .= "DocBot is een tool die telefoonnummers kan kiezen via de interne IP-telefonie en teksten kan vervangen via hotstrings, geschreven om het werken met digitale hulpmiddelen in de werkplek van het Meander wat makkelijker te maken.`r`n`r`n"
+    text .= "DocBot is productiviteitssoftware voor medewerkers in een beheerde bedrijfsomgeving. De software vervangt ingestelde afkortingen (hotstrings), herkent en normaliseert telefoonnummers op het Windows-klembord en kan deze doorgeven aan een geconfigureerde interne telefoniedienst of invullen in een geconfigureerde SMS-webapplicatie. DocBot verzendt zelf geen SMS-berichten.`r`n`r`n"
+    text .= "DocBot is ontstaan vanuit behoeften in een ziekenhuisomgeving en wordt daar ook toegepast. De software verricht geen medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft geen diagnose-, behandel-, doserings- of monitoringsadvies.`r`n`r`n"
     text .= "Het is een projectje dat in vrije tijd wordt onderhouden en waar het Meander geen support op levert. Suggesties zijn welkom.`r`n`r`n"
     text .= "DocBot is het resultaat van een langlopende en zeer inspirerende samenwerking vanuit de drive om te innoveren tussen Steven Giesbers, Seyit Seme en onderstaande.`r`n`r`n"
     text .= "Nico Feenstra`r`n`r`n"

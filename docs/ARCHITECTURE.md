@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-08-09. Repository facts refer to the current 2.2 development and RC2 lines unless noted otherwise._
+_Last updated: 2026-08-09. Repository facts refer to the current 2.2 development and RC3 lines unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -387,7 +387,7 @@ The developer-only debug UI is gated by Windows account in current code.
 
 ### 15.2 Integrated problem reporting and extended logging
 
-The current 2.2 development and RC2 code contains the `Probleem melden...`
+The current 2.2 development and RC3 code contains the `Probleem melden...`
 flow. Help and the tray menu open the same reporting GUI and session state.
 `ProblemReportSession` is held in memory and tracks the phase, consented logging
 state, start time, user description, temporary log path, and finalization lock.
@@ -431,7 +431,7 @@ Architectural boundaries:
 
 The project owner completed the dedicated compiled-Windows validation of this
 RC2 flow on 2026-08-09, including ZIP behavior, Outlook/fallback cases, session
-state, and sensitive-data boundaries. The broader full-RC2 acceptance test is
+state, and sensitive-data boundaries. The broader full-RC3 acceptance test is
 a separate release gate and remains tracked in `TODO.md`.
 
 ## 16. Update/restart architecture

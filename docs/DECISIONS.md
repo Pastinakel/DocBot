@@ -583,29 +583,34 @@ The 2.2 RC branch was created under a feature freeze. The project owner explicit
 **Integration outcome**
 
 The feature history was merged into `develop`; the updated development state
-was then merged into `release/2.2-rc`, where `AppVersion` is `2.2-rc.2`.
-The exception is therefore integrated. A complete compiled Windows RC2 test
-remains a release gate; only after explicit acceptance may stable `2.2` and
-tag `v2.2` be prepared.
+was then merged into `release/2.2-rc` as RC2. The exception is therefore
+integrated. The branch is now RC3 because intended-purpose and related
+user-facing wording changed. Complete acceptance of the current release
+candidate remains a release gate; only after explicit acceptance may stable
+`2.2` and tag `v2.2` be prepared.
 
 Do not use this exception as permission to add unrelated new functionality to the release branch.
 
 ---
 
-## D-039 — DocBot is currently treated as healthcare software, not as MDSW
+## D-039 — DocBot is general-purpose productivity software used in healthcare, not MDSW
 
 **Status:** Accepted as a provisional repository-based qualification
 
-DocBot is software used in a hospital workflow and processes personal data and
-potential health information. Based on the currently documented intended
-purpose and implemented behavior, it is not presently treated as Medical
-Device Software under Regulation (EU) 2017/745. Its rules support text entry,
-communication, storage, diagnostics, and application management; they do not
-analyze patient-specific medical data to produce a diagnosis, prognosis,
-treatment recommendation, dosage, clinical alarm, or medical-device control.
+DocBot is productivity software intended for employees in a managed business
+environment. It originated from needs in a hospital workplace and is used in
+hospital workflows, where it processes personal data and potential health
+information. Based on the documented intended purpose and implemented
+behavior, it is not presently treated as Medical Device Software under
+Regulation (EU) 2017/745. Its rules support text entry, communication, storage,
+diagnostics, and application management; they do not analyze patient-specific
+medical data to produce a diagnosis, prognosis, treatment recommendation,
+dosage, clinical alarm, or medical-device control.
 
-The complete reasoning, evidence, limitations, standards relevance, and
-reassessment triggers are recorded in `docs/REGULATORY_ASSESSMENT.md`.
+The approved intended-purpose statement is recorded in
+`docs/INTENDED_PURPOSE.md`. The complete qualification reasoning, evidence,
+limitations, standards relevance, and reassessment triggers are recorded in
+`docs/REGULATORY_ASSESSMENT.md`.
 
 **Consequences**
 

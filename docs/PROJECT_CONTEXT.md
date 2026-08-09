@@ -4,10 +4,12 @@ _Last updated: 2026-08-09. This document combines the repository state on the 2.
 
 ## 1. Purpose
 
-DocBot is an AutoHotkey v2 application for hospital employees. It is distributed to end users as a compiled Windows executable and combines two core workflows:
+DocBot is an AutoHotkey v2 productivity application for employees in a managed business environment. It is distributed to end users as a compiled Windows executable and combines two core workflows:
 
 1. text replacement through personal and bundled hotstrings;
-2. telephony assistance through the hospital's internal IP-telephony service, including telephone-number detection from the Windows clipboard.
+2. communication assistance by detecting and normalizing telephone numbers from the Windows clipboard and, depending on user settings, passing them to a configured internal telephony service or filling them into a configured SMS web application. DocBot does not send SMS messages itself.
+
+DocBot originated from needs in a hospital workplace and is used there. It has no intended medical purpose: it does not medically analyze patient data, draw clinical conclusions, or provide diagnostic, treatment, dosage, or monitoring advice.
 
 The application also contains speed dial, an in-app Help page, package management, telemetry, diagnostics, SMS assistance through Edge/UI Automation, and a controlled update/restart mechanism.
 
@@ -40,10 +42,10 @@ Repository state checked locally on 2026-08-09:
 - `main` is the production line and represents stable DocBot 2.1.
 - `develop` is the central 2.2 development line and contains `AppVersion = 2.2-dev.6` at merge commit `aecb888`.
 - The consent-based extended-logging work was integrated into `develop` through its preserved merge history.
-- `release/2.2-rc` contains that updated development state through merge commit `f0b67f3` and currently has `AppVersion = 2.2-rc.2`.
+- `release/2.2-rc` contains that updated development state through merge commit `f0b67f3` and currently has `AppVersion = 2.2-rc.3`; RC3 changes only intended-purpose and related user-facing wording.
 - `feature/extended-logging` is no longer the branch to test or integrate; the current RC code is the source of truth for release validation.
 
-The project owner approved problem reporting and consent-based extended logging as a late exception to the 2.2 feature freeze. That integration and the RC2 version transition are complete in Git. This does **not** mean RC2 has passed acceptance: a complete compiled Windows test, including managed-workplace behavior, Outlook fallback, ZIP creation, telephony, and the internal-network paths, remains required before stable 2.2.
+The project owner approved problem reporting and consent-based extended logging as a late exception to the 2.2 feature freeze. That integration and the RC2 version transition are complete in Git. The current RC3 wording change does **not** complete release acceptance: a compiled Windows check of the changed source plus the broader managed-workplace, telephony, and internal-network acceptance paths remains required before stable 2.2.
 
 Do not infer functional validation from source integration alone. The earlier feature work contained repeated AutoHotkey v2 multiline-concatenation failures, so the integrated RC must still pass a real AHK v2 parse/compile/run and functional test on Windows.
 
@@ -183,7 +185,7 @@ The implementation has two reporting paths:
 
 The project owner completed the dedicated compiled-Windows validation of this
 problem-reporting flow on RC2 on 2026-08-09. That closes the specific
-problem-reporting checklist; it does not by itself complete the broader RC2
+problem-reporting checklist; it does not by itself complete the broader RC3
 acceptance test covering the rest of DocBot.
 
 ## 5. Build and deployment constraints

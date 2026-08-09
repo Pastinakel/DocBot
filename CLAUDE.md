@@ -34,12 +34,22 @@ lees vóór uitvoering de documenten die voor de taak relevant zijn:
 
 1. Lees `docs/PROJECT_CONTEXT.md` voor productcontext, requirements, bekende
    bugs en de actuele ontwikkel- en releasestatus.
-2. Lees `docs/ARCHITECTURE.md` voordat je architectuur, opslag, dataflows,
+2. Lees `docs/INTENDED_PURPOSE.md` vóór wijzigingen aan het beoogde gebruik,
+   gebruikers, gebruiksomgeving, invoer, uitvoer, autonome acties, beperkingen
+   of uitgesloten medische toepassingen.
+3. Lees `docs/DATA_PROTECTION.md` vóór wijzigingen aan persoonsgegevens,
+   gegevensstromen, ontvangers, bewaartermijnen, autorisaties,
+   transportbeveiliging of DPIA-relevante functionaliteit.
+4. Lees `docs/ARCHITECTURE.md` voordat je architectuur, opslag, dataflows,
    componentgrenzen of integraties wijzigt.
-3. Lees `docs/DECISIONS.md` voordat je een bestaande ontwerpkeuze vervangt,
+5. Lees `docs/DECISIONS.md` voordat je een bestaande ontwerpkeuze vervangt,
    terugdraait of opnieuw bespreekt.
-4. Lees `docs/TODO.md` bij werk aan openstaande taken, releaseplanning of
+6. Lees `docs/TODO.md` bij werk aan openstaande taken, releaseplanning of
    bekende vervolgacties.
+7. Lees `docs/REGULATORY_ASSESSMENT.md` vóór wijzigingen aan de intended
+   purpose, patiëntgegevens, klinische pakketinhoud, beslislogica, autonome
+   acties, logging/telemetrie of integraties die de MDR-kwalificatie,
+   patiëntveiligheid of NEN 7510-scope kunnen beïnvloeden.
 
 Behandel deze documenten als duurzame projectcontext, maar controleer vóór
 implementatie altijd of statusgegevens nog overeenkomen met de actuele code,

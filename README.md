@@ -3,14 +3,22 @@ DocBot
 
 Overzicht
 ---------
-DocBot is een AutoHotkey v2-hulpmiddel voor medewerkers met twee hoofdfuncties:
-(a) tekstvervanging via hotstrings, en (b) bellen via de interne IP-telefonie
-van het bedrijf, inclusief automatische detectie van telefoonnummers op
-het klembord. Alles draait via één GUI met sidebar-navigatie en een
-tray-icoon.
+DocBot is productiviteitssoftware voor medewerkers in een beheerde
+bedrijfsomgeving. De software ondersteunt tekstinvoer door ingestelde
+afkortingen (hotstrings) te vervangen en ondersteunt communicatie door
+telefoonnummers op het Windows-klembord technisch te herkennen en te
+normaliseren. Afhankelijk van de gebruikersinstelling kan DocBot een herkend
+nummer doorgeven aan een geconfigureerde interne telefoniedienst of invullen
+in een geconfigureerde SMS-webapplicatie. DocBot verzendt zelf geen
+SMS-berichten. Alles draait via één GUI met sidebar-navigatie en een tray-icoon.
 
-Deze README beschrijft releasecandidate 2.2 op de
-`release/2.2-rc.1`-branch. Versie 2.1 is de huidige stabiele productieversie op
+DocBot is ontstaan vanuit behoeften in een ziekenhuisomgeving en wordt daar
+ook toegepast. De software heeft geen beoogd medisch doel: zij verricht geen
+medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft
+geen diagnose-, behandel-, doserings- of monitoringsadvies.
+
+Deze README beschrijft releasecandidate 2.2 (`2.2-rc.3`) op de
+`release/2.2-rc`-branch. Versie 2.1 is de huidige stabiele productieversie op
 `main`; op deze releasebranch worden uitsluitend bugfixes, documentatie en
 releasevoorbereidingen toegevoegd.
 
@@ -30,8 +38,16 @@ Bestanden
 - `AGENTS.md` en `CLAUDE.md` — project- en werkinstructies voor
   AI-assistenten.
 - `docs/REGULATORY_ASSESSMENT.md` — voorlopige, versiegebonden beoordeling van
-  DocBot als software, zorgsoftware en mogelijke Medical Device Software,
-  inclusief de relevantie van NEN 7510, IEC 62304, ISO 14971 en ISO 13485.
+  DocBot als productiviteitssoftware die in zorgprocessen wordt toegepast en
+  als mogelijke Medical Device Software, inclusief de relevantie van
+  NEN 7510, IEC 62304, ISO 14971 en ISO 13485.
+- `docs/INTENDED_PURPOSE.md` — goedgekeurde verklaring van het beoogde gebruik,
+  de gebruikers, omgeving, invoer, uitvoer, autonome acties, beperkingen en
+  uitgesloten medische toepassingen.
+- `docs/DATA_PROTECTION.md` — technische beschrijving van persoonsgegevens-
+  en gegevensstromen, met openstaande organisatorische invulpunten voor
+  rollen, grondslagen, ontvangers, bewaartermijnen, autorisaties,
+  transportbeveiliging en de DPIA-screening.
 
 Er is geen apart bestand voor debug-logging in de repo: dat logbestand wordt
 tijdens het draaien van het script aangemaakt op de gebruikerscomputer (zie
@@ -221,9 +237,9 @@ Functionaliteit — Telefonie
   `snelkiesnummers.json` wordt vanuit de gebruikers- of programmamap
   veilig overgenomen; de bestaande atomaire opslag en `.bak`-back-up
   blijven daarbij van toepassing.
-- Deze functionaliteit werkt uitsluitend binnen het ziekenhuisnetwerk, omdat
-  er verbinding wordt gemaakt met een interne telefonieserver die van
-  buitenaf niet bereikbaar is.
+- In de huidige ziekenhuisconfiguratie werkt deze functionaliteit uitsluitend
+  binnen het ziekenhuisnetwerk, omdat de geconfigureerde interne
+  telefonieserver van buitenaf niet bereikbaar is.
 
 Technische achtergrond — IP-telefonie API
 -------------------------------------------
@@ -340,10 +356,11 @@ Regelgeving, informatiebeveiliging en patiëntveiligheid
 De actuele repositoryanalyse van de intended purpose, gegevensverwerking,
 autonome acties, mogelijke kwalificatie als Medical Device Software en de
 relevantie van NEN 7510, IEC 62304, ISO 14971 en ISO 13485 staat in
-`docs/REGULATORY_ASSESSMENT.md`. De huidige beoordeling is dat DocBot wel
-zorgsoftware is die persoonsgegevens en potentieel gezondheidsinformatie
-verwerkt, maar op basis van de huidige functie waarschijnlijk geen eigen
-medisch doel heeft onder de MDR.
+`docs/REGULATORY_ASSESSMENT.md`. De huidige beoordeling is dat DocBot
+productiviteitssoftware is die in de huidige ziekenhuisomgeving
+persoonsgegevens en potentieel gezondheidsinformatie verwerkt, maar op basis
+van de intended purpose en huidige functie waarschijnlijk geen eigen medisch
+doel heeft onder de MDR.
 
 Deze beoordeling is voorlopig en geen juridisch of gecertificeerd
 conformiteitsoordeel. Nieuwe patiëntspecifieke analyse, klinische aanbeveling,
