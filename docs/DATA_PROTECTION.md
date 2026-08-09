@@ -127,12 +127,13 @@ logging kunnen oorspronkelijke waarden in het tijdelijke log komen.
 | Onderdeel | Vastgesteld uit repository | OPENSTAAND |
 | --- | --- | --- |
 | Ontvanger | Lokaal geconfigureerde interne telefonieserver | Juridische entiteit, beheerder en eventuele verwerker |
-| Transport | Protocol volgt `IPTConfig["URL"]`; voorbeeldconfiguratie gebruikt `http://` | Productieprotocol, TLS-versie, certificaatcontrole en netwerksegmentatie |
+| Transport | Protocol volgt `IPTConfig["URL"]`; voorbeeldconfiguratie gebruikt `https://` | Code dwingt HTTPS nog niet af; productieprotocol, TLS-versie, certificaatcontrole en netwerksegmentatie bevestigen |
 | Authenticatie | Geen applicatie-eigen gebruikersauthenticatie zichtbaar; technisch `sid`-veld wordt gebruikt | Serverauthenticatie, autorisatiemodel en misbruikbeveiliging |
 | Serverlogging | Niet zichtbaar in repository | Inhoud, toegang, bewaartermijn en verwijdering |
 | Doorgifte buiten EER | Niet zichtbaar | Bevestigen dat geen doorgifte plaatsvindt, of grondslag/waarborgen vastleggen |
 
-Een openstaande projecttaak verlangt HTTPS voor telefonie en blokkering van
+De voorbeeldconfiguratie stuurt nu naar HTTPS. Een openstaande projecttaak
+verlangt daarnaast technische HTTPS-validatie voor telefonie en blokkering van
 HTTP. Totdat dit functioneel is geïmplementeerd en in productie is bevestigd,
 blijft transportbeveiliging een expliciet risico.
 
@@ -151,7 +152,9 @@ fallback. DocBot maakt en verzendt zelf geen SMS-bericht.
 leverancier die deze beheert.
 
 **Transport:** de voorbeeldconfiguratie gebruikt een HTTPS-URL. De code
-dwingt voor SMS-URL's niet afzonderlijk aantoonbaar HTTPS af.
+controleert alleen of `SmsCallAction.Url` is ingevuld en dwingt HTTPS nog niet
+af. Een lokaal geconfigureerde HTTP-pagina kan daardoor worden geopend en door
+DocBot met een telefoonnummer worden gevuld.
 
 **Bewaring door DocBot:** geen afzonderlijke persistente SMS-opslag. Bij
 uitgebreide logging kunnen nummer- of technische foutdetails tijdelijk worden
@@ -417,8 +420,8 @@ uitdiensttreding.
 
 | Stroom | Huidige technische maatregel | Openstaand risico/actie |
 | --- | --- | --- |
-| Telefonie | Interne netwerkdienst; POST | HTTPS afdwingen, HTTP blokkeren, TLS/certificaat/authenticatie bevestigen |
-| SMS | Voorbeeld-URL is HTTPS; Edge/browsercontext | HTTPS in configuratie valideren, leverancier en browserbeveiliging vastleggen |
+| Telefonie | Interne netwerkdienst; POST; voorbeeldconfiguratie gebruikt HTTPS | HTTPS in configuratie afdwingen, HTTP blokkeren, TLS/certificaat/authenticatie bevestigen |
+| SMS | Voorbeeld-URL is HTTPS; Edge/browsercontext | HTTPS in iedere SMS-configuratie afdwingen, HTTP blokkeren, leverancier en browserbeveiliging vastleggen |
 | Telemetrie | Code vereist een `https://`-webhook | Tenant, TLS-inspectie, ontvangers en retentie vastleggen |
 | Probleemrapport per e-mail | Classic Outlook-concept of handmatige fallback | Mailtransport, classificatie, encryptie en externe ontvangers vastleggen |
 | Documents/OneDrive | Windows-profiel en beheerde opslag | ACL's, tenant, synchronisatie, back-up en versleuteling bevestigen |
@@ -500,7 +503,7 @@ Persoonsgegevens nodig is.
 | Ontvangers- en verwerkersregister invullen | OPENSTAAND | OPENSTAAND | Open |
 | Bewaar- en verwijdertermijnen goedkeuren | OPENSTAAND | OPENSTAAND | Open |
 | Autorisatiematrix opstellen en controleren | OPENSTAAND | OPENSTAAND | Open |
-| Productietransport telefonie beoordelen en HTTPS afdwingen | OPENSTAAND | OPENSTAAND | Open |
+| Productietransport telefonie en SMS beoordelen en HTTPS afdwingen | OPENSTAAND | OPENSTAAND | Open |
 | SMS-, Microsoft-, mail- en OneDrive-contractketen vastleggen | OPENSTAAND | OPENSTAAND | Open |
 | DPIA-dekking of afzonderlijke DPIA met FG vaststellen | OPENSTAAND | OPENSTAAND | Open |
 | Uitkomst koppelen aan verwerkingsregister en NEN 7510-risicoanalyse | OPENSTAAND | OPENSTAAND | Open |

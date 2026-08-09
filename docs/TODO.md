@@ -119,7 +119,7 @@ Only after the current RC3 is explicitly accepted.
 
 ---
 
-## P1 — Make HTTPS mandatory for internal telephony
+## P1 — Make HTTPS mandatory for telephony and SMS URLs
 
 An exploratory test on 2026-08-09 showed that changing the local telephony
 `BaseUrl` from `http://` to `https://` still delivered a registration/link
@@ -129,14 +129,16 @@ every managed Windows workstation.
 
 ### Application and documentation
 
-- [ ] Change `DocBot.local.example.ahk` so the telephony `BaseUrl` example uses
+- [x] Change `DocBot.local.example.ahk` so the telephony `BaseUrl` example uses
   `https://`.
 - [ ] Extend `ValidateLocalConfiguration()` to reject a telephony `BaseUrl`
   that does not use HTTPS. Do not add a production certificate-validation
   bypass or silent HTTP fallback.
+- [ ] Extend `ValidateSmsCallActionItem()` to reject every `SmsCallAction.Url`
+  that does not use HTTPS. Do not open or fill an HTTP SMS page.
 - [ ] Keep registration, event polling, and dialing on the same validated HTTPS
   base URL unless the server contract is deliberately redesigned.
-- [ ] Document the HTTPS-only production invariant in `README.md`,
+- [ ] Document the HTTPS-only production invariant for telephony and SMS in `README.md`,
   `AGENTS.md`, `CLAUDE.md`, `docs/ARCHITECTURE.md`, and where relevant
   `docs/REGULATORY_ASSESSMENT.md` and `docs/DECISIONS.md`.
 - [ ] Confirm separately whether the server provides strong client/server
@@ -170,6 +172,8 @@ every managed Windows workstation.
 - [ ] Linking and a controlled call to a designated test number succeed.
 - [ ] Certificate-name, trust-chain, expiry, and TLS failures are rejected and
   produce a clear, non-sensitive diagnostic instead of falling back to HTTP.
+- [ ] A telephony or SMS URL using `http://` is rejected during configuration
+  validation with a clear, non-sensitive error.
 - [ ] The final release/preflight checklist records the HTTPS base URL and
   certificate validation result without recording the confidential hostname,
   endpoints, telephone numbers, or certificate private material in Git.
