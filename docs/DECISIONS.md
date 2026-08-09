@@ -83,7 +83,7 @@ Current 2.2 scheme:
 main                 2.1 until final 2.2 release
 develop              2.2-dev.N
 feature/fix          2.2-<short-branch-name>.N
-release candidate    2.2-rc.N
+release candidate    2.2-rc
 stable release       2.2
 ```
 
