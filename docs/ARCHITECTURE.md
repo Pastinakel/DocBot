@@ -429,9 +429,10 @@ Architectural boundaries:
 - Outlook automation failure degrades to `mailto:` where possible, Explorer
   selection of the ZIP, and visible manual attachment instructions.
 
-This section describes integrated source behavior, not completed acceptance.
-The compiled RC2 flow still requires Windows testing, including ZIP timing,
-Outlook-present/absent cases, session reset, and sensitive-data boundaries.
+The project owner completed the dedicated compiled-Windows validation of this
+RC2 flow on 2026-08-09, including ZIP behavior, Outlook/fallback cases, session
+state, and sensitive-data boundaries. The broader full-RC2 acceptance test is
+a separate release gate and remains tracked in `TODO.md`.
 
 ## 16. Update/restart architecture
 

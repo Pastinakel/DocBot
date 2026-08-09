@@ -10,51 +10,6 @@ _Last updated: 2026-08-09. This file is a handover backlog, not a promise that e
 
 ---
 
-## P0 — Validate integrated problem reporting on RC2
-
-### Current state
-
-- The feature history is integrated into `develop` (`2.2-dev.6`) and into `release/2.2-rc` (`2.2-rc.2`).
-- Test the current RC code; `feature/extended-logging` is no longer an integration target.
-- Source integration is complete, but the flow remains **unverified as a release candidate** until real AHK v2/compiled Windows validation succeeds.
-
-### Required validation
-
-- [ ] Check out the current `release/2.2-rc` and confirm there are no uncommitted local edits before testing.
-- [ ] Confirm `global AppVersion` is the expected RC version (`2.2-rc.2` unless a later RC source fix has incremented it).
-- [ ] Run an AutoHotkey v2 parse/compile check on Windows.
-- [ ] Search the entire newly added problem-reporting code for the multiline assignment/concatenation pattern that caused the recent syntax errors; do not fix only the first reported line.
-- [ ] Start the application and open the problem-reporting flow from **Help**.
-- [ ] Open the same flow from the tray menu and confirm both entry points share the same behavior.
-- [ ] Verify the no-consent path does not enable detailed logging.
-- [ ] Verify explicit consent enables detailed logging for the active reporting session only.
-- [ ] Close and reopen the reporting window and confirm the active session state is intentionally preserved.
-- [ ] Exit/restart DocBot and confirm extended logging is disabled/reset.
-- [ ] Confirm ordinary/background logging remains limited and redacted.
-- [ ] During a consented session, confirm full telephony responses and called
-      numbers appear only in the temporary extended log.
-- [ ] During a consented session, confirm the trigger and replacement of an
-      actually executed short, long, multiline, dynamic, and key-command
-      hotstring appear only in the temporary extended log.
-- [ ] Exercise the SMS/UIA path during a consented session and inspect that detailed logging occurs only there.
-- [ ] Create the diagnostic ZIP and inspect its contents for expected files and absence of unnecessary sensitive data.
-- [ ] Test Classic Outlook already running.
-- [ ] Test Classic Outlook not running but available; confirm startup/retry behavior.
-- [ ] Test Outlook automation unavailable; confirm the user receives a usable manual fallback.
-- [ ] Confirm the draft mail contains the intended description/body and ZIP attachment.
-- [ ] Verify no telemetry payload/configuration changed accidentally.
-- [ ] Review README text against the actual extended-logging behavior.
-
-### If another source fix is needed
-
-Apply it on the release branch under the release freeze. A commit that changes
-`DocBot.ahk` must increment `rc.N` in that same commit (the next value after
-the current source state would be `2.2-rc.3`). A docs-only commit must not
-change AppVersion. Bring release-only fixes back to `develop` through the
-normal PR/merge flow.
-
----
-
 ## P0 — Full 2.2 RC2 acceptance test
 
 At minimum, validate the following on the managed Windows environment and, where required, on the internal hospital network.
@@ -134,7 +89,7 @@ At minimum, validate the following on the managed Windows environment and, where
 
 - [ ] Baseline debug log remains available.
 - [ ] Developer debug window restriction remains intentional.
-- [ ] Complete the extended-logging checklist in the previous section.
+- [x] Integrated problem-reporting and extended-logging validation completed on RC2.
 
 ### Deployment/update
 
@@ -350,6 +305,7 @@ These problems are important historical context but are not open TODOs unless th
 - **Fixed-interval long polling:** replaced by chained polling after response completion.
 - **Clipboard-based hotstring expansion:** deliberately removed/prohibited.
 - **Extended-logging integration status in durable docs:** synchronized with the integrated `develop`/RC2 source; obsolete feature-branch promotion tasks were removed while RC2 acceptance tests remain open.
+- **Integrated problem reporting on RC2:** the dedicated compiled-Windows validation checklist was completed by the project owner on 2026-08-09, including consent/privacy boundaries, session behavior, diagnostic content, ZIP creation, and Outlook/manual fallback paths.
 
 ---
 

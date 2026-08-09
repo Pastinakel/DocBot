@@ -181,7 +181,10 @@ The implementation has two reporting paths:
 - Classic Outlook is started/awaited when necessary and receives a draft with the ZIP attached. If automation fails, DocBot opens a mail fallback where possible, selects the ZIP in Explorer, and gives explicit manual attachment instructions.
 - Local configuration files are not packaged. The temporary extended log is removed on shutdown, on a new session, and after successful report preparation; the ZIP remains available for the user/mail workflow.
 
-Treat these as implemented source behavior, while keeping the corresponding RC2 Windows acceptance tests open until they have actually passed.
+The project owner completed the dedicated compiled-Windows validation of this
+problem-reporting flow on RC2 on 2026-08-09. That closes the specific
+problem-reporting checklist; it does not by itself complete the broader RC2
+acceptance test covering the rest of DocBot.
 
 ## 5. Build and deployment constraints
 
