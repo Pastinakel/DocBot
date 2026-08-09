@@ -109,8 +109,29 @@ voor klembordnummers.
 **Ontvangers:** geen bij negeren; interne telefonieserver bij bellen; de
 geconfigureerde SMS-webapplicatie bij SMS-assistentie.
 
-**OPENSTAAND:** organisatorisch doel, grondslag, maximale geheugenduur,
-informatie aan betrokkenen en dekking door het verwerkingsregister.
+**Organisatorische vastlegging:** het doel is het ondersteunen van door
+medewerkers geïnitieerde patiënt-, medewerker- en zakelijke communicatie door
+een gekopieerd telefoonnummer technisch te herkennen en naar de gekozen
+telefonie- of SMS-route te leiden. De definitieve AVG-grondslag wordt
+overgenomen van de bestaande verwerking voor patiëntcommunicatie/interne
+telefonie en moet door de verwerkingsverantwoordelijke en FG worden bevestigd,
+inclusief artikel 9 AVG wanneer de zorgcontext gezondheidsinformatie oplevert.
+Patiënten en contactpersonen worden geïnformeerd via de privacyverklaring van
+de gebruiksorganisatie; medewerkers worden aanvullend geïnformeerd over de
+lokale klembordcontrole en mogelijke directe belactie. DocBot wordt als
+systeem/hulpmiddel gekoppeld aan de relevante verwerking in het
+verwerkingsregister.
+
+**Huidige geheugenduur:** het laatst herkende telefoonnummer blijft in
+geheugen totdat een volgend geldig nummer wordt herkend of DocBot wordt
+afgesloten. Er is nog geen maximale duur. Als verbetermaatregel moet het nummer
+na overdracht, afronding of annulering van de actuele actie onmiddellijk uit
+de centrale status worden gewist.
+
+**OPENSTAAND:** bevestiging door de verwerkingsverantwoordelijke en FG van de
+exacte grondslag, de gebruikte privacyverklaring en de naam of het nummer van
+de verwerking in het verwerkingsregister. Voor afronding is daarnaast de
+genoemde technische verkorting van de geheugenduur nodig.
 
 ### 3.2 Interne telefonie
 
