@@ -5,7 +5,7 @@ Overzicht
 ---------
 DocBot is een AutoHotkey v2-hulpmiddel voor medewerkers met twee hoofdfuncties:
 (a) tekstvervanging via hotstrings, en (b) bellen via de interne IP-telefonie
-van het ziekenhuis, inclusief automatische detectie van telefoonnummers op
+van het bedrijf, inclusief automatische detectie van telefoonnummers op
 het klembord. Alles draait via één GUI met sidebar-navigatie en een
 tray-icoon.
 
@@ -158,7 +158,8 @@ De statuskolom gebruikt steeds dezelfde betekenis:
 Help in DocBot
 ---------------
 DocBot bevat een aparte Help-pagina met vier uitklapbare onderwerpen:
-telefoon koppelen, bellen vanuit HiX, bellen via snelkiesnummers en
+telefoon koppelen, bellen en SMS'jes versturen vanuit applicaties 
+die telefoonnummers bevatten, bellen via snelkiesnummers en
 hotstrings gebruiken. De instructies verwijzen expliciet naar de juiste
 pagina's, knoppen en opties in DocBot; die interface-elementen zijn in de
 uitleg vetgedrukt. Verwijzingen naar Overzicht, Telefonie en Hotstrings zijn
@@ -383,7 +384,7 @@ Changelog
 
 ### 2.1 — Huidige stabiele release
 - Nieuwe Help-pagina met vier uitklapbare, scrollbare instructiekaarten voor
-  telefoonregistratie, bellen vanuit HiX, snelkiesnummers en hotstrings.
+  telefoonregistratie, bellen vanuit een EPD, snelkiesnummers en hotstrings.
 - Optionele Power Automate-heartbeat voor centraal inzicht in actieve
   installaties en telefonie-/hotstringstatus, zonder computernaam of
   inhoudelijke gebruikersgegevens; configuratie en webhook blijven lokaal.
