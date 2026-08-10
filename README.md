@@ -276,6 +276,24 @@ een Power Automate Teams-webhook. De webhook-URL staat uitsluitend in het
 niet door Git gevolgde `DocBot.local.ahk`. De eerste heartbeat wordt tien
 seconden na het starten verzonden en daarna iedere vijftien minuten.
 
+Het doel is inzicht krijgen in het gebruik en de omvang van DocBot, zodat
+systeembeheer de te verwachten belasting van de gebruikte telefonie- en
+SMS-servers kan ramen en de benodigde capaciteit kan plannen. DocBot meet
+hierbij geen verzonden SMS-berichten; een verwachting voor de SMS-server wordt
+alleen afgeleid uit de omvang en activiteit van de installaties. De centrale
+telemetrie is toegankelijk voor de leden van het RPA ontwikkel- en beheerteam.
+Logregistraties ouder dan één jaar worden uit de centrale bestemming
+verwijderd.
+
+Tijdens de huidige opstartfase wordt de Windows-gebruikersnaam gebruikt om een
+technisch signaal aan de getroffen gebruiker te kunnen koppelen en gericht
+hulp te bieden. Voorbeelden zijn een niet-geactiveerde telefoniefunctie en het
+onderzoek naar een eerder wisselend installatie-ID wanneer DocBot startte
+voordat OneDrive was gesynchroniseerd. De gebruikersnaam is niet bedoeld voor
+beoordeling van prestaties, aanwezigheid of individueel werkgedrag. Na de
+opstartfase wordt opnieuw beoordeeld of dit veld nog nodig is of door een
+minder identificerend kenmerk kan worden vervangen.
+
 Bij het starten leest DocBot eerst het bestaande installatie-ID uit
 `settings.ini`. Als dat ID beschikbaar is, wordt niets teruggeschreven en kan
 telemetrie direct starten. Alleen wanneer het ID ontbreekt, maakt DocBot een

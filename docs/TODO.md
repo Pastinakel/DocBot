@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-09. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-10. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -258,6 +258,52 @@ Create a lightweight validation path that can fail a PR before manual testing wh
 
 ---
 
+## P1 — Limit local standard diagnostics to seven days
+
+Implement automatic cleanup of standard diagnostic log entries older than
+seven days.
+
+- [ ] Remove entries older than seven days from both the active standard log
+  and the rotated `.oud` log without relying only on file modification time.
+- [ ] Preserve the existing redaction and approximately 2 MB size-rotation
+  behavior.
+- [ ] Ensure malformed or legacy log lines and cleanup failures do not block
+  application startup.
+- [ ] Verify on managed Windows that recent entries remain available, expired
+  entries are removed and extended-session logging keeps its separate
+  lifecycle.
+- [ ] Keep `README.md` and `docs/DATA_PROTECTION.md` synchronized with the
+  implemented behavior.
+
+This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
+branch from the then-current `develop` and update the branch-specific
+`AppVersion` in every commit that changes `DocBot.ahk`.
+
+---
+
+## P1 — Remove temporary problem-report artifacts
+
+Complete the lifecycle of the ZIP and temporary files created during problem
+reporting.
+
+- [ ] On cancellation, remove every ZIP, extracted working directory and
+  temporary extended log created for that report session.
+- [ ] After successful attachment to an Outlook draft, remove the local ZIP
+  only after verifying that Outlook has safely taken over the attachment.
+- [ ] For the manual fallback, keep the ZIP available until the user has had a
+  usable opportunity to attach it, then provide an explicit completion/cleanup
+  path and a safe cleanup fallback for abandoned artifacts.
+- [ ] Verify that cancelling at each stage and closing DocBot cannot leave
+  sensitive report artifacts behind indefinitely.
+- [ ] Update `README.md` and `docs/DATA_PROTECTION.md` to the implemented
+  lifecycle.
+
+This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
+branch from the then-current `develop` and update the branch-specific
+`AppVersion` in every commit that changes `DocBot.ahk`.
+
+---
+
 ## P1 — Standardize the local engineering workflow
 
 The project has suffered from GitHub connector limitations on the very large `DocBot.ahk` file and temporary GitHub Actions workflows used as an editing workaround.
@@ -323,6 +369,53 @@ Without changing behavior immediately, consider documenting or extracting a clea
 - which migrations are safe to remove only after a defined compatibility window.
 
 Do not move migration code during the 2.2 release just for cleanliness.
+
+---
+
+## P2 — Add a user instruction for safe hotstring content
+
+Create and maintain an end-user instruction for personal hotstrings. The
+instruction must:
+
+- [ ] explain that hotstrings are intended for generic, reusable text;
+- [ ] prohibit patient-identifying and patient-specific content in
+  `hotstrings.json`;
+- [ ] distinguish prohibited patient-specific content from generic clinical
+  formulations that are not linked to an identifiable patient;
+- [ ] explain that a name, telephone number, e-mail address or signature of
+  the employee can be personal data and remains subject to organizational
+  policy;
+- [ ] explain that DocBot cannot technically determine whether free text
+  contains patient-specific information;
+- [ ] identify where the instruction is presented to users and who owns its
+  review and maintenance.
+
+Align the instruction with `docs/DATA_PROTECTION.md` and reassess whether it
+must also appear in the README, in-product help or organizational onboarding
+before release.
+
+---
+
+## P2 — Reassess the telemetry username after the startup phase
+
+The Windows username currently supports targeted troubleshooting during the
+startup phase, for example when telephony is not activated or when a local
+installation identity behaves unexpectedly because OneDrive was not yet
+synchronized.
+
+- [ ] Define who decides when the startup phase has ended and record an
+  objective review date or exit criterion.
+- [ ] Reassess whether targeted support still requires the Windows username.
+- [ ] If it is no longer necessary, remove the username from the payload or
+  replace it with a less identifying mechanism that still supports the
+  justified operational need.
+- [ ] Do not reuse the username for performance, attendance or individual
+  work-behavior monitoring.
+- [ ] Update the README telemetrie notice and `docs/DATA_PROTECTION.md` in the
+  same change as any payload modification.
+
+Changing the payload requires explicit approval from the project owner. A
+change to `DocBot.ahk` must follow the branch-specific `AppVersion` rule.
 
 ---
 

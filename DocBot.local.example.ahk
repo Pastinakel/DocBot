@@ -21,7 +21,7 @@ global LocalConfig := Map(
             "Title", "SMS Opnameplein",
             "Url", "https://VUL-HIER-DE-SMS-PAGINA-IN/",
             "FieldId", "number",
-            "WindowTitle", "SMS opnameplein Medify"
+            "WindowTitle", "SMS opnameplein Funatic"
         )
     ],
 

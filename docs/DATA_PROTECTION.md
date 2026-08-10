@@ -67,7 +67,7 @@ OneDrive en organisatorisch werkplekbeheer.
 
 | Locatie | Inhoud | Technische begrenzing/verwijdering |
 | --- | --- | --- |
-| `%LocalAppData%\DocBot\debug.log` | Centraal geredigeerde diagnostiek | Rotatie boven circa 2 MB naar één `.oud`-bestand |
+| `%LocalAppData%\DocBot\debug.log` | Centraal geredigeerde diagnostiek | Rotatie boven circa 2 MB naar één `.oud`-bestand; tijdsgebonden verwijdering van regels ouder dan zeven dagen is als TODO vastgelegd |
 | `%LocalAppData%\DocBot\<tijdelijk uitgebreid log>` | Ongeredigeerde diagnostiek tijdens toegestane sessie | Verwijderd bij afsluiten, nieuwe sessie en na succesvolle rapportvoorbereiding |
 | `%TEMP%\DocBot_diagnose_<tijdstip>.zip` | Beschrijving, standaardlog en optioneel uitgebreid log | Blijft na voorbereiding beschikbaar voor e-mail/handmatige verzending |
 | `%LocalAppData%\DocBot[-dev]\packages` | Uitgepakte ingebouwde pakketten | Pakketinhoud, normaal geen gebruikers- of patiëntgegevens |
@@ -181,9 +181,97 @@ DocBot met een telefoonnummer worden gevuld.
 uitgebreide logging kunnen nummer- of technische foutdetails tijdelijk worden
 vastgelegd.
 
-**OPENSTAAND:** naam en rol leverancier, verwerkersovereenkomst, browser- en
-serverlogging, cookies/lokale opslag, autorisaties, bewaartermijn, TLS-eisen,
-eventuele doorgifte buiten de EER en informatie aan betrokkenen.
+**Naam en rol leverancier:** de SMS-webapplicatie wordt geleverd als
+[Enovation Funatic](https://enovationgroup.com/nl/enovation-funatic/).
+Enovation presenteert `enovation funatic` als patiëntenportaal en beschrijft
+Funatic als onderdeel van Enovation Group. De openbare
+[privacyverklaring van Enovation](https://enovationgroup.com/wp-content/uploads/ENO_NL_Privacy_Statement.pdf)
+noemt Funatic B.V. als Nederlandse groepsentiteit en vermeldt dat Enovation
+Group bij de uitvoering van producten en diensten als verwerker optreedt. De
+gebruiksorganisatie bepaalt het doel van de patiëntcommunicatie en is daarom
+voorlopig aangemerkt als verwerkingsverantwoordelijke; Funatic/Enovation is
+voorlopig aangemerkt als verwerker voor zover zij het telefoonnummer en de SMS
+uitsluitend in opdracht verwerkt. Controleer in de overeenkomst of Funatic
+B.V. inderdaad de contractpartij is en of de feitelijke dienstverlening met
+deze rolverdeling overeenkomt.
+
+**Verwerkersovereenkomst:** niet aangetroffen in de repository. De algemene
+privacyverklaring van Enovation bevestigt dat de groep bij dienstverlening als
+verwerker kan optreden, maar toont niet aan dat voor deze specifieke
+SMS-dienst een geldige verwerkersovereenkomst met de gebruiksorganisatie is
+gesloten. Controleer minimaal de juiste juridische entiteit, onderwerp en
+duur, aard en doel, gegevenscategorieën, betrokkenen, geheimhouding,
+beveiligingsmaatregelen, subverwerkers, incidentmelding, auditrechten,
+teruggave/verwijdering en internationale doorgiften.
+
+**Browser- en serverlogging:** DocBot activeert een bestaande Edge-sessie of
+opent de geconfigureerde URL. De SMS-webapplicatie kan daardoor het
+gebruikersaccount, IP-adres, tijdstip, browser-/apparaatgegevens en technische
+gebeurtenissen verwerken. DocBot verstuurt de SMS niet. Bij de
+JavaScriptfallback worden wel expliciet `input`- en `change`-events
+gegenereerd; ook bij UI Automation kan de webapplicatie op een veldwijziging
+reageren. Daarom kan niet worden aangenomen dat het telefoonnummer pas na de
+uiteindelijke verzendknop de browser of server bereikt. Welke client- en
+serverlogs werkelijk ontstaan is buiten de repository niet zichtbaar.
+
+**Cookies en lokale opslag:** DocBot plaatst of leest zelf geen cookies,
+localStorage of sessionStorage van de SMS-pagina. De pagina draait binnen het
+bestaande Edge-profiel en kan eigen sessiecookies, browseropslag, cache en
+eventuele analysetechnologie gebruiken. DocBot wist deze gegevens niet.
+Cookiebeleid, noodzakelijkheid, levensduur en eventuele tracking moeten bij de
+daadwerkelijke dienst worden vastgesteld.
+
+**Autorisaties:** DocBot gebruikt de reeds actieve Windows- en Edge-context en
+beheert geen eigen account voor de SMS-dienst. Authenticatie en autorisatie
+worden dus bepaald door de beheerde Windows-werkplek, het Edge-profiel en de
+SMS-webapplicatie. DocBot controleert de rechten van de gebruiker niet opnieuw
+en herkent het doelvenster hoofdzakelijk aan `WindowTitle`; daarna zoekt het
+veld via het geconfigureerde `FieldId`. Leg vast welke medewerkers toegang
+hebben, hoe toegang wordt toegekend en ingetrokken, of MFA wordt gebruikt en
+hoe toegang periodiek wordt beoordeeld.
+
+**Bewaartermijn:** DocBot maakt geen eigen persistente SMS-database. Het
+herkende nummer blijft volgens paragraaf 3.1 wel in de centrale IPT-status in
+geheugen totdat een volgend geldig nummer wordt herkend of DocBot afsluit. Het
+nummer kan daarnaast in het ingevulde browserveld blijven staan totdat de
+pagina dit wist, het veld wordt overschreven of de sessie wordt beëindigd.
+Tijdelijke uitgebreide logging en probleemrapportage volgen paragraaf 3.7.
+Bewaring in browser-, server-, verzend-, audit- en back-uplogs is onbekend en
+moet contractueel en technisch worden vastgesteld.
+
+**TLS-eisen:** de voorbeeldconfiguratie gebruikt HTTPS, maar DocBot dwingt dit
+nog niet af. De browser voert bij HTTPS de normale certificaatcontrole uit en
+de DocBot-code bevat geen bewuste omzeiling daarvan. Vereist beleid: uitsluitend
+`https://`, geen HTTP-fallback of genegeerde certificaatfouten, een passende
+TLS-versie en cipherconfiguratie, een geldig certificaat voor de productiehost
+en beheer van certificaatvernieuwing. Deze eisen moeten na implementatie op de
+beheerde Windows-werkplek worden getest.
+
+**Doorgifte buiten de EER:** niet uit de repository vast te stellen. De
+algemene privacyverklaring van Enovation sluit doorgiften buiten de EER niet
+uit en beschrijft in algemene zin het gebruik van adequaatheidsbesluiten of
+EU-modelbepalingen. Dit bewijst niet dat bij de Funatic-SMS-dienst een
+doorgifte plaatsvindt. Controleer de productie- en back-uplocaties,
+supportlocaties, subverwerkers en remote toegang. Bij doorgifte buiten de EER
+moeten het toepasselijke mechanisme en de aanvullende waarborgen volgens
+hoofdstuk V AVG voor deze dienst worden vastgelegd.
+
+**Informatie aan betrokkenen:** de privacyinformatie van de
+gebruiksorganisatie moet beschrijven dat het telefoonnummer voor
+patiëntcommunicatie in een SMS-webapplicatie kan worden ingevuld, met welk
+doel en op welke grondslag, welke leverancier/categorie ontvanger betrokken
+is, hoe lang gegevens worden bewaard, of doorgifte buiten de EER plaatsvindt
+en welke rechten de betrokkene heeft. De gebruikersinstructie voor medewerkers
+moet daarnaast duidelijk maken dat DocBot alleen het nummer invult, dat de
+gebruiker nummer en bericht controleert en dat de gebruiker de SMS zelf
+verzendt.
+
+**OPENSTAAND:** bevestig de exacte contractpartij binnen Enovation Group en de
+AVG-rol in de overeenkomst, de getekende verwerkersovereenkomst, subverwerkers
+en hostinglocaties, feitelijke browser- en serverlogging, cookies/opslag,
+autorisatiematrix, concrete bewaartermijnen, productie-TLS-configuratie,
+eventuele doorgifte buiten de EER en de gebruikte privacy- en
+gebruikersinformatie.
 
 ### 3.4 Hotstrings en pakketinhoud
 
@@ -211,18 +299,32 @@ beleid.
 **Ontvanger:** de actieve applicatie en het actieve veld; in de huidige
 ziekenhuisomgeving kan dit een EPD zijn.
 
-**Bewaring:** persoonlijke hotstrings blijven bestaan tot de gebruiker ze
-wijzigt of verwijdert, het profiel wordt verwijderd of een organisatorische
-beheeractie plaatsvindt. `.bak`-bestanden kunnen een eerdere versie bevatten.
+**Bewaring en opslag:** persoonlijke hotstrings blijven bestaan tot de
+gebruiker ze wijzigt of verwijdert, het profiel wordt verwijderd of een
+organisatorische beheeractie plaatsvindt. `.bak`-bestanden kunnen een eerdere
+versie bevatten. In de huidige beheerde werkomgeving wordt de map Documenten,
+en daarmee de gebruikersgegevens van DocBot, opgeslagen in de OneDrive-omgeving
+van de organisatie. De organisatie die de werkplek en OneDrive-omgeving
+aanbiedt, bepaalt daarom grotendeels de bewaartermijn en het beleid voor
+retentie, back-ups en verwijdering. DocBot stelt hiervoor zelf geen maximale
+termijn in.
 
-**Autorisatie:** het Windows-account kan de eigen bestanden benaderen. DocBot
-controleert niet of de juiste patiënt, applicatie of het juiste veld actief is.
+**Autorisatie:** het Windows-account kan de eigen bestanden binnen de
+organisatorische OneDrive-omgeving benaderen. Bij uitdiensttreding blokkeert de
+organisatie de toegang van de medewerker tot deze gegevens via het
+werkplek-/accountbeheer. DocBot beheert dit toegangsproces niet en controleert
+niet of de juiste patiënt, applicatie of het juiste veld actief is. Blokkering
+van gebruikerstoegang betekent niet noodzakelijk dat de bestanden en back-ups
+direct worden verwijderd; daarvoor geldt het retentie- en verwijderbeleid van
+de organisatie.
 
-**OPENSTAAND:** organisatorische bewaartermijn, verwijdering bij
-uitdiensttreding/functiewijziging, toegangsbeheer OneDrive/back-ups,
-inhoudseigenaarschap van medische pakketten, gebruikersinstructie die
-patiëntspecifieke inhoud uitsluit en toepasselijke grondslag voor eventuele
-medewerkergegevens.
+**OPENSTAAND:** concrete organisatorische bewaartermijnen voor het actieve
+OneDrive-profiel en back-ups, moment en wijze van definitieve verwijdering na
+uitdiensttreding, herbeoordeling van toegang bij functiewijziging,
+inhoudseigenaarschap van medische pakketten en toepasselijke grondslag voor
+eventuele medewerkergegevens. Het opstellen van een gebruikersinstructie die
+patiëntidentificerende en patiëntspecifieke hotstringinhoud uitsluit, is als
+vervolgactie opgenomen in `docs/TODO.md`.
 
 ### 3.5 Snelkiesnummers en instellingen
 
@@ -232,12 +334,32 @@ voorkeuren bewaren.
 Snelkiesnamen en nummers staan in `speeddial.json`. Instellingen,
 telemetrie-identificatie en gebruikstellers staan in `settings.ini`.
 
-**Ontvangers:** primair de lokale gebruiker; OneDrive en centraal
-werkplekbeheer kunnen technisch betrokken zijn bij opslag of back-up.
+**Toegestane inhoud:** snelkiesitems mogen namen of functionele omschrijvingen
+en telefoonnummers bevatten die passen binnen normaal telefoongebruik van de
+organisatie. Het onderscheid tussen een zakelijk nummer en een nummer dat bij
+een natuurlijke persoon hoort, is daarbij niet op zichzelf bepalend; het doel
+en het geldende organisatiebeleid bepalen of opslag is toegestaan. DocBot
+controleert de aard of herkomst van een ingevoerd nummer niet. De gebruiker
+blijft verantwoordelijk voor gebruik binnen de organisatorische afspraken.
 
-**OPENSTAAND:** toegestane inhoud, zakelijke versus persoonlijke nummers,
-bewaartermijn, back-uptermijn, toegang door beheerders en verwijdering van het
-gebruikersprofiel.
+**Ontvangers en autorisatie:** primair de medewerker die met het Windows-account
+werkt. In de huidige beheerde werkomgeving staan `speeddial.json` en
+`settings.ini` in de organisatorische OneDrive-omgeving. Toegang door
+beheerders en andere bevoegde medewerkers wordt bepaald door het werkplek-,
+account- en OneDrive-beleid van de organisatie; DocBot kent zelf geen
+beheerderstoegang toe.
+
+**Bewaring, back-up en verwijdering:** de organisatie die de werkplek en
+OneDrive-omgeving aanbiedt, bepaalt de bewaartermijn, back-uptermijn en
+verwijdering van het gebruikersprofiel. Bij uitdiensttreding wordt de toegang
+van de medewerker via het organisatorische accountbeheer geblokkeerd. DocBot
+verwijdert de bestanden op dat moment niet zelfstandig. Definitieve
+verwijdering van het actieve profiel en kopieën in back-ups volgt het beleid
+van de organisatie.
+
+**OPENSTAAND:** leg de concrete organisatorische termijnen voor bewaring,
+back-ups en definitieve verwijdering vast en verwijs naar het toepasselijke
+werkplek-/OneDrive-beleid en de regeling voor beheerderstoegang.
 
 ### 3.6 Standaarddiagnostiek
 
@@ -256,12 +378,31 @@ De standaardlog:
 De applicatie verwijdert historische logs met een ouder, mogelijk
 ongeredegeerd formaat bij initialisatie.
 
-**Ontvangers:** lokale gebruiker; ontwikkelaarsdebugvenster voor het in de code
-toegestane Windows-account; bij probleemrapportage de gekozen supportontvanger.
+**Bewaring:** de standaardlog wordt momenteel op bestandsgrootte geroteerd,
+maar nog niet op ouderdom van afzonderlijke logregels opgeschoond. Als
+technische vervolgactie moet DocBot logregels ouder dan zeven dagen
+automatisch verwijderen. Deze gewenste termijn is opgenomen in
+`docs/TODO.md`.
 
-**OPENSTAAND:** maximale tijdsduur naast bestandsgrootte, autorisatie van het
-ontwikkelaarsaccount, endpointbeveiliging van support en verwijdering bij
-uitdiensttreding.
+**Ontvangers en autorisatie:** de lokale gebruiker kan de standaardlog op de
+eigen werkplek benaderen. Tijdens de huidige opstartfase is de enige
+ontwikkelaar de enige ontvanger wanneer de gebruiker een probleemrapport met
+diagnostiek per e-mail verzendt. De ontwikkelaar ontvangt deze rapporten via
+het eigen, door de organisatie beheerde Outlook-account. DocBot gebruikt geen
+afzonderlijk uploadendpoint voor support; de gebruiker controleert en
+verzendt het Outlook-bericht zelf.
+
+**Bewaring na verzending:** de ontwikkelaar heeft in Outlook een speciale map
+voor diagnostiek ingericht. Diagnostische berichten ouder dan zeven dagen
+worden daar automatisch verwijderd. Of verwijderde berichten daarna nog in
+herstelvoorzieningen, archieven of back-ups worden bewaard, volgt het
+Microsoft-/mailboxbeleid van de organisatie.
+
+**OPENSTAAND:** implementeer de automatische lokale verwijdering van logregels
+ouder dan zeven dagen; leg de beveiliging en eventuele aanvullende retentie
+van het organisatorische mailtransport vast; leg vast dat er bij afwezigheid
+geen waarneming is; en beoordeel de ontvangerconfiguratie opnieuw wanneer de
+enige ontwikkelaar van functie wijzigt of uit dienst treedt.
 
 ### 3.7 Uitgebreide logging en probleemrapportage
 
@@ -291,16 +432,46 @@ het e-mailbericht zelf.
 
 | Onderwerp | Vastgesteld | OPENSTAAND |
 | --- | --- | --- |
-| Supportontvanger | Lokaal/configuratief bepaald | Naam, rol, mailbox en vervanging bij afwezigheid |
-| ZIP op werkplek | Blijft in `%TEMP%` staan | Automatische of organisatorische verwijdertermijn |
-| E-mail | Outlook-concept; verzending door gebruiker | Mailtransport, mailboxretentie, doorsturen en archivering |
-| Toegang | Gebruiker en ontvangers van het rapport | Geautoriseerde supportgroep, periodieke toegangscontrole |
-| Incidentproces | Niet volledig in repository | Classificatie, datalekprocedure en escalatie naar FG/CISO |
+| Supportontvanger | In de huidige opstartfase uitsluitend de enige ontwikkelaar, lokaal/configuratief bepaald | Er is momenteel geen waarneming of vervanger; bij afwezigheid wacht de rapportage op terugkeer van de ontwikkelaar. Bij functiewijziging of uitdiensttreding moet de configuratie opnieuw worden beoordeeld |
+| ZIP op werkplek | Blijft in `%TEMP%` staan | TODO: verwijder de ZIP en overige tijdelijke rapportbestanden automatisch na succesvolle afronding/overdracht van het rapport en bij annulering |
+| E-mail | Outlook-concept; verzending door gebruiker; speciale diagnostiekmap verwijdert berichten ouder dan zeven dagen automatisch | Mailtransport en eventuele langere retentie in herstelvoorzieningen, archieven en back-ups |
+| Toegang | Gebruiker en, na verzending, uitsluitend de enige ontwikkelaar via het organisatorische Outlook-account | Geen afzonderlijke continuïteitsmaatregel in de opstartfase; toegang volgt het organisatieaccount en wordt bij functie- of uitdiensttreding door de organisatie ingetrokken |
+| Incidentproces | Datalekken van DocBot vallen onder het algemene incident- en datalekproces van de organisatie en worden door de CISO afgehandeld | Verwijs naar de interne meldroute en procedure |
+
+**Voorgesteld incidentproces:** een medewerker of de ontwikkelaar meldt een
+vermoedelijk datalek met diagnostiek direct via de bestaande interne
+incident-/datalekroute. De melder beperkt verdere verspreiding, bewaart alleen
+de informatie die voor onderzoek nodig is en neemt niet zelfstandig een
+besluit over externe melding. De CISO coördineert de eerste maatregelen,
+classificatie en risicoanalyse, betrekt waar nodig de FG en andere
+specialisten, registreert het incident in het organisatorische datalekregister
+en beslist namens de organisatie of melding aan de Autoriteit Persoonsgegevens
+en/of betrokkenen nodig is. Een meldplichtig datalek wordt volgens de
+[richtlijn van de Autoriteit Persoonsgegevens](https://autoriteitpersoonsgegevens.nl/themas/beveiliging/datalekken/datalek-dit-moet-u-doen)
+waar nodig binnen 72 uur na ontdekking gemeld. Leg in de interne instructie het
+meldpunt en de bereikbaarheid van de CISO vast.
 
 ### 3.8 Optionele telemetrie
 
-**Doel volgens README:** centraal inzicht in actieve installaties en
-telefonie-/hotstringstatus.
+**Doel en noodzakelijkheid:** inzicht verkrijgen in het gebruik en de omvang
+van DocBot, zodat systeembeheer de te verwachten belasting van de gebruikte
+telefonie- en SMS-servers kan ramen en de benodigde beheer- en
+servercapaciteit kan plannen. De telemetrie meet geen verzonden SMS-berichten;
+een verwachting voor de SMS-server kan daarom alleen worden afgeleid uit de
+omvang en activiteit van de DocBot-installaties.
+
+Tijdens de huidige opstartfase wordt de Windows-gebruikersnaam daarnaast
+gebruikt om technische signalen aan een getroffen gebruiker te kunnen
+koppelen en die gebruiker gericht ondersteuning te bieden. Voorbeelden zijn
+een installatie waarbij telefonie niet is geactiveerd en het onderzoek naar
+een eerder steeds wisselend telemetrie-ID doordat DocBot werd gestart voordat
+de OneDrive-map was gesynchroniseerd. De gebruikersnaam is niet bedoeld voor
+beoordeling van prestaties, aanwezigheid of individueel werkgedrag. De
+noodzaak om de gebruikersnaam mee te sturen is fasegebonden en moet aan het
+einde van de opstartfase opnieuw worden beoordeeld. Als gerichte ondersteuning
+dan niet meer nodig is of met een minder identificerend kenmerk kan worden
+geleverd, moet de gebruikersnaam uit de payload worden verwijderd of worden
+vervangen door een minder identificerend alternatief.
 
 Telemetrie is lokaal configureerbaar en verzendt via POST naar een verplicht
 met `https://` beginnende Power Automate/Teams-webhook. De eerste heartbeat
@@ -319,15 +490,28 @@ De payload bevat:
 De payload bevat volgens code en README geen computernaam, gebelde nummers,
 hotstringafkortingen, vervangteksten, pakketinhoud of klembordinhoud.
 
-**Ontvangers:** lokaal geconfigureerde Power Automate/Teams-omgeving en de
-personen met toegang tot de uiteindelijke bestemming.
+**Ontvangers en toegang:** de lokaal geconfigureerde Power
+Automate/Teams-omgeving. De leden van het RPA ontwikkel- en beheerteam hebben
+toegang tot de uiteindelijke bestemming.
 
-**Lokale bewaring:** installatie-ID en cumulatieve tellers in `settings.ini`.
+**Bewaring:** installatie-ID en cumulatieve tellers staan lokaal in
+`settings.ini` en volgen de levenscyclus van het organisatorische
+gebruikersprofiel. In de centrale telemetriebestemming worden logregistraties
+ouder dan één jaar verwijderd.
 
-**OPENSTAAND:** formeel doel en noodzakelijkheid, AVG-grondslag voor
-medewerkergegevens, informatie aan medewerkers, kanaal-/flow-eigenaarschap,
-toegangsleden, Microsoft-contractketen, regio/doorgifte, bewaartermijn,
-verwijdering en bezwaar-/inzagerechten.
+**Informatie aan medewerkers:** de herkenbare telemetriesectie in `README.md`
+beschrijft het doel, interval, de payload, uitgesloten inhoud, ontvangers en
+bewaartermijn. Beoordeel daarnaast of opname in de organisatorische
+privacyinformatie en het verwerkingsregister nodig is.
+
+**OPENSTAAND:** definitieve AVG-grondslag voor medewerkergegevens, vastlegging
+van het moment waarop de opstartfase eindigt en de Windows-gebruikersnaam
+wordt herbeoordeeld, beoordeling van noodzakelijkheid en dataminimalisatie van
+de overige velden, formeel kanaal-/flow-eigenaarschap, beheer en periodieke
+controle van de leden van het RPA ontwikkel- en beheerteam,
+Microsoft-contractketen, opslagregio en eventuele doorgifte buiten de EER,
+aantoonbare toepassing van de jaarverwijderregel op exports en back-ups, en de
+organisatorische procedure voor bezwaar- en inzagerechten.
 
 ## 4. Rollen en verantwoordelijkheden
 
@@ -342,9 +526,10 @@ worden beschouwd nadat de verantwoordelijke organisatie dit heeft bevestigd.
 | Beheerder telefonieserver | Interne beheerfunctie, verwerker of andere rol afhankelijk van organisatie en contract | OPENSTAAND |
 | Aanbieder SMS-webapplicatie | Verwerker, subverwerker of zelfstandig verantwoordelijke afhankelijk van dienst en contract | OPENSTAAND |
 | Microsoft/Power Automate/Teams/Outlook/OneDrive | Leverancier/verwerker binnen de Microsoft-contractketen | OPENSTAAND — contract, tenant, regio en subprocessors vastleggen |
-| Ontvanger probleemrapport | Geautoriseerde interne of externe supportrol | OPENSTAAND — naam, mailbox, doel en toegang vastleggen |
+| RPA ontwikkel- en beheerteam | Geautoriseerde ontvanger van de centrale telemetrie voor capaciteitsplanning en beheer | Toegang vastgesteld; formeel eigenaarschap en periodieke ledencontrole nog vastleggen |
+| Ontvanger probleemrapport | In de huidige opstartfase uitsluitend de enige ontwikkelaar via het organisatorische Outlook-account; geen waarneming of vervanger bij afwezigheid | Vastgesteld voor huidige fase; ontvangerconfiguratie opnieuw beoordelen bij functiewijziging of uitdiensttreding |
 | Functionaris gegevensbescherming | Adviseur/toezichthouder bij DPIA en AVG-beoordeling | OPENSTAAND — betrokkenheid en advies registreren |
-| CISO/informatiebeveiliging | Beoordeling beveiligingsrisico's en maatregelen | OPENSTAAND — eigenaar aanwijzen |
+| CISO/informatiebeveiliging | Beoordeling beveiligingsrisico's en maatregelen; afhandeling van datalekken van applicaties binnen de organisatie | Vastgesteld voor incidentafhandeling; interne meldroute en procedureverwijzing nog opnemen |
 | Klinisch/functioneel eigenaar | Eigenaarschap zorgproces en medische pakketinhoud | OPENSTAAND — eigenaar aanwijzen |
 
 ## 5. Doeleinden en grondslagen
@@ -361,7 +546,7 @@ toepasselijke uitzondering uit artikel 9 AVG worden vastgelegd.
 | Medewerkerinstellingen en snelkiezen | Noodzaak voor uitvoering werkproces | Privacyjurist/FG en werkgever |
 | Standaarddiagnostiek | Noodzaak voor beveiliging, continuïteit en support; minimale gegevens aantonen | Privacyjurist/FG, CISO en supporteigenaar |
 | Uitgebreide logging/probleemrapport | Noodzaak, subsidiariteit en waarborgen; vinkje niet automatisch als AVG-toestemming behandelen | Privacyjurist/FG en supporteigenaar |
-| Telemetrie | Afzonderlijk doel, noodzakelijkheid, proportionaliteit en werknemerspositie beoordelen | Privacyjurist/FG, werkgever en producteigenaar |
+| Telemetrie | Capaciteitsplanning en tijdens de opstartfase gerichte technische ondersteuning; noodzakelijkheid, proportionaliteit en werknemerspositie beoordelen | Privacyjurist/FG, werkgever en producteigenaar |
 
 **OPENSTAAND:** vul per doel de definitieve artikelen, nationale wettelijke
 basis, noodzakelijkheid, gegevensminimalisatie en informatieplicht in. Neem de
@@ -395,12 +580,12 @@ eventuele back-up- of securitydienstverleners.
 | SMS-webappgegevens | Buiten repository | OPENSTAAND |
 | Persoonlijke hotstrings | Tot wijziging/verwijdering/profielbeheer; `.bak` kan vorige versie bevatten | OPENSTAAND |
 | Snelkiesnummers en instellingen | Tot wijziging/verwijdering/profielbeheer | OPENSTAAND |
-| Standaardlog | Actief plus één geroteerd bestand; rotatie bij circa 2 MB | OPENSTAAND — maximale tijdsduur toevoegen |
+| Standaardlog | Actief plus één geroteerd bestand; rotatie bij circa 2 MB; automatische verwijdering van regels ouder dan zeven dagen staat als TODO open | Gewenste maximale termijn: zeven dagen |
 | Uitgebreid log | Tijdelijk gedurende rapportsessie; volgens sessielogica verwijderd | Technische regel bevestigen in beheer-/testbewijs |
-| Probleemrapport-ZIP | Blijft in `%TEMP%` na voorbereiding | OPENSTAAND — automatische of handmatige verwijdertermijn |
-| Supportmail/ticket | Buiten repository | OPENSTAAND |
+| Probleemrapport-ZIP | Blijft nu in `%TEMP%` na voorbereiding | TODO: automatisch verwijderen na succesvolle overdracht/afronding en bij annulering, met een veilige opruimroute voor de handmatige fallback |
+| Supportmail/ticket | Speciale Outlook-map verwijdert diagnostische berichten ouder dan zeven dagen automatisch | Eventuele aanvullende retentie in herstelvoorzieningen, archieven en back-ups bevestigen |
 | Telemetrie lokaal | Installatie-ID en tellers in `settings.ini` | OPENSTAAND |
-| Telemetrie extern | Power Automate/Teams-omgeving | OPENSTAAND |
+| Telemetrie extern | Power Automate/Teams-omgeving; registraties ouder dan één jaar worden verwijderd | Maximale termijn één jaar; toepassing op exports en back-ups bevestigen |
 | OneDrive/back-ups | Buiten repository | OPENSTAAND |
 
 Termijnen moeten controleerbaar zijn en ook back-ups, mailboxen, exports en

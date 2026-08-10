@@ -2,11 +2,12 @@
 
 _Status: voorlopige repositoryanalyse, geen juridisch advies of formeel conformiteitsoordeel._
 
-_Beoordelingsdatum: 2026-08-09._
+_Beoordelingsdatum: 2026-08-10._
 
-_Onderzochte basis: branch `release/2.2-rc`, uitgangscommit `d3d83ff`,
-`AppVersion = 2.2-rc.3`. De wijzigingen na deze uitgangscommit verduidelijken
-de intended purpose en wijzigen geen functioneel gedrag._
+_Onderzochte basis: branch `release/2.2-rc`, uitgangscommit `76fe6a0`,
+`AppVersion = 2.2-rc.3`, aangevuld met de documentatiewijzigingen in dezelfde
+beoordelingsreeks. Deze wijzigingen concretiseren de intended purpose en
+gegevensbescherming en wijzigen geen functioneel gedrag._
 
 ## 1. Doel en status
 
@@ -33,7 +34,7 @@ fabrikant beoogde gebruik.
 | --- | --- | --- |
 | Software | Ja, zonder twijfel | DocBot verwerkt invoer, bewaart toestand, genereert uitvoer, communiceert over het netwerk en stuurt andere applicaties aan. |
 | Toepassing binnen zorgprocessen | Ja | DocBot wordt toegepast in een ziekenhuisomgeving en kan daar patiënttelefoonnummers verwerken, klinische tekst in een EPD invoegen en gevoelige diagnostische logs verzamelen. |
-| MDSW onder de huidige intended purpose | Waarschijnlijk niet | De aangetroffen functies analyseren geen patiëntspecifieke medische gegevens en geven geen diagnose, prognose, monitoring, behandelkeuze of doseringsadvies. De beslisregels zijn technisch en administratief. |
+| MDSW onder de goedgekeurde intended purpose | Waarschijnlijk niet | De goedgekeurde verklaring sluit een medisch doel uit en de aangetroffen functies analyseren geen patiëntspecifieke medische gegevens en geven geen diagnose, prognose, monitoring, behandelkeuze of doseringsadvies. De beslisregels zijn technisch en administratief. |
 
 DocBot heeft wel reële informatiebeveiligings- en patiëntveiligheidsrisico's.
 Het ontbreken van MDSW-kwalificatie neemt die risico's niet weg.
@@ -69,23 +70,27 @@ vallen buiten de onderzochte repositorybasis.
 
 ### 4.1 Aangetroffen productdoel
 
-De primaire verklaring staat in `docs/INTENDED_PURPOSE.md` en wordt in
-`README.md` en `docs/PROJECT_CONTEXT.md` weerspiegeld: DocBot is
-productiviteitssoftware voor medewerkers
-in een beheerde bedrijfsomgeving. De software ondersteunt tekstinvoer door
-ingestelde afkortingen (hotstrings) te vervangen en ondersteunt communicatie
-door telefoonnummers op het Windows-klembord technisch te herkennen en te
-normaliseren. Afhankelijk van de gebruikersinstelling kan DocBot een herkend
-nummer doorgeven aan een geconfigureerde interne telefoniedienst of invullen
-in een geconfigureerde SMS-webapplicatie. DocBot verzendt zelf geen
-SMS-berichten.
+De primaire verklaring staat in `docs/INTENDED_PURPOSE.md`, heeft de status
+van goedgekeurd intern productbesluit en wordt in `README.md` en
+`docs/PROJECT_CONTEXT.md` weerspiegeld. DocBot is productiviteitssoftware voor
+medewerkers in een beheerde bedrijfsomgeving. De software ondersteunt
+tekstinvoer door ingestelde afkortingen (hotstrings) te vervangen en
+ondersteunt communicatie door telefoonnummers op het Windows-klembord
+technisch te herkennen en te normaliseren. Afhankelijk van de
+gebruikersinstelling kan DocBot een herkend nummer doorgeven aan een
+geconfigureerde interne telefoniedienst of invullen in een geconfigureerde
+SMS-webapplicatie. DocBot verzendt zelf geen SMS-berichten. De beoogde
+gebruikers zijn medewerkers op een beheerde Windows-werkplek; DocBot is geen
+zelfstandig patiëntproduct.
 
 DocBot is ontstaan vanuit behoeften in een ziekenhuisomgeving en wordt daar
 ook toegepast. De software heeft geen beoogd medisch doel: zij verricht geen
 medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft
-geen diagnose-, behandel-, doserings- of monitoringsadvies. Aanvullende functies zijn
-snelkiezen, pakketbeheer, telemetrie, probleemrapportage en gecontroleerd
-afsluiten, herstarten en updaten.
+geen diagnose-, behandel-, doserings- of monitoringsadvies. De gebruiker blijft
+verantwoordelijk voor de gekozen hotstring, het telefoonnummer, de
+patiënt-/dossiercontext en het verzenden van SMS en probleemrapport.
+Aanvullende functies zijn snelkiezen, pakketbeheer, telemetrie,
+probleemrapportage en gecontroleerd afsluiten, herstarten en updaten.
 
 ### 4.2 Niet aangetroffen als productdoel
 
@@ -98,10 +103,13 @@ In de repository is geen intended purpose aangetroffen voor:
 - klinische alarmering op basis van patiëntparameters;
 - aansturing of beïnvloeding van een medisch hulpmiddel.
 
-De intended-purposeverklaring legt de gebruikersgroep, gebruiksomgeving,
-hoofdinvoer, hoofduitvoer en uitgesloten medische toepassingen vast. De
-regulatoire kwalificatie blijft voorlopig: zij is gebaseerd op documentatie én
-implementatie en is geen extern juridisch of gecertificeerd oordeel.
+De intended-purposeverklaring legt gebruikers, omgeving, invoer, uitvoer,
+autonome technische acties, beperkingen, gebruikersverantwoordelijkheid en
+uitgesloten medische toepassingen vast. Zij geldt voor `2.2-rc.3` en
+opvolgende versies totdat een herbeoordeling tot een gewijzigde verklaring
+leidt. De regulatoire kwalificatie blijft voorlopig: zij is gebaseerd op
+documentatie én implementatie en is geen extern juridisch of gecertificeerd
+oordeel.
 
 ## 5. Feitelijke functionaliteit
 
@@ -161,6 +169,15 @@ is verkregen of welke controletermijn passend is. Die selectie blijft bij de
 gebruiker. Dit lijkt functioneel meer op tekstverwerking of documentatiemacro's
 dan op patiëntspecifieke clinical decision support.
 
+De teksten in de pakketbestanden en persoonlijke `hotstrings.json` zijn
+bedoeld als generieke, herbruikbare formuleringen en zijn zonder koppeling aan
+een identificeerbare patiënt niet op zichzelf patiënt- of
+gezondheidsgegevens. Zodra de gebruiker zo'n tekst in een patiëntdossier
+plaatst, wordt de resulterende dossierinhoud wel onderdeel van de
+patiëntgebonden zorgdocumentatie. Patiëntidentificerende of patiëntspecifieke
+inhoud hoort niet in `hotstrings.json`; een technische inhoudscontrole
+ontbreekt en een gebruikersinstructie staat nog als vervolgactie open.
+
 ### 5.4 Telefonie en SMS
 
 `IPT_callNumber()` is het centrale belpad. Het controleert onder meer of een
@@ -177,7 +194,11 @@ maar geen medische beslissing.
 
 Bij SMS activeert DocBot een geconfigureerde Edge-pagina en vult het nummer in.
 DocBot verzendt de SMS niet zelfstandig; controle en verzending blijven bij de
-gebruiker (`README.md:193-199` en beslissing D-021).
+gebruiker (`README.md:192-216` en beslissing D-021). De huidige
+SMS-webapplicatie wordt geleverd als Enovation Funatic. De exacte
+contractpartij binnen Enovation Group, AVG-rol, verwerkersovereenkomst,
+subverwerkers, hostinglocaties en feitelijke serverbewaring moeten nog aan de
+overeenkomst en productieomgeving worden getoetst.
 
 ### 5.5 Diagnostiek en telemetrie
 
@@ -194,11 +215,31 @@ uitgebreide log bevatten (`DocBot.ahk:3225-3279`). DocBot maakt vervolgens een
 Outlook-concept met ZIP-bijlage; de gebruiker verzendt het bericht zelf
 (`DocBot.ahk:3403-3545`).
 
+In de huidige opstartfase is de enige ontwikkelaar de enige ontvanger van een
+verzonden probleemrapport. De ontwikkelaar gebruikt hiervoor een door de
+organisatie beheerd Outlook-account en een speciale diagnostiekmap waarin
+berichten ouder dan zeven dagen automatisch worden verwijderd. Er is geen
+waarnemer of vervanger bij afwezigheid. Langere retentie in herstelvoorzieningen
+of back-ups volgt het organisatorische Microsoft-/mailboxbeleid. De lokale
+standaardlog wordt nog alleen op bestandsgrootte geroteerd; automatische
+verwijdering van logregels ouder dan zeven dagen is een openstaande technische
+actie. Ook automatische verwijdering van de rapport-ZIP na veilige overdracht
+of annulering staat nog open.
+
 De optionele telemetrie bevat onder meer een installatie-ID,
 Windows-gebruikersnaam, applicatieversie, tijden, functionele status en
 gebruikstellers (`Telemetry.ahk:294-353`). De code en telemetriemelding in
-`README.md:255-287` beogen geen telefoonnummers, hotstringinhoud of
-klembordinhoud te verzenden.
+`README.md:272-322` beogen geen telefoonnummers, hotstringinhoud of
+klembordinhoud te verzenden. Het vastgelegde doel is inzicht in gebruik en
+omvang voor capaciteitsplanning van telefonie- en SMS-diensten. Tijdens de
+opstartfase ondersteunt de Windows-gebruikersnaam daarnaast gerichte hulp bij
+technische problemen, zoals niet-geactiveerde telefonie of een eerder
+wisselend installatie-ID bij nog niet gesynchroniseerde OneDrive-opslag. De
+gebruikersnaam is niet bedoeld voor beoordeling van prestaties, aanwezigheid
+of werkgedrag en moet na de opstartfase opnieuw op noodzakelijkheid worden
+beoordeeld. Leden van het RPA ontwikkel- en beheerteam hebben toegang tot de
+centrale bestemming; centrale registraties ouder dan één jaar worden
+verwijderd.
 
 ## 6. Persoonsgegevens en gezondheidsinformatie
 
@@ -209,7 +250,7 @@ klembordinhoud te verzenden.
 | Probleembeschrijving | Vrije invoer door gebruiker | In rapport en ZIP; daarna eventueel per e-mail | Kan onbedoeld patiënt- of gezondheidsinformatie bevatten |
 | Ruwe telefonierespons en URL | Interne telefonieserver en aanvraagpad | Alleen in uitgebreide log na toestemming | Kan nummer, servergegevens of gevoelige context bevatten |
 | Snelkiesnaam en nummer | Standaard of door gebruiker ingevoerd | Lokale JSON | Persoons- of organisatiedata, afhankelijk van invoer |
-| Telemetrie-identificatie en gebruik | DocBot-installatie en Windows-account | Lokale INI en optionele HTTPS-webhook | Medewerker-/apparaatgegevens; geen patiëntinhoud beoogd |
+| Telemetrie-identificatie en gebruik | DocBot-installatie en Windows-account | Lokale INI en optionele HTTPS-webhook; centrale registraties maximaal één jaar | Medewerker-/installatiegegevens voor capaciteitsplanning en tijdelijk gerichte ondersteuning; geen patiëntinhoud beoogd |
 
 DocBot leest geen patiëntdossier als gegevensbron uit en bewaart geen gestructureerde
 diagnoses, uitslagen of medicatielijst als eigen patiëntendatabase. Het staat
@@ -222,6 +263,29 @@ logs staan onder LocalAppData (`DocBot.ahk:34-49`). In de applicatiecode is
 geen eigen versleuteling of expliciete inrichting van bestands-ACL's
 aangetroffen. Bescherming berust mede op Windows, het gebruikersprofiel en de
 beheerde werkplekomgeving.
+
+In de huidige inzet staat de map Documents en daarmee de persistente
+DocBot-gebruikersopslag in de organisatorische OneDrive-omgeving. De
+organisatie bepaalt grotendeels bewaartermijnen, back-ups, beheerderstoegang
+en definitieve profielverwijdering. Bij uitdiensttreding wordt de toegang van
+de medewerker via het organisatorische accountbeheer geblokkeerd; dat betekent
+niet noodzakelijk dat actieve bestanden, herstelkopieën en back-ups direct
+worden gewist.
+
+`docs/DATA_PROTECTION.md` legt inmiddels ook vast dat snelkiesinhoud wordt
+begrensd door normaal telefoongebruik en organisatiebeleid, dat Funatic van
+Enovation de SMS-leverancier is, dat het RPA ontwikkel- en beheerteam toegang
+heeft tot telemetrie en dat datalekken via het algemene organisatieproces door
+de CISO worden afgehandeld. Exacte AVG-grondslagen, contractketens,
+productie-TLS, een aantal concrete verwijdertermijnen en het formele
+DPIA-besluit blijven organisatorisch open.
+
+Deze concretere gegevensbeschermingsfeiten veranderen de voorlopige
+MDSW-conclusie niet: zij verduidelijken gegevensstromen, ontvangers en
+beheersmaatregelen, maar voegen geen patiëntspecifieke medische analyse of
+medisch productdoel toe. De eventuele eigen regulatoire kwalificatie van de
+Funatic-dienst valt buiten deze beoordeling en wordt niet door de beperkte
+nummerinvulling aan DocBot toegerekend.
 
 ## 7. Beslisregels en autonome acties
 
@@ -264,7 +328,7 @@ kan daarentegen wel een MDSW-module vormen.
 
 ### 8.2 Toepassing op DocBot
 
-Op basis van de huidige repository en aangetroffen intended purpose
+Op basis van de huidige repository en goedgekeurde intended purpose
 kwalificeert DocBot **waarschijnlijk niet als MDSW**, omdat de software:
 
 - geen patiëntparameters of dossiergegevens medisch analyseert;
@@ -291,6 +355,9 @@ als DocBot:
 - automatisch bepaalt welke medische conclusie in een dossier komt;
 - medicatie, dosering of controletermijn aanbeveelt;
 - patiëntparameters bewaakt of klinische alarmen genereert;
+- patiëntcommunicatie zelfstandig gaat verzenden;
+- nieuwe categorieën persoonsgegevens verwerkt of logging/telemetrie
+  wezenlijk verruimt;
 - een medisch hulpmiddel bestuurt of de werking ervan beïnvloedt;
 - extern wordt gepresenteerd als software die klinische juistheid,
   patiëntveiligheid of medische besluitvorming waarborgt;
@@ -330,6 +397,12 @@ Voor DocBot zijn in elk geval relevant:
 - bewaartermijnen, veilige verwijdering, continuïteit en herstel;
 - gecontroleerde overdracht van probleemrapporten.
 
+De inmiddels vastgelegde OneDrive-opslag en organisatorische blokkering van
+accounts bij uitdiensttreding, beperkte diagnostiekontvanger, Outlook-retentie,
+telemetrietoegang en -retentie en CISO-afhandeling van datalekken zijn relevante
+organisatorische maatregelen. Zij moeten nog worden gekoppeld aan formeel
+beleid, controlebewijs, eigenaarschap en waar nodig de NEN 7510-risicoanalyse.
+
 NEN 7510-conformiteit is een eigenschap van een organisatorisch beheersysteem,
 niet van alleen een broncodebestand of losse applicatie.
 
@@ -349,7 +422,8 @@ formele probleemafhandeling.
 De huidige repository vormt daarvoor nog geen volledig bewijs. Er is geen
 conventionele geautomatiseerde testsuite. `docs/ARCHITECTURE.md:480-493`
 beschrijft broninspectie en handmatige validatie op Windows en het interne
-netwerk; gerichte tests staan nog open in `docs/TODO.md:231-245`.
+netwerk; gerichte tests en technische privacymaatregelen staan nog open in
+`docs/TODO.md`.
 
 Wanneer DocBot geen MDSW is, is IEC 62304 niet automatisch de toepasselijke
 productlevenscyclusnorm. De werkwijze kan wel vrijwillig worden gebruikt om de
@@ -371,7 +445,9 @@ onverwachte onbeschikbaarheid door update- of signaalfunctionaliteit.
 Er zijn beheersmaatregelen aanwezig, zoals nummernormalisatie,
 bevestigingsmodi, handmatige SMS-verzending, standaardlogredactie, expliciete
 toestemming voor uitgebreide logging, verwijdering van tijdelijke logs en
-atomische JSON-writes. Er is geen formeel risicodossier aangetroffen dat
+atomische JSON-writes. De intended purpose legt bovendien expliciet vast dat
+de gebruiker tekst, nummer, patiënt-/dossiercontext en verzending controleert.
+Er is geen formeel risicodossier aangetroffen dat
 gevaren, oorzaken, beheersmaatregelen, verificatie en restrisico's traceerbaar
 verbindt.
 
@@ -394,6 +470,9 @@ maar vormen op zichzelf geen ISO 13485-kwaliteitsmanagementsysteem.
 
 ## 10. Positieve beheersmaatregelen
 
+- De intended purpose is als intern productbesluit goedgekeurd en beschrijft
+  gebruikers, omgeving, invoer, uitvoer, autonome acties, beperkingen en
+  uitgesloten medische toepassingen.
 - Alle normale belacties lopen door één centraal belpad.
 - Bellen wordt geblokkeerd zolang geen toestel gekoppeld is, behalve voor het
   koppelgesprek.
@@ -403,7 +482,17 @@ maar vormen op zichzelf geen ISO 13485-kwaliteitsmanagementsysteem.
 - Ongeredigeerde logging vereist expliciete toestemming en is tijdelijk.
 - Persoonlijke JSON-opslag gebruikt backup, tijdelijk bestand en validatie.
 - Gebruikersprofielen zijn per releasekanaal gescheiden.
-- Telemetrie is geminimaliseerd, optioneel geconfigureerd en vereist HTTPS.
+- Persistente gebruikersgegevens staan in de huidige inzet in de
+  organisatorische OneDrive-omgeving; accounttoegang wordt bij
+  uitdiensttreding geblokkeerd.
+- Probleemrapporten worden door de gebruiker verzonden naar de enige
+  ontwikkelaar; de speciale Outlook-map verwijdert berichten ouder dan zeven
+  dagen automatisch.
+- Telemetrie is beperkt tot de beschreven payload, optioneel geconfigureerd
+  en vereist HTTPS; toegang is beperkt tot het RPA ontwikkel- en beheerteam en
+  centrale registraties ouder dan één jaar worden verwijderd.
+- Datalekken vallen onder het algemene incidentproces van de organisatie en
+  worden door de CISO afgehandeld.
 - De buildhelper verifieert na vervanging de bytes van de executable.
 
 Deze maatregelen verminderen risico's, maar zijn geen zelfstandig bewijs van
@@ -425,13 +514,27 @@ conformiteit met een norm of de MDR.
    technisch geweigerd en de feitelijke productiebeveiliging is niet uit de
    repository vast te stellen.
 7. Lokale INI/JSON/logbestanden hebben geen applicatie-eigen versleuteling of
-   zichtbare ACL-inrichting.
+   zichtbare ACL-inrichting; de feitelijke bescherming berust op Windows,
+   OneDrive en organisatorisch werkplekbeheer en moet aantoonbaar worden
+   gekoppeld aan beleid en controles.
 8. Voor centrale update-/signaalopdrachten is geen cryptografische
    authenticatie in de clientcode aangetroffen.
 9. Er ontbreekt een geautomatiseerde regressie-, integratie- en
-    veiligheidstestsuite.
-10. Duurzame projectdocumentatie kan achterlopen op code; statusclaims moeten
-    tegen de actuele branch worden gecontroleerd.
+   veiligheidstestsuite.
+10. Definitieve AVG-grondslagen, formele rollen, contract-/verwerkersketens,
+    productiehosting en -TLS, enkele concrete back-up-/verwijdertermijnen en
+    het DPIA-besluit zijn nog niet organisatorisch vastgesteld of als bewijs
+    aan de repository gekoppeld.
+11. De lokale standaardlog verwijdert nog niet automatisch regels ouder dan
+    zeven dagen en de probleemrapport-ZIP wordt na overdracht of annulering nog
+    niet automatisch opgeruimd.
+12. De Windows-gebruikersnaam in telemetrie heeft een tijdelijk supportdoel
+    tijdens de opstartfase, maar er is nog geen objectief eindcriterium of
+    vastgelegde herbeoordelingsdatum voor verwijdering of verdere
+    pseudonimisering.
+13. De gebruikersinstructie die patiëntidentificerende en patiëntspecifieke
+    inhoud in persoonlijke hotstrings uitsluit, moet nog worden opgesteld en
+    beheerd.
 
 ## 12. Aanbevolen vervolgacties
 
@@ -441,9 +544,10 @@ conformiteit met een norm of de MDR.
    hulpmiddelen of een daarvoor gekwalificeerde specialist.
 3. Neem DocBot expliciet op in de NEN 7510-scope, gegevensclassificatie en
    risicoanalyse van de zorgorganisatie.
-4. Vul de openstaande organisatorische onderdelen in
-   `docs/DATA_PROTECTION.md` aan, laat rollen, grondslagen, ontvangers,
-   bewaartermijnen, autorisaties en transportbeveiliging goedkeuren en laat de
+4. Rond de resterende organisatorische onderdelen in
+   `docs/DATA_PROTECTION.md` af: laat met name rollen en AVG-grondslagen,
+   contractketens, productiehosting/TLS, concrete resttermijnen,
+   autorisatie-eigenaarschap en bezwaar-/inzageprocessen goedkeuren en laat de
    verwerkingsverantwoordelijke en FG het DPIA-besluit vastleggen.
 5. Maak een traceerbare patiëntveiligheids- en informatiebeveiligingsanalyse,
    ook zolang DocBot geen MDSW is.
@@ -451,9 +555,15 @@ conformiteit met een norm of de MDR.
    vierogencontrole, versiebeheer en regressietests.
 7. Onderzoek doelapplicatie-/venstercontrole, extra bevestiging bij risicovolle
    acties en waar mogelijk een controle van de juiste patiëntcontext.
-8. Bouw requirements, traceerbaarheid, automatische tests,
+8. Implementeer de zeven-dagenverwijdering voor lokale standaardlogregels en
+   ruim probleemrapport-ZIP's veilig op na overdracht of annulering.
+9. Stel de gebruikersinstructie voor veilige, niet-patiëntspecifieke
+   hotstringinhoud op en wijs een eigenaar voor klinische pakketinhoud aan.
+10. Definieer het einde van de telemetrie-opstartfase en herbeoordeel dan de
+   Windows-gebruikersnaam op noodzaak en een minder identificerend alternatief.
+11. Bouw requirements, traceerbaarheid, automatische tests,
    verificatieresultaten en gecontroleerde release-evidence op.
-9. Herbeoordeel dit document bij iedere trigger uit paragraaf 8.3 en minstens
+12. Herbeoordeel dit document bij iedere trigger uit paragraaf 8.3 en minstens
    bij iedere voorgenomen hoofdrelease.
 
 ## 13. Beheer van deze beoordeling
