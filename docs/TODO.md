@@ -424,14 +424,19 @@ before release.
 The Windows username currently supports targeted troubleshooting during the
 startup phase, for example when telephony is not activated or when a local
 installation identity behaves unexpectedly because OneDrive was not yet
-synchronized.
+synchronized. Telemetry was designed for data minimization from the start:
+the payload already carries a pseudonymous, randomly generated installation
+ID rather than relying on directly identifying data, and the username is a
+deliberately temporary addition on top of that ID, not a substitute for a
+missing pseudonymous identifier.
 
 - [ ] Define who decides when the startup phase has ended and record an
   objective review date or exit criterion.
 - [ ] Reassess whether targeted support still requires the Windows username.
-- [ ] If it is no longer necessary, remove the username from the payload or
-  replace it with a less identifying mechanism that still supports the
-  justified operational need.
+- [ ] If it is no longer necessary, remove the username from the payload.
+  The installation ID already present in the payload continues to serve as
+  the less-identifying mechanism for the remaining telemetry purposes; no
+  new pseudonymization mechanism needs to be designed.
 - [ ] Do not reuse the username for performance, attendance or individual
   work-behavior monitoring.
 - [ ] Update the README telemetrie notice and `docs/DATA_PROTECTION.md` in the

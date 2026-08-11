@@ -285,14 +285,18 @@ telemetrie is toegankelijk voor de leden van het RPA ontwikkel- en beheerteam.
 Logregistraties ouder dan één jaar worden uit de centrale bestemming
 verwijderd.
 
-Tijdens de huidige opstartfase wordt de Windows-gebruikersnaam gebruikt om een
-technisch signaal aan de getroffen gebruiker te kunnen koppelen en gericht
-hulp te bieden. Voorbeelden zijn een niet-geactiveerde telefoniefunctie en het
-onderzoek naar een eerder wisselend installatie-ID wanneer DocBot startte
-voordat OneDrive was gesynchroniseerd. De gebruikersnaam is niet bedoeld voor
-beoordeling van prestaties, aanwezigheid of individueel werkgedrag. Na de
-opstartfase wordt opnieuw beoordeeld of dit veld nog nodig is of door een
-minder identificerend kenmerk kan worden vervangen.
+De telemetrie is vanaf het ontwerp opgezet met dataminimalisatie: de payload
+gebruikt een willekeurig, pseudoniem installatie-ID in plaats van
+rechtstreeks herleidbare gegevens. Tijdens de huidige opstartfase wordt de
+Windows-gebruikersnaam daarnaast, als bewust tijdelijke aanvulling op dat
+installatie-ID, gebruikt om een technisch signaal aan de getroffen gebruiker
+te kunnen koppelen en gericht hulp te bieden. Voorbeelden zijn een
+niet-geactiveerde telefoniefunctie en het onderzoek naar een eerder
+wisselend installatie-ID wanneer DocBot startte voordat OneDrive was
+gesynchroniseerd. De gebruikersnaam is niet bedoeld voor beoordeling van
+prestaties, aanwezigheid of individueel werkgedrag. Na de opstartfase wordt
+opnieuw beoordeeld of dit veld nog nodig is; het installatie-ID blijft dan
+als het al aanwezige, minder identificerende kenmerk in de payload staan.
 
 Bij het starten leest DocBot eerst het bestaande installatie-ID uit
 `settings.ini`. Als dat ID beschikbaar is, wordt niets teruggeschreven en kan
