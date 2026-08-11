@@ -59,7 +59,7 @@ echo.
 call :deploy "%TARGET%" "%APP_NAME%"
 if errorlevel 1 goto :failed
 
-rem Alleen de centrale developversie mag vanaf een directe submap van DocBot
+rem Alleen de centrale developversie of een RC mag vanaf een directe submap van DocBot
 rem optioneel ook naar de naastgelegen applicatiemap worden uitgerold.
 set "IS_DEVELOP="
 findstr /B /C:"global AppVersion" "%SOURCE%" | findstr /C:"-dev" /C:"-rc" >nul
