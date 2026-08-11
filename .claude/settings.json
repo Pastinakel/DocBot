@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git *)",
+            "command": "#!/usr/bin/env bash\nset -u\n\ninput=$(cat)\ncmd=$(printf '%s' \"$input\" | jq -r '.tool_input.command // empty')\n\necho \"$cmd\" | grep -qE '\\bgit(\\s+-C\\s+\\S+)?\\s+commit\\b' || exit 0\n\ngit rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0\n\n# Geen wijziging aan DocBot.ahk (staged of unstaged t.o.v. HEAD)? Niets te checken.\ngit diff --quiet HEAD -- DocBot.ahk 2>/dev/null && exit 0\n\nold_ver=$(git show HEAD:DocBot.ahk 2>/dev/null | grep -m1 '^global AppVersion')\nnew_ver=$(grep -m1 '^global AppVersion' DocBot.ahk 2>/dev/null)\n\ndeny() {\n  reason=$1\n  printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":%s}}\\n' \"$(printf '%s' \"$reason\" | jq -Rs .)\"\n  exit 0\n}\n\nif [ \"$old_ver\" = \"$new_ver\" ]; then\n  deny \"DocBot.ahk wijzigt in deze commit, maar global AppVersion niet. Iedere commit die DocBot.ahk wijzigt moet ook AppVersion aanpassen (zie CLAUDE.md, sectie 'Versienummers per branch').\"\nfi\n\nbranch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\ncase \"$branch\" in\n  develop|main|release/*) ;;\n  *)\n    new_ver_value=$(printf '%s' \"$new_ver\" | sed -E 's/^global AppVersion := \"([^\"]*)\"/\\1/')\n    if printf '%s' \"$new_ver_value\" | grep -qE -- '-dev\\.|-rc\\.'; then\n      deny \"Branch '$branch' is een feature-/fixbranch, maar AppVersion ('$new_ver_value') gebruikt nog een -dev./-rc.-teller van een andere branch. Gebruik een eigen lokale prerelease-naam zoals 2.2-<korte-branchnaam>.N (zie CLAUDE.md, sectie 'Versienummers per branch').\"\n    fi\n    ;;\nesac\n\nexit 0\n",
+            "timeout": 15,
+            "statusMessage": "AppVersion-check voor DocBot.ahk (CLAUDE.md)..."
+          }
+        ]
+      }
+    ]
+  }
+}

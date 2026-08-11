@@ -122,16 +122,22 @@ lokale klembordcontrole en mogelijke directe belactie. DocBot wordt als
 systeem/hulpmiddel gekoppeld aan de relevante verwerking in het
 verwerkingsregister.
 
-**Huidige geheugenduur:** het laatst herkende telefoonnummer blijft in
-geheugen totdat een volgend geldig nummer wordt herkend of DocBot wordt
-afgesloten. Er is nog geen maximale duur. Als verbetermaatregel moet het nummer
-na overdracht, afronding of annulering van de actuele actie onmiddellijk uit
-de centrale status worden gewist.
+**Huidige geheugenduur:** het herkende telefoonnummer wordt onmiddellijk uit
+de centrale IPT-status gewist zodra de actuele actie is overgedragen,
+afgerond of geannuleerd: na bellen, na sms-actie, bij annuleren, bij sluiten
+van het bevestigingsvenster (ook via het systeemkruisje) en wanneer geen
+belactie is geconfigureerd. Zolang een bevestigingsvenster nog openstaat,
+kan één volgend herkend nummer het venster met het vorige, nog niet
+afgehandelde nummer bovendien vervangen in plaats van daar ongemerkt onder
+te blijven liggen — DocBot toont zo nooit meer dan één, altijd het meest
+recente, te bevestigen nummer tegelijk. Deze momenten worden met een
+geschoonde regel (zonder het nummer zelf) in de standaardlog vastgelegd, dus
+buiten die momenten blijft er geen herkend nummer in de centrale status
+achter.
 
 **OPENSTAAND:** bevestiging door de verwerkingsverantwoordelijke en FG van de
 exacte grondslag, de gebruikte privacyverklaring en de naam of het nummer van
-de verwerking in het verwerkingsregister. Voor afronding is daarnaast de
-genoemde technische verkorting van de geheugenduur nodig.
+de verwerking in het verwerkingsregister.
 
 ### 3.2 Interne telefonie
 

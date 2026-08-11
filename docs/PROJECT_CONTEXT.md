@@ -111,6 +111,8 @@ Requirements for the SMS path:
 - JavaScript is only a fallback, not the primary implementation.
 - DocBot fills the telephone number but does not send the SMS. Final checking and sending stay with the user.
 - The cancel/SMS/call dialog is keyboard-operable with left/right plus Enter and must paint its initial visual selection correctly.
+- Only one call-action dialog (confirmation, or the cancel/SMS/call choice) may be open at a time. A newer clipboard-detected number always closes a still-open older dialog first — with a short notification — regardless of which action the new number then triggers (a new dialog, an immediate call, or no action). Do not reintroduce stacking dialogs by adding a new outcome path that skips this close step.
+- `State["IPT"]["ClipBoardNumber"]` is cleared immediately once the current action is handed off, completed, or cancelled (call placed, SMS started, dialog cancelled/closed, or no action configured) — not left until the next number is detected or the app exits.
 
 ### 4.5 Help and GUI
 
