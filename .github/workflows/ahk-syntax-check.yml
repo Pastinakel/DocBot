@@ -1,0 +1,53 @@
+name: AHK v2 syntax check
+
+on:
+  pull_request:
+    paths:
+      - '**/*.ahk'
+      - '.github/workflows/ahk-syntax-check.yml'
+  push:
+    branches: [develop]
+    paths:
+      - '**/*.ahk'
+  workflow_dispatch: {}
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AutoHotkey v2 downloaden (portable)
+        shell: pwsh
+        run: |
+          $ver = "2.0.26"
+          Invoke-WebRequest -Uri "https://github.com/AutoHotkey/AutoHotkey/releases/download/v$ver/AutoHotkey_$ver.zip" -OutFile ahk.zip
+          Expand-Archive ahk.zip -DestinationPath ahk
+
+      - name: CI-lokale config voorbereiden
+        shell: pwsh
+        run: Copy-Item DocBot.local.example.ahk DocBot.local.ahk
+
+      - name: Syntax valideren
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path ahk -Recurse -Filter "AutoHotkey64.exe" | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $exe) {
+            Write-Error "AutoHotkey64.exe niet gevonden na uitpakken van de portable zip"
+            exit 1
+          }
+          Write-Host "Gebruik interpreter: $exe"
+          $proc = Start-Process -FilePath $exe -ArgumentList '/ErrorStdOut', '/Validate', 'DocBot.ahk' -PassThru -NoNewWindow
+          $finished = $proc.WaitForExit(60000)
+          if (-not $finished) {
+            Write-Host "AutoHotkey reageert niet binnen 60 seconden (waarschijnlijk een blokkerend foutdialoogvenster). Proces wordt afgebroken."
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            Write-Error "AutoHotkey v2-syntaxvalidatie mislukt: proces reageerde niet binnen de tijdslimiet (waarschijnlijk een syntaxfout die een dialoogvenster triggert)"
+            exit 1
+          }
+          Write-Host "Exitcode: $($proc.ExitCode)"
+          if ($proc.ExitCode -ne 0) {
+            Write-Error "AutoHotkey v2-syntaxvalidatie mislukt (exit $($proc.ExitCode))"
+            exit 1
+          }
