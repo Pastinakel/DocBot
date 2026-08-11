@@ -47,6 +47,14 @@ Repository state checked locally on 2026-08-09:
 
 The project owner approved problem reporting and consent-based extended logging as a late exception to the 2.2 feature freeze. That integration and the RC2 version transition are complete in Git. The current RC3 wording change does **not** complete release acceptance: a compiled Windows check of the changed source plus the broader managed-workplace, telephony, and internal-network acceptance paths remains required before stable 2.2.
 
+Update, 2026-08-11: `release/2.2-rc` also merged PR #19 (merge commit
+`2ee42b6`), adding `.github/workflows/ahk-syntax-check.yml`. This is a CI
+syntax-only gate (see D-040 and `docs/ARCHITECTURE.md` §19); it does not
+change `AppVersion`, does not touch `DocBot.ahk` runtime behavior, and does
+not itself count toward the RC3 acceptance checklist in `docs/TODO.md`. The
+workflow exists only on `release/2.2-rc` so far; propagating it to
+`develop` is open follow-up work.
+
 Do not infer functional validation from source integration alone. The earlier feature work contained repeated AutoHotkey v2 multiline-concatenation failures, so the integrated RC must still pass a real AHK v2 parse/compile/run and functional test on Windows.
 
 ## 4. Product requirements that must survive refactors
