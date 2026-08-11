@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-fix-phone-number-history.1"
+global AppVersion := "2.2-fix-phone-number-history.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -3605,6 +3605,15 @@ NormalizePhoneNumberInternal(input) {
 HandleClipboardNumberDetected() {
     global State
 
+    ; Elke klemborddetectie maakt eerst schoon wat een vorige detectie nog
+    ; openstaand liet — ongeacht welke actie hierna volgt (nieuwe dialoog,
+    ; direct bellen of niets doen). Zo kan een intern nummer dat direct wordt
+    ; gebeld nooit een nog niet afgehandeld venster van een eerder extern
+    ; nummer laten "achterblijven". Handmatige acties in de DocBot-interface
+    ; (snelkies, rechtermuisknop) gaan hier niet doorheen en laten een
+    ; openstaand venster bewust met rust.
+    CloseExistingPhoneActionDialog()
+
     action := State["CallAction"]
     switch action {
         case 0:
@@ -3625,6 +3634,8 @@ HandleClipboardNumberDetected() {
 HandleInternalClipboardNumberDetected() {
     global State
 
+    CloseExistingPhoneActionDialog()
+
     action := State["CallAction"]
     switch action {
         case 0:
@@ -3637,10 +3648,11 @@ HandleInternalClipboardNumberDetected() {
     }
 }
 
+; CloseExistingPhoneActionDialog() is al aangeroepen door de aanroepende
+; Handle...ClipboardNumberDetected()-functie, de enige plek vanwaar deze
+; functie wordt aangeroepen.
 ShowCallConfirmationDialog() {
     global MainGui, C, State, PhoneActionDialogState
-
-    CloseExistingPhoneActionDialog()
 
     number := State["IPT"]["ClipBoardNumber"]
 
@@ -3701,10 +3713,11 @@ ShowCallConfirmationDialog() {
     RoundControl(numberShell, 16)
 }
 
+; CloseExistingPhoneActionDialog() is al aangeroepen door de aanroepende
+; Handle...ClipboardNumberDetected()-functie, de enige plek vanwaar deze
+; functie wordt aangeroepen.
 ShowCallOrSmsChoiceDialog() {
     global MainGui, C, State, PhoneActionDialogState
-
-    CloseExistingPhoneActionDialog()
 
     number := State["IPT"]["ClipBoardNumber"]
 
