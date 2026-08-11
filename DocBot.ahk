@@ -7,7 +7,7 @@ Persistent true
 #Include ThirdParty\UIA-v2\UIA.ahk
 #Include ThirdParty\UIA-v2\UIA_Browser.ahk
 
-; Synhtoax terror
+Syntax terror
 
 ; De echte lokale configuratie wordt bewust niet door Git gevolgd. Tijdens
 ; compilatie neemt Ahk2Exe dit include-bestand wel in de executable op.
