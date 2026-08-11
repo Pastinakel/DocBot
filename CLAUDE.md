@@ -250,6 +250,22 @@ Ontwikkel-, feature-, fix- en RC-versies krijgen geen stabiele releasetag.
 Meld het expliciet als een tag niet naar `origin` kan worden gepusht. Een
 tag telt pas als gereed wanneer die op `origin` zichtbaar is.
 
+### Verantwoording bij versie- en tagwijzigingen
+
+Benoem bij iedere wijziging van `global AppVersion` expliciet, in dezelfde
+boodschap aan de gebruiker, op welk branchtype dit gebeurt (main, develop,
+releasebranch of feature-/fixbranch) en welke tellerregel daarbij hoort — dus
+niet alleen de nieuwe versiestring tonen. Een feature- of fixbranch die via
+een pull request naar een releasebranch gaat, is en blijft een feature-/
+fixbranch voor deze regel, ook als de gebruiker toestemming heeft gegeven om
+"op" of "voor" die releasebranch te werken: dat is geen toestemming om de
+gedeelde `rc.N`- of `dev.N`-teller van de doelbranch te gebruiken.
+
+Behandel het aanmaken en pushen van een tag niet als vanzelfsprekend
+onderdeel van een reeds goedgekeurde taak. Vraag daar apart expliciete
+toestemming voor, ook wanneer de gebruiker net al voor de rest van het werk
+"ga door" heeft gezegd — een tag is, net als een force-push, moeilijker
+terug te draaien dan een gewone commit.
 
 ## Lokale configuratie
 

@@ -306,16 +306,19 @@ branch from the then-current `develop` and update the branch-specific
 
 ## P1 — Remove temporary problem-report artifacts
 
-Complete the lifecycle of the ZIP and temporary files created during problem
-reporting.
+Complete the lifecycle of the report directory and temporary files created
+during problem reporting. (Report files are attached individually, not as a
+ZIP — see DECISIONS.md.)
 
-- [ ] On cancellation, remove every ZIP, extracted working directory and
-  temporary extended log created for that report session.
-- [ ] After successful attachment to an Outlook draft, remove the local ZIP
-  only after verifying that Outlook has safely taken over the attachment.
-- [ ] For the manual fallback, keep the ZIP available until the user has had a
-  usable opportunity to attach it, then provide an explicit completion/cleanup
-  path and a safe cleanup fallback for abandoned artifacts.
+- [ ] On cancellation, remove the report directory and temporary extended log
+  created for that report session.
+- [ ] After successful attachment to an Outlook draft, remove the local
+  report directory only after verifying that Outlook has safely taken over
+  the attachments.
+- [ ] For the manual fallback, keep the report directory available until the
+  user has had a usable opportunity to attach the files, then provide an
+  explicit completion/cleanup path and a safe cleanup fallback for abandoned
+  artifacts.
 - [ ] Verify that cancelling at each stage and closing DocBot cannot leave
   sensitive report artifacts behind indefinitely.
 - [ ] Update `README.md` and `docs/DATA_PROTECTION.md` to the implemented

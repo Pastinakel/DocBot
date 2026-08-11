@@ -44,7 +44,7 @@ Windows-account van de medewerker. De applicatie gebruikt:
 - LocalAppData voor diagnostiek en uitgepakte pakketcache;
 - het Windows-klembord voor telefoonnummerdetectie;
 - de actieve applicatie voor hotstringuitvoer;
-- het tijdelijke Windows-pad voor ZIP-probleemrapporten.
+- het tijdelijke Windows-pad voor losse probleemrapportbestanden (geen ZIP).
 
 ### 2.2 Persistente gebruikersbestanden
 
@@ -69,7 +69,7 @@ OneDrive en organisatorisch werkplekbeheer.
 | --- | --- | --- |
 | `%LocalAppData%\DocBot\debug.log` | Centraal geredigeerde diagnostiek | Rotatie boven circa 2 MB naar één `.oud`-bestand; tijdsgebonden verwijdering van regels ouder dan zeven dagen is als TODO vastgelegd |
 | `%LocalAppData%\DocBot\<tijdelijk uitgebreid log>` | Ongeredigeerde diagnostiek tijdens toegestane sessie | Verwijderd bij afsluiten, nieuwe sessie en na succesvolle rapportvoorbereiding |
-| `%TEMP%\DocBot_diagnose_<tijdstip>.zip` | Beschrijving, standaardlog en optioneel uitgebreid log | Blijft na voorbereiding beschikbaar voor e-mail/handmatige verzending |
+| `%TEMP%\DocBot_diagnose_<tijdstip>\` | Losse bestanden: beschrijving, standaardlog en optioneel uitgebreid log | Blijft na voorbereiding beschikbaar voor e-mail/handmatige verzending |
 | `%LocalAppData%\DocBot[-dev]\packages` | Uitgepakte ingebouwde pakketten | Pakketinhoud, normaal geen gebruikers- of patiëntgegevens |
 
 ## 3. Gegevensstromen
@@ -416,7 +416,8 @@ Tijdens de sessie kunnen onder meer volledige telefoonnummers, URL's,
 serverresponses, gebruikte hotstringtriggers en vervangteksten en SMS/UIA-
 details worden vastgelegd. De telemetriewebhook blijft geredigeerd.
 
-Bij afronding maakt DocBot in `%TEMP%` een ZIP met:
+Bij afronding zet DocBot in `%TEMP%` een rapportmap klaar met losse
+bestanden (geen ZIP):
 
 - `probleemrapport.txt` met versie, tijd, gebruikersbeschrijving en indicatie
   of uitgebreide logging is gebruikt;
@@ -424,16 +425,19 @@ Bij afronding maakt DocBot in `%TEMP%` een ZIP met:
 - het uitgebreide log wanneer gekozen en beschikbaar.
 
 `settings.ini`, `hotstrings.json`, pakketconfiguratie en lokale
-configuratiebestanden worden niet toegevoegd. De tijdelijke uitgepakte map en
-het uitgebreide log worden verwijderd volgens de beschreven sessielogica. De
-ZIP blijft beschikbaar en wordt aan een Classic-Outlook-concept gekoppeld of
-in Verkenner geselecteerd voor handmatige toevoeging. De gebruiker verzendt
-het e-mailbericht zelf.
+configuratiebestanden worden niet toegevoegd. Het uitgebreide log wordt
+verwijderd volgens de beschreven sessielogica. De rapportmap blijft
+beschikbaar en de bestanden worden los aan een Classic-Outlook-concept
+gekoppeld, of de map wordt in Verkenner geopend voor handmatige toevoeging.
+De gebruiker verzendt het e-mailbericht zelf. (Eerdere versies bouwden hier
+een ZIP via de Explorer-shellextensie "Compressed (zipped) Folders"; die
+bleek op sommige beheerde werkplekken onbetrouwbaar/onbeschikbaar, zie
+`docs/DECISIONS.md` D-041.)
 
 | Onderwerp | Vastgesteld | OPENSTAAND |
 | --- | --- | --- |
 | Supportontvanger | In de huidige opstartfase uitsluitend de enige ontwikkelaar, lokaal/configuratief bepaald | Er is momenteel geen waarneming of vervanger; bij afwezigheid wacht de rapportage op terugkeer van de ontwikkelaar. Bij functiewijziging of uitdiensttreding moet de configuratie opnieuw worden beoordeeld |
-| ZIP op werkplek | Blijft in `%TEMP%` staan | TODO: verwijder de ZIP en overige tijdelijke rapportbestanden automatisch na succesvolle afronding/overdracht van het rapport en bij annulering |
+| Rapportmap op werkplek | Blijft in `%TEMP%` staan | TODO: verwijder de rapportmap en overige tijdelijke rapportbestanden automatisch na succesvolle afronding/overdracht van het rapport en bij annulering |
 | E-mail | Outlook-concept; verzending door gebruiker; speciale diagnostiekmap verwijdert berichten ouder dan zeven dagen automatisch | Mailtransport en eventuele langere retentie in herstelvoorzieningen, archieven en back-ups |
 | Toegang | Gebruiker en, na verzending, uitsluitend de enige ontwikkelaar via het organisatorische Outlook-account | Geen afzonderlijke continuïteitsmaatregel in de opstartfase; toegang volgt het organisatieaccount en wordt bij functie- of uitdiensttreding door de organisatie ingetrokken |
 | Incidentproces | Datalekken van DocBot vallen onder het algemene incident- en datalekproces van de organisatie en worden door de CISO afgehandeld | Verwijs naar de interne meldroute en procedure |
@@ -592,7 +596,7 @@ eventuele back-up- of securitydienstverleners.
 | Snelkiesnummers en instellingen | Tot wijziging/verwijdering/profielbeheer | OPENSTAAND |
 | Standaardlog | Actief plus één geroteerd bestand; rotatie bij circa 2 MB; automatische verwijdering van regels ouder dan zeven dagen staat als TODO open | Gewenste maximale termijn: zeven dagen |
 | Uitgebreid log | Tijdelijk gedurende rapportsessie; volgens sessielogica verwijderd | Technische regel bevestigen in beheer-/testbewijs |
-| Probleemrapport-ZIP | Blijft nu in `%TEMP%` na voorbereiding | TODO: automatisch verwijderen na succesvolle overdracht/afronding en bij annulering, met een veilige opruimroute voor de handmatige fallback |
+| Probleemrapportmap | Blijft nu in `%TEMP%` na voorbereiding | TODO: automatisch verwijderen na succesvolle overdracht/afronding en bij annulering, met een veilige opruimroute voor de handmatige fallback |
 | Supportmail/ticket | Speciale Outlook-map verwijdert diagnostische berichten ouder dan zeven dagen automatisch | Eventuele aanvullende retentie in herstelvoorzieningen, archieven en back-ups bevestigen |
 | Telemetrie lokaal | Installatie-ID en tellers in `settings.ini` | OPENSTAAND |
 | Telemetrie extern | Power Automate/Teams-omgeving; registraties ouder dan één jaar worden verwijderd | Maximale termijn één jaar; toepassing op exports en back-ups bevestigen |
@@ -622,7 +626,7 @@ beheren vast voor:
 - persoonlijke hotstrings, snelkiesnummers en instellingen;
 - medische pakketinhoud en pakketvrijgave;
 - standaard- en uitgebreide logs;
-- probleemrapport-ZIP's, supportmailbox en tickets;
+- probleemrapportmappen/-bestanden, supportmailbox en tickets;
 - telemetriewebhook, Power Automate-flow en Teams-kanaal;
 - telefonie- en SMS-serverlogs;
 - lokale configuratie en build-/distributieomgeving;
@@ -641,7 +645,7 @@ uitdiensttreding.
 | Telemetrie | Code vereist een `https://`-webhook | Tenant, TLS-inspectie, ontvangers en retentie vastleggen |
 | Probleemrapport per e-mail | Classic Outlook-concept of handmatige fallback | Mailtransport, classificatie, encryptie en externe ontvangers vastleggen |
 | Documents/OneDrive | Windows-profiel en beheerde opslag | ACL's, tenant, synchronisatie, back-up en versleuteling bevestigen |
-| LocalAppData/%TEMP% | Windows-profiel | Schijfversleuteling, endpointbeheer, tijdelijke ZIP-verwijdering bevestigen |
+| LocalAppData/%TEMP% | Windows-profiel | Schijfversleuteling, endpointbeheer, verwijdering van de tijdelijke rapportmap bevestigen |
 
 Aanvullend moeten secure development, kwetsbaarhedenbeheer, incidentrespons,
 sleutel-/secretbeheer en logging van beheerhandelingen worden gekoppeld aan

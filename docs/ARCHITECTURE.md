@@ -397,18 +397,16 @@ The data flow is:
 ```text
 direct report
   -> optional user description + redacted standard log
-  -> temporary report directory
-  -> ZIP in %TEMP%
-  -> Outlook draft or explicit manual fallback
+  -> temporary report directory with loose files (no ZIP)
+  -> Outlook draft (files attached individually) or explicit manual fallback
 
 explicit consent
   -> temporary extended log under %LocalAppData%\DocBot
   -> raw copies of diagnostic events (telemetry webhook remains redacted)
   -> executed hotstring trigger/replacement + detailed SMS/UIA events
   -> stop logging and flush buffers before packaging
-  -> description + standard log + extended log
-  -> ZIP in %TEMP%
-  -> Outlook draft or explicit manual fallback
+  -> description + standard log + extended log as loose files in %TEMP%
+  -> Outlook draft (files attached individually) or explicit manual fallback
 ```
 
 Architectural boundaries:
@@ -420,19 +418,23 @@ Architectural boundaries:
 - closing the GUI preserves the in-memory reporting session, while process
   exit/restart stops it and deletes the temporary extended log;
 - local configuration is never added to the report package;
-- ZIP construction waits for the Windows Shell namespace and verifies copied
-  item names/sizes before accepting the archive;
+- report files are attached to Outlook individually rather than zipped —
+  building the ZIP through the Explorer shell namespace proved unreliable
+  (or entirely unavailable) on some group-policy/EDR-hardened workplaces,
+  causing report finalization itself to fail (see `DECISIONS.md` D-041);
 - finalization stops extended logging before Outlook or fallback work, so an
   external mail failure cannot leave the UI claiming that logging is active;
 - successful completion resets the session and removes its detailed log;
-  the ZIP remains for the mail/manual-send workflow;
+  the temporary report directory remains for the mail/manual-send workflow;
 - Outlook automation failure degrades to `mailto:` where possible, Explorer
-  selection of the ZIP, and visible manual attachment instructions.
+  opening the report directory, and visible manual attachment instructions.
 
-The project owner completed the dedicated compiled-Windows validation of this
-RC2 flow on 2026-08-09, including ZIP behavior, Outlook/fallback cases, session
-state, and sensitive-data boundaries. The broader full-RC3 acceptance test is
-a separate release gate and remains tracked in `TODO.md`.
+The project owner completed the dedicated compiled-Windows validation of the
+RC2 flow on 2026-08-09, including ZIP behavior, Outlook/fallback cases,
+session state, and sensitive-data boundaries — predating the switch to loose
+attachments in D-041, which still needs its own compiled-Windows validation.
+The broader full-RC3 acceptance test is a separate release gate and remains
+tracked in `TODO.md`.
 
 ## 16. Update/restart architecture
 
