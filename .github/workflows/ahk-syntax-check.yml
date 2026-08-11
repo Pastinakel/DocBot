@@ -1,0 +1,38 @@
+name: AHK v2 syntax check
+
+on:
+  pull_request:
+    paths:
+      - '**/*.ahk'
+      - '.github/workflows/ahk-syntax-check.yml'
+  push:
+    branches: [develop]
+    paths:
+      - '**/*.ahk'
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AutoHotkey v2 downloaden (portable)
+        shell: pwsh
+        run: |
+          $ver = "2.0.26"
+          Invoke-WebRequest -Uri "https://github.com/AutoHotkey/AutoHotkey/releases/download/v$ver/AutoHotkey_$ver.zip" -OutFile ahk.zip
+          Expand-Archive ahk.zip -DestinationPath ahk
+
+      - name: CI-lokale config voorbereiden
+        shell: pwsh
+        run: Copy-Item DocBot.local.example.ahk DocBot.local.ahk
+
+      - name: Syntax valideren
+        shell: pwsh
+        run: |
+          $exe = "ahk\AutoHotkey64.exe"
+          & $exe /Validate DocBot.ahk
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "AutoHotkey v2-syntaxvalidatie mislukt (exit $LASTEXITCODE)"
+            exit 1
+          }
