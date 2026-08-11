@@ -231,15 +231,19 @@ Windows-gebruikersnaam, applicatieversie, tijden, functionele status en
 gebruikstellers (`Telemetry.ahk:294-353`). De code en telemetriemelding in
 `README.md:272-322` beogen geen telefoonnummers, hotstringinhoud of
 klembordinhoud te verzenden. Het vastgelegde doel is inzicht in gebruik en
-omvang voor capaciteitsplanning van telefonie- en SMS-diensten. Tijdens de
-opstartfase ondersteunt de Windows-gebruikersnaam daarnaast gerichte hulp bij
-technische problemen, zoals niet-geactiveerde telefonie of een eerder
+omvang voor capaciteitsplanning van telefonie- en SMS-diensten. Het
+willekeurige installatie-ID is als pseudoniem, minder identificerend
+kenmerk vanaf het ontwerp onderdeel van de payload — dit is geen mechanisme
+dat nog gebouwd moet worden. Tijdens de opstartfase ondersteunt de
+Windows-gebruikersnaam daarnaast, bovenop dat installatie-ID, gerichte hulp
+bij technische problemen, zoals niet-geactiveerde telefonie of een eerder
 wisselend installatie-ID bij nog niet gesynchroniseerde OneDrive-opslag. De
 gebruikersnaam is niet bedoeld voor beoordeling van prestaties, aanwezigheid
 of werkgedrag en moet na de opstartfase opnieuw op noodzakelijkheid worden
-beoordeeld. Leden van het RPA ontwikkel- en beheerteam hebben toegang tot de
-centrale bestemming; centrale registraties ouder dan één jaar worden
-verwijderd.
+beoordeeld; bij verwijdering blijft het al aanwezige installatie-ID
+functioneren als het minder identificerende kenmerk. Leden van het RPA
+ontwikkel- en beheerteam hebben toegang tot de centrale bestemming; centrale
+registraties ouder dan één jaar worden verwijderd.
 
 ## 6. Persoonsgegevens en gezondheidsinformatie
 
@@ -530,8 +534,10 @@ conformiteit met een norm of de MDR.
     niet automatisch opgeruimd.
 12. De Windows-gebruikersnaam in telemetrie heeft een tijdelijk supportdoel
     tijdens de opstartfase, maar er is nog geen objectief eindcriterium of
-    vastgelegde herbeoordelingsdatum voor verwijdering of verdere
-    pseudonimisering.
+    vastgelegde herbeoordelingsdatum voor verwijdering vastgesteld. Het
+    installatie-ID fungeert al als het minder identificerende alternatief in
+    de payload; er is dus geen nieuw pseudonimiseringsmechanisme nodig, enkel
+    een besluit over het moment van verwijderen van de gebruikersnaam.
 13. De gebruikersinstructie die patiëntidentificerende en patiëntspecifieke
     inhoud in persoonlijke hotstrings uitsluit, moet nog worden opgesteld en
     beheerd.
@@ -560,7 +566,9 @@ conformiteit met een norm of de MDR.
 9. Stel de gebruikersinstructie voor veilige, niet-patiëntspecifieke
    hotstringinhoud op en wijs een eigenaar voor klinische pakketinhoud aan.
 10. Definieer het einde van de telemetrie-opstartfase en herbeoordeel dan de
-   Windows-gebruikersnaam op noodzaak en een minder identificerend alternatief.
+   noodzaak van de Windows-gebruikersnaam, met het oog op verwijdering uit de
+   payload — het installatie-ID is al aanwezig als minder identificerend
+   alternatief, dus hoeft niet apart te worden ontwikkeld.
 11. Bouw requirements, traceerbaarheid, automatische tests,
    verificatieresultaten en gecontroleerde release-evidence op.
 12. Herbeoordeel dit document bij iedere trigger uit paragraaf 8.3 en minstens

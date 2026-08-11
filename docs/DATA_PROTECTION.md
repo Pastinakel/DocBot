@@ -460,18 +460,28 @@ servercapaciteit kan plannen. De telemetrie meet geen verzonden SMS-berichten;
 een verwachting voor de SMS-server kan daarom alleen worden afgeleid uit de
 omvang en activiteit van de DocBot-installaties.
 
-Tijdens de huidige opstartfase wordt de Windows-gebruikersnaam daarnaast
-gebruikt om technische signalen aan een getroffen gebruiker te kunnen
-koppelen en die gebruiker gericht ondersteuning te bieden. Voorbeelden zijn
-een installatie waarbij telefonie niet is geactiveerd en het onderzoek naar
-een eerder steeds wisselend telemetrie-ID doordat DocBot werd gestart voordat
-de OneDrive-map was gesynchroniseerd. De gebruikersnaam is niet bedoeld voor
-beoordeling van prestaties, aanwezigheid of individueel werkgedrag. De
-noodzaak om de gebruikersnaam mee te sturen is fasegebonden en moet aan het
-einde van de opstartfase opnieuw worden beoordeeld. Als gerichte ondersteuning
-dan niet meer nodig is of met een minder identificerend kenmerk kan worden
-geleverd, moet de gebruikersnaam uit de payload worden verwijderd of worden
-vervangen door een minder identificerend alternatief.
+Telemetrie is vanaf het ontwerp opgezet volgens dataminimalisatie: de
+payload gebruikt een pseudoniem, willekeurig installatie-ID in plaats van
+rechtstreeks tot een persoon herleidbare gegevens, en verzamelt bewust geen
+telefoonnummers, hotstringinhoud, pakketinhoud of klembordinhoud (zie de
+payloadlijst hieronder). Het installatie-ID is dus geen toekomstig te bouwen
+alternatief maar staat er al vanaf het begin in.
+
+Tijdens de huidige opstartfase wordt de Windows-gebruikersnaam daarnaast, als
+bewust tijdelijke aanvulling op het installatie-ID, gebruikt om technische
+signalen aan een getroffen gebruiker te kunnen koppelen en die gebruiker
+gericht ondersteuning te bieden. Voorbeelden zijn een installatie waarbij
+telefonie niet is geactiveerd en het onderzoek naar een eerder steeds
+wisselend telemetrie-ID doordat DocBot werd gestart voordat de OneDrive-map
+was gesynchroniseerd. De gebruikersnaam is niet bedoeld voor beoordeling van
+prestaties, aanwezigheid of individueel werkgedrag. De noodzaak om de
+gebruikersnaam mee te sturen is fasegebonden en moet aan het einde van de
+opstartfase opnieuw worden beoordeeld. Als gerichte ondersteuning dan niet
+meer nodig is, kan de gebruikersnaam simpelweg uit de payload worden
+verwijderd: het installatie-ID blijft dan als het al aanwezige, minder
+identificerende kenmerk in de payload staan voor de overige, hieronder
+beschreven telemetriedoeleinden. Er hoeft dus geen nieuw
+pseudonimiseringsmechanisme te worden ontworpen.
 
 Telemetrie is lokaal configureerbaar en verzendt via POST naar een verplicht
 met `https://` beginnende Power Automate/Teams-webhook. De eerste heartbeat
