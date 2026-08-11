@@ -62,7 +62,7 @@ if errorlevel 1 goto :failed
 rem Alleen de centrale developversie mag vanaf een directe submap van DocBot
 rem optioneel ook naar de naastgelegen applicatiemap worden uitgerold.
 set "IS_DEVELOP="
-findstr /B /C:"global AppVersion" "%SOURCE%" | findstr /C:"-dev" >nul
+findstr /B /C:"global AppVersion" "%SOURCE%" | findstr /C:"-dev" /C:"-rc" >nul
 if not errorlevel 1 set "IS_DEVELOP=1"
 
 if defined IS_DEVELOP if /I "%APP_NAME%"=="DocBot" (
