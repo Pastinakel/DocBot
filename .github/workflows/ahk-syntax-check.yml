@@ -14,6 +14,7 @@ on:
 jobs:
   validate:
     runs-on: windows-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -37,7 +38,7 @@ jobs:
             exit 1
           }
           Write-Host "Gebruik interpreter: $exe"
-          $proc = Start-Process -FilePath $exe -ArgumentList '/Validate', 'DocBot.ahk' -Wait -PassThru -NoNewWindow
+          $proc = Start-Process -FilePath $exe -ArgumentList '/ErrorStdOut', '/Validate', 'DocBot.ahk' -Wait -PassThru -NoNewWindow
           Write-Host "Exitcode: $($proc.ExitCode)"
           if ($proc.ExitCode -ne 0) {
             Write-Error "AutoHotkey v2-syntaxvalidatie mislukt (exit $($proc.ExitCode))"
