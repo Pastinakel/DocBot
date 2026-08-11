@@ -3521,16 +3521,39 @@ ClipBoardPoller() {
 
     externalTel := NormalizePhoneNumberExternal(A_ClipBoard)
     if externalTel != "" {
-        State["IPT"]["ClipBoardNumber"] := externalTel
+        SetClipBoardNumber(externalTel)
         HandleClipboardNumberDetected()
         return
     }
 
     internalTel := NormalizePhoneNumberInternal(A_ClipBoard)
     if internalTel != "" {
-        State["IPT"]["ClipBoardNumber"] := internalTel
+        SetClipBoardNumber(internalTel)
         HandleInternalClipboardNumberDetected()
     }
+}
+
+; Centrale set/clear van het klembordnummer in de IPT-status, met een
+; geschoonde logregel (nooit het nummer zelf) zodat in het debugvenster
+; zichtbaar is wanneer de status gevuld of geleegd wordt. Zie
+; docs/DATA_PROTECTION.md §3.1: het nummer mag na overdracht, afronding of
+; annulering van de actuele actie niet langer dan nodig in de centrale
+; status blijven staan.
+SetClipBoardNumber(number) {
+    global State
+
+    State["IPT"]["ClipBoardNumber"] := number
+    DebugLog("i", "Klembordnummer", "Nieuw nummer herkend en in status gezet.")
+}
+
+ClearClipBoardNumber(reden) {
+    global State
+
+    if State["IPT"]["ClipBoardNumber"] = ""
+        return
+
+    State["IPT"]["ClipBoardNumber"] := ""
+    DebugLog("i", "Klembordnummer", "Status geleegd (" . reden . ").")
 }
 
 ; Ruime validatie/normalisatie: accepteert zowel een kaal 4-cijferig intern
@@ -3585,11 +3608,12 @@ HandleClipboardNumberDetected() {
     action := State["CallAction"]
     switch action {
         case 0:
-            return
+            ClearClipBoardNumber("geen belactie geconfigureerd")
         case 1:
             ShowCallConfirmationDialog()
         case 2:
             IPT_callNumber(State["IPT"]["ClipBoardNumber"])
+            ClearClipBoardNumber("direct gebeld")
         case 3:
             ShowCallOrSmsChoiceDialog()
     }
@@ -3604,16 +3628,19 @@ HandleInternalClipboardNumberDetected() {
     action := State["CallAction"]
     switch action {
         case 0:
-            return
+            ClearClipBoardNumber("geen belactie geconfigureerd")
         case 1:
             ShowCallConfirmationDialog()
         case 2, 3:
             IPT_callNumber(State["IPT"]["ClipBoardNumber"])
+            ClearClipBoardNumber("direct gebeld")
     }
 }
 
 ShowCallConfirmationDialog() {
     global MainGui, C, State, PhoneActionDialogState
+
+    CloseExistingPhoneActionDialog()
 
     number := State["IPT"]["ClipBoardNumber"]
 
@@ -3676,6 +3703,8 @@ ShowCallConfirmationDialog() {
 
 ShowCallOrSmsChoiceDialog() {
     global MainGui, C, State, PhoneActionDialogState
+
+    CloseExistingPhoneActionDialog()
 
     number := State["IPT"]["ClipBoardNumber"]
 
@@ -3827,12 +3856,36 @@ PhoneActionDialogKeyDown(wParam, lParam, message, hwnd) {
     }
 }
 
+; Zorgt dat er nooit meer dan één telefoonactie-dialoog tegelijk open kan
+; staan: een klemborddetectie tijdens een nog niet afgehandeld venster
+; vervangt dat venster in plaats van eronder te blijven liggen. Zonder dit
+; kon een oud, nooit weggeklikt venster later weer tevoorschijn komen zodra
+; het nieuwere erbovenop werd afgehandeld — de gebruiker moest dan telkens
+; controleren of het zichtbare nummer wel het net gekopieerde nummer was.
+CloseExistingPhoneActionDialog() {
+    global PhoneActionDialogState
+
+    if !IsObject(PhoneActionDialogState)
+        return
+
+    existing := PhoneActionDialogState["Dialog"]
+    PhoneActionDialogState := 0
+    try existing.Destroy()
+
+    ShowNotification(
+        "Nieuw nummer herkend — vorig (nog niet bevestigd) belvenster is gesloten.",
+        4000,
+        "info"
+    )
+}
+
 ClosePhoneActionDialog(dialog, *) {
     global PhoneActionDialogState
 
     if IsObject(PhoneActionDialogState)
         && PhoneActionDialogState["DialogHwnd"] = dialog.Hwnd {
         PhoneActionDialogState := 0
+        ClearClipBoardNumber("belvenster afgerond of geannuleerd")
     }
 
     try dialog.Destroy()
