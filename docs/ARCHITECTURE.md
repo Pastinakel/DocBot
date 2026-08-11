@@ -304,6 +304,34 @@ IPT_callNumber()
 
 The event loop is chained rather than a fixed periodic timer to avoid overlapping long polls.
 
+Clipboard-triggered dialing is a separate entry path into the same call gate:
+
+```text
+ClipBoardPoller()
+  -> detect a clipboard sequence-number change
+  -> normalize (external Dutch number / internal four-digit number)
+  -> no match: ignore
+  -> match: SetClipBoardNumber() then
+       HandleClipboardNumberDetected() / HandleInternalClipboardNumberDetected()
+
+Handle...ClipboardNumberDetected()
+  -> CloseExistingPhoneActionDialog() first, unconditionally
+       (closes a still-open dialog from a previous, unhandled detection;
+       shows a short notification when it actually closes one)
+  -> per CallAction: do nothing / show confirmation dialog /
+       call directly via IPT_callNumber() / show call-or-SMS choice dialog
+  -> ClearClipBoardNumber() once the action is handed off, completed, or
+       cancelled (call placed, SMS started, dialog cancelled/closed, or no
+       action configured)
+```
+
+At most one call-action dialog (confirmation, or the cancel/SMS/call choice)
+may be open at a time; a newer clipboard detection always resolves — by
+closing — whatever an older detection left open, regardless of which action
+the new detection then takes. Manual dial paths (speed dial, right-click,
+linking call) call `IPT_callNumber()` directly and do not go through this
+close step, so they intentionally leave an open dialog untouched.
+
 ### 11.3 Number normalization
 
 Number normalization is centralized. Internal four-digit numbers intentionally use a distinct policy path because four arbitrary digits have a higher false-positive probability than a full telephone number.
