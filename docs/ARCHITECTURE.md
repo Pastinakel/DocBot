@@ -488,7 +488,23 @@ There is no comprehensive automated test suite today. Validation has historicall
 - real internal-network testing for telephony;
 - compiled-executable testing for release candidates.
 
-This leaves a known gap: AutoHotkey syntax errors can escape non-Windows editing workflows. A syntax/compile smoke test should be considered a high-value future improvement.
+Since PR #19, one automated gate exists: `.github/workflows/ahk-syntax-check.yml`
+runs `AutoHotkey64.exe /Validate` on a `windows-latest` GitHub Actions
+runner against `DocBot.ahk` on pull requests that touch `.ahk` files, using
+`DocBot.local.example.ahk` as safe CI configuration. It catches genuine AHK
+v2 parse/syntax errors — including the multiline-concatenation class of
+regression described in D-033 — before manual Windows testing. It does not
+check runtime logic, telephony/SMS/UIA behavior, or GUI rendering; those
+still require the manual and internal-network validation above. The check
+currently exists only on `release/2.2-rc`, not yet on `develop` or `main`
+(see `docs/TODO.md`).
+
+A GUI-subsystem executable such as AutoHotkey can show a blocking error
+dialog on some parse failures even when told to write errors to stdout, so
+the workflow does not simply `Wait` on the process; it enforces its own
+`WaitForExit` timeout and force-kills a stuck process rather than trusting
+AutoHotkey to exit on its own. This is a reusable pattern for any future
+CI step that shells out to a Windows GUI executable.
 
 For changes touching internal telephony, SMS/UIA, managed-Windows rendering, build/deployment, or OneDrive behavior, static inspection is not enough.
 

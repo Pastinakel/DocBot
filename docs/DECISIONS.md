@@ -623,3 +623,39 @@ limitations, standards relevance, and reassessment triggers are recorded in
 - This decision is not a legal opinion or certified conformity finding and may
   be superseded by external product claims, deployment facts, or a formal
   regulatory review.
+
+---
+
+## D-040 — Automated AutoHotkey v2 syntax check as a merge gate
+
+**Status:** Accepted; implemented on `release/2.2-rc`, not yet on `develop`
+
+D-033 called for an actual AutoHotkey v2 parse/compile check after repeated
+multiline-concatenation regressions escaped source review. `.github/workflows/ahk-syntax-check.yml`
+implements this: on `windows-latest`, it downloads a portable AutoHotkey v2
+release, copies `DocBot.local.example.ahk` to `DocBot.local.ahk` as safe CI
+configuration, and runs `AutoHotkey64.exe /Validate` against `DocBot.ahk`.
+It runs on pull requests touching `.ahk` files and on pushes to `develop`.
+
+**Rejected/superseded alternative:** waiting on `Start-Process -Wait` (or a
+bare `&` invocation) for the AutoHotkey process to exit and trusting
+`$LASTEXITCODE`. In testing, a genuine parse error could make AutoHotkey show
+a blocking error dialog that a headless runner never dismisses, hanging the
+job until GitHub's own job timeout cancelled it — a `cancelled` run, not a
+clear `failure`. `/ErrorStdOut` alone did not prevent this.
+
+**Current implementation:** the process is started without `-Wait`; the
+workflow calls `WaitForExit(60000)` itself, force-kills the process if it
+has not exited within 60 seconds, and reports failure explicitly.
+`timeout-minutes: 5` on the job is an additional backstop.
+
+**Consequences**
+
+- This check validates syntax only. It does not replace manual/Windows
+  functional validation, telephony/network testing, or GUI verification.
+- Any future CI step that shells out to a Windows GUI-subsystem executable
+  should use the same explicit-timeout pattern rather than relying on the
+  process to exit and set `$LASTEXITCODE` cleanly.
+- The workflow currently exists only on `release/2.2-rc` (merged via PR #19,
+  merge commit `2ee42b6`). Propagating it to `develop` is open work in
+  `docs/TODO.md`.

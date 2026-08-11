@@ -238,23 +238,46 @@ This is a real `DocBot.ahk` behavior change, so implement it on its own feature/
 
 ---
 
-## P1 — Add a reliable AutoHotkey v2 syntax smoke check
+## P1 — Propagate the AutoHotkey v2 syntax smoke check to `develop`
 
-### Why
+### Status
 
-Recent extended-logging development repeatedly produced syntax errors that were discoverable only when the owner ran the code. Source review and generic diff checks are not enough.
+Implemented and validated. `.github/workflows/ahk-syntax-check.yml` runs
+`AutoHotkey64.exe /Validate` on a `windows-latest` GitHub Actions runner
+against `DocBot.ahk` (which pulls in the rest of the first-party source via
+`#Include`), using `DocBot.local.example.ahk` as the safe CI configuration
+so no real local secrets are needed or exposed in logs.
 
-### Goal
+Triggers: pull requests touching `.ahk` files (any base branch), pushes to
+`develop`, and `workflow_dispatch` — the latter only works once the
+workflow file exists on the repository's default branch.
 
-Create a lightweight validation path that can fail a PR before manual testing when `DocBot.ahk` or another first-party `.ahk` file cannot be parsed/compiled as AutoHotkey v2.
+Merged into `release/2.2-rc` via PR #19 (merge commit `2ee42b6`) and
+validated there:
 
-### Constraints
+- a clean `DocBot.ahk` passes;
+- a real parse-time syntax error is reported as a failure within roughly a
+  minute.
 
-- [ ] Validation must actually use AutoHotkey v2 / Ahk2Exe semantics, not a regex pretending to be a parser.
-- [ ] Do not require real internal telephony secrets for a pure syntax check.
-- [ ] Do not expose `DocBot.local.ahk` secrets in CI logs/artifacts.
-- [ ] If CI cannot safely compile the real app because local configuration is required, consider a safe test configuration/template specifically for parse/compile validation.
-- [ ] Keep Windows-specific validation explicit; macOS git tooling alone cannot validate AHK runtime behavior.
+Implementation note: `AutoHotkey64.exe /Validate` can still show a blocking
+error dialog on some parse errors even with `/ErrorStdOut`, which would
+hang a CI runner indefinitely if the step simply waited on the process.
+The workflow therefore starts the process without `-Wait`, calls
+`WaitForExit(60000)` itself, force-kills the process and reports a clear
+failure if it has not exited within 60 seconds, with `timeout-minutes: 5`
+on the job as a hard backstop.
+
+### Remaining work
+
+- [ ] The workflow currently exists only on `release/2.2-rc`, not on
+  `develop` or `main`. Add it to `develop` too (via a normal feature/fix
+  branch and PR) so it protects all new work, not only the current release
+  line, and will reach `main` through the normal release merge.
+- [ ] Decide whether the `pull_request` trigger should stay unscoped (any
+  base branch) or be limited to `develop`/`release/*`.
+- [ ] Reconsider relying on `workflow_dispatch` once the workflow exists on
+  the default branch; it cannot be triggered manually from a non-default
+  branch.
 
 ---
 
