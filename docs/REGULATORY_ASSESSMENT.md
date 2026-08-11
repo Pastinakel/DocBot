@@ -211,9 +211,9 @@ uitgevoerde hotstringafkortingen en -teksten bevatten
 tijdelijke log verwijderd (`DocBot.ahk:3175-3189`).
 
 Een probleemrapport kan vrije tekst, de standaardlog en na toestemming de
-uitgebreide log bevatten (`DocBot.ahk:3225-3279`). DocBot maakt vervolgens een
-Outlook-concept met ZIP-bijlage; de gebruiker verzendt het bericht zelf
-(`DocBot.ahk:3403-3545`).
+uitgebreide log bevatten. DocBot maakt vervolgens een Outlook-concept met de
+rapportbestanden als losse bijlagen (geen ZIP, zie `docs/DECISIONS.md`
+D-041); de gebruiker verzendt het bericht zelf.
 
 In de huidige opstartfase is de enige ontwikkelaar de enige ontvanger van een
 verzonden probleemrapport. De ontwikkelaar gebruikt hiervoor een door de
@@ -223,8 +223,8 @@ waarnemer of vervanger bij afwezigheid. Langere retentie in herstelvoorzieningen
 of back-ups volgt het organisatorische Microsoft-/mailboxbeleid. De lokale
 standaardlog wordt nog alleen op bestandsgrootte geroteerd; automatische
 verwijdering van logregels ouder dan zeven dagen is een openstaande technische
-actie. Ook automatische verwijdering van de rapport-ZIP na veilige overdracht
-of annulering staat nog open.
+actie. Ook automatische verwijdering van de tijdelijke probleemrapportmap na
+veilige overdracht of annulering staat nog open.
 
 De optionele telemetrie bevat onder meer een installatie-ID,
 Windows-gebruikersnaam, applicatieversie, tijden, functionele status en
@@ -251,7 +251,7 @@ registraties ouder dan één jaar worden verwijderd.
 | --- | --- | --- | --- |
 | Patiënttelefoonnummer | Onder andere uit een EPD gekopieerd, via het klembord herkend en genormaliseerd | Tijdelijk in geheugen; bij bellen naar de telefonieserver; bij SMS in Edge | Persoonsgegeven en door patiënt-/zorgcontext mogelijk onderdeel van gezondheidsinformatie |
 | Hotstringafkorting en vervangtekst | Door gebruiker gekozen of gemaakt; ingevoegd in actieve applicatie | Persoonlijke hotstrings in lokale JSON; gebruikte tekst kan na toestemming in uitgebreide log staan | Kan persoonsgegevens van de medewerker bevatten; klinische tekst is bedoeld als generieke formulering en is zonder patiëntkoppeling geen patiënt- of gezondheidsgegeven |
-| Probleembeschrijving | Vrije invoer door gebruiker | In rapport en ZIP; daarna eventueel per e-mail | Kan onbedoeld patiënt- of gezondheidsinformatie bevatten |
+| Probleembeschrijving | Vrije invoer door gebruiker | In rapportbestand (los, geen ZIP); daarna eventueel per e-mail | Kan onbedoeld patiënt- of gezondheidsinformatie bevatten |
 | Ruwe telefonierespons en URL | Interne telefonieserver en aanvraagpad | Alleen in uitgebreide log na toestemming | Kan nummer, servergegevens of gevoelige context bevatten |
 | Snelkiesnaam en nummer | Standaard of door gebruiker ingevoerd | Lokale JSON | Persoons- of organisatiedata, afhankelijk van invoer |
 | Telemetrie-identificatie en gebruik | DocBot-installatie en Windows-account | Lokale INI en optionele HTTPS-webhook; centrale registraties maximaal één jaar | Medewerker-/installatiegegevens voor capaciteitsplanning en tijdelijk gerichte ondersteuning; geen patiëntinhoud beoogd |
@@ -530,8 +530,8 @@ conformiteit met een norm of de MDR.
     het DPIA-besluit zijn nog niet organisatorisch vastgesteld of als bewijs
     aan de repository gekoppeld.
 11. De lokale standaardlog verwijdert nog niet automatisch regels ouder dan
-    zeven dagen en de probleemrapport-ZIP wordt na overdracht of annulering nog
-    niet automatisch opgeruimd.
+    zeven dagen en de tijdelijke probleemrapportmap wordt na overdracht of
+    annulering nog niet automatisch opgeruimd.
 12. De Windows-gebruikersnaam in telemetrie heeft een tijdelijk supportdoel
     tijdens de opstartfase, maar er is nog geen objectief eindcriterium of
     vastgelegde herbeoordelingsdatum voor verwijdering vastgesteld. Het
@@ -562,7 +562,8 @@ conformiteit met een norm of de MDR.
 7. Onderzoek doelapplicatie-/venstercontrole, extra bevestiging bij risicovolle
    acties en waar mogelijk een controle van de juiste patiëntcontext.
 8. Implementeer de zeven-dagenverwijdering voor lokale standaardlogregels en
-   ruim probleemrapport-ZIP's veilig op na overdracht of annulering.
+   ruim tijdelijke probleemrapportmappen veilig op na overdracht of
+   annulering.
 9. Stel de gebruikersinstructie voor veilige, niet-patiëntspecifieke
    hotstringinhoud op en wijs een eigenaar voor klinische pakketinhoud aan.
 10. Definieer het einde van de telemetrie-opstartfase en herbeoordeel dan de

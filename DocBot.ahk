@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-rc.3"
+global AppVersion := "2.2-rc.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -3210,12 +3210,12 @@ FinalizeProblemReport(includeExtended, *) {
         FlushDebugLog()
         FlushExtendedDebugLog()
 
-        zipPath := BuildProblemReportPackage(includeExtended)
-        if zipPath = ""
+        package := BuildProblemReportPackage(includeExtended)
+        if package = ""
             return
 
         if OpenProblemReportEmail(
-            zipPath,
+            package,
             ProblemReportSession["Description"],
             includeExtended
         )
@@ -3225,13 +3225,19 @@ FinalizeProblemReport(includeExtended, *) {
     }
 }
 
+; Bouwt de losse rapportbestanden op (geen ZIP): dat maakt de bijlage
+; onafhankelijk van de Explorer-shellextensie "Compressed (zipped) Folders",
+; die op sommige beheerde werkplekken door group policy/EDR wordt beperkt en
+; daardoor eerder onbetrouwbaar bleek. Retourneert een Map met "Dir" (de
+; tijdelijke map) en "Files" (de aangemaakte bestandspaden), of "" bij een
+; fout.
 BuildProblemReportPackage(includeExtended) {
     global AppVersion, ProblemReportSession
 
     stamp := FormatTime(A_Now, "yyyyMMdd_HHmmss")
         . "_" Format("{:03}", A_MSec)
     reportDir := A_Temp "\DocBot_diagnose_" stamp
-    zipPath := A_Temp "\DocBot_diagnose_" stamp ".zip"
+    files := []
 
     try {
         if DirExist(reportDir)
@@ -3257,37 +3263,30 @@ BuildProblemReportPackage(includeExtended) {
             description
         )
 
-        FileAppend(
-            reportText,
-            reportDir "\probleemrapport.txt",
-            "UTF-8"
-        )
+        reportPath := reportDir "\probleemrapport.txt"
+        FileAppend(reportText, reportPath, "UTF-8")
+        files.Push(reportPath)
 
         standardPath := GetStandardDebugLogPath()
-        if FileExist(standardPath)
-            FileCopy(
-                standardPath,
-                reportDir "\standaardlog.txt",
-                true
-            )
+        if FileExist(standardPath) {
+            standardCopyPath := reportDir "\standaardlog.txt"
+            FileCopy(standardPath, standardCopyPath, true)
+            files.Push(standardCopyPath)
+        }
 
         extendedPath := ProblemReportSession["ExtendedLogPath"]
         if includeExtended
             && extendedPath != ""
-            && FileExist(extendedPath)
-            FileCopy(
-                extendedPath,
-                reportDir "\uitgebreid-log.txt",
-                true
-            )
+            && FileExist(extendedPath) {
+            extendedCopyPath := reportDir "\uitgebreid-log.txt"
+            FileCopy(extendedPath, extendedCopyPath, true)
+            files.Push(extendedCopyPath)
+        }
 
-        if !CompressDirectoryContents(reportDir, zipPath)
-            throw Error("Het ZIP-bestand kon niet worden opgebouwd.")
-
-        ; De ZIP is het enige rapportbestand dat buiten deze functie nodig is.
-        ; Laat de uitgepakte tijdelijke map niet in %TEMP% achter.
-        try DirDelete(reportDir, true)
-        return zipPath
+        ; De losse bestanden blijven in %TEMP% staan: Outlook heeft ze nodig
+        ; als bijlage, en bij de handmatige fallback moet de gebruiker ze zelf
+        ; nog kunnen toevoegen.
+        return Map("Dir", reportDir, "Files", files)
     } catch as packageError {
         MsgBox(
             "Het probleemrapport kon niet worden gemaakt.`n`n"
@@ -3301,110 +3300,11 @@ BuildProblemReportPackage(includeExtended) {
     }
 }
 
-CompressDirectoryContents(sourceDirectory, zipPath) {
-    shell := ComObject("Shell.Application")
-    sourceFolder := shell.NameSpace(sourceDirectory)
-    if !IsObject(sourceFolder)
-        return false
-
-    sourceItems := sourceFolder.Items()
-    expectedCount := sourceItems.Count
-    if expectedCount = 0
-        return false
-
-    ; Explorer herkent een zojuist aangemaakte lege ZIP niet altijd meteen
-    ; als Shell-map. Maak hem zo nodig nogmaals en wacht expliciet totdat de
-    ; namespace beschikbaar is voordat CopyHere wordt gestart.
-    zipFolder := 0
-    Loop 2 {
-        if !CreateEmptyZipArchive(zipPath)
-            continue
-        zipFolder := WaitForShellNamespace(shell, zipPath, 3000)
-        if IsObject(zipFolder)
-            break
-    }
-    if !IsObject(zipFolder)
-        return false
-
-    try zipFolder.CopyHere(sourceItems, 0x4 | 0x10)
-    catch
-        return false
-
-    ; Items().Count kan al kloppen terwijl Explorer nog gegevens schrijft.
-    ; Controleer daarom ook naam en ongecomprimeerde bestandsgrootte en eis
-    ; drie opeenvolgende complete metingen.
-    completeChecks := 0
-    deadline := A_TickCount + 30000
-    while A_TickCount < deadline {
-        if ZipArchiveContainsSourceItems(sourceItems, zipFolder) {
-            completeChecks += 1
-            if completeChecks >= 3
-                return FileExist(zipPath) && FileGetSize(zipPath) > 22
-        } else {
-            completeChecks := 0
-        }
-        Sleep(100)
-    }
-
-    return false
-}
-
-CreateEmptyZipArchive(zipPath) {
-    try {
-        if FileExist(zipPath)
-            FileDelete(zipPath)
-
-        header := Buffer(22, 0)
-        NumPut("UChar", 0x50, header, 0)
-        NumPut("UChar", 0x4B, header, 1)
-        NumPut("UChar", 0x05, header, 2)
-        NumPut("UChar", 0x06, header, 3)
-
-        file := FileOpen(zipPath, "w")
-        file.RawWrite(header)
-        file.Close()
-        return true
-    } catch {
-        return false
-    }
-}
-
-WaitForShellNamespace(shell, path, timeoutMs) {
-    deadline := A_TickCount + timeoutMs
-    while A_TickCount < deadline {
-        try folder := shell.NameSpace(path)
-        catch
-            folder := 0
-
-        if IsObject(folder)
-            return folder
-
-        Sleep(100)
-    }
-    return 0
-}
-
-ZipArchiveContainsSourceItems(sourceItems, zipFolder) {
-    try {
-        if zipFolder.Items().Count < sourceItems.Count
-            return false
-
-        Loop sourceItems.Count {
-            sourceItem := sourceItems.Item(A_Index - 1)
-            archivedItem := zipFolder.ParseName(sourceItem.Name)
-            if !IsObject(archivedItem)
-                return false
-            if archivedItem.Size != sourceItem.Size
-                return false
-        }
-        return true
-    } catch {
-        return false
-    }
-}
-
-OpenProblemReportEmail(zipPath, description, usedExtended) {
+OpenProblemReportEmail(package, description, usedExtended) {
     global AppVersion
+
+    reportDir := package["Dir"]
+    files := package["Files"]
 
     subject := "DocBot probleem - versie " AppVersion
     bodyDescription := (
@@ -3453,7 +3353,8 @@ OpenProblemReportEmail(zipPath, description, usedExtended) {
         mail.To := "n.feenstra@meandermc.nl"
         mail.Subject := subject
         mail.Body := body
-        mail.Attachments.Add(zipPath)
+        for attachmentPath in files
+            mail.Attachments.Add(attachmentPath)
         mail.Display()
         try {
             inspector := mail.GetInspector
@@ -3474,7 +3375,7 @@ OpenProblemReportEmail(zipPath, description, usedExtended) {
             "Conceptmail kon niet worden geopend: " outlookError.Message
         )
         return OpenProblemReportFallback(
-            zipPath,
+            reportDir,
             subject,
             body,
             outlookError.Message
@@ -3506,15 +3407,15 @@ GetOutlookApplication() {
 }
 
 OpenProblemReportFallback(
-    zipPath,
+    reportDir,
     subject,
     body,
     outlookError
 ) {
     fallbackBody := (
         SubStr(body, 1, 1500)
-        . "`r`n`r`nVoeg handmatig dit diagnosepakket toe:`r`n"
-        . zipPath
+        . "`r`n`r`nVoeg de bestanden uit deze map handmatig toe:`r`n"
+        . reportDir
     )
     mailto := (
         "mailto:n.feenstra@meandermc.nl?subject="
@@ -3530,22 +3431,22 @@ OpenProblemReportFallback(
     } catch {
     }
 
-    try Run('explorer.exe /select,"' zipPath '"')
+    try Run('explorer.exe "' reportDir '"')
 
     MsgBox(
         "Classic Outlook kon het conceptbericht niet automatisch openen."
-        . "`n`nHet diagnosepakket is in Verkenner geselecteerd."
+        . "`n`nDe rapportmap is in Verkenner geopend."
         . (mailOpened
             ? " Er is daarnaast een nieuw e-mailbericht zonder bijlage geopend."
             : "")
-        . "`nVoeg het ZIP-bestand handmatig toe en verstuur het bericht."
+        . "`nVoeg de bestanden handmatig toe en verstuur het bericht."
         . "`n`nTechnische melding: "
         . SanitizeLogText(outlookError),
         "DocBot - Probleem melden",
         "Icon!"
     )
 
-    return mailOpened || FileExist(zipPath)
+    return mailOpened || DirExist(reportDir)
 }
 
 UriEncode(text) {

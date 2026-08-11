@@ -659,3 +659,52 @@ has not exited within 60 seconds, and reports failure explicitly.
 - The workflow currently exists only on `release/2.2-rc` (merged via PR #19,
   merge commit `2ee42b6`). Propagating it to `develop` is open work in
   `docs/TODO.md`.
+
+---
+
+## D-041 — Attach problem-report files individually instead of building a ZIP
+
+**Status:** Accepted; implemented on `release/2.2-rc`
+
+**Supersedes:** the ZIP-building half of D-032. The manual-fallback rationale
+in D-032 (degrade to a mail path instead of failing the report outright)
+still stands.
+
+A user on a managed hospital workplace consistently hit "Het ZIP-bestand kon
+niet worden opgebouwd" when finalizing a problem report, even after the
+reliability hardening (three consecutive stable size/name checks, retried
+namespace resolution) added for D-032. `CompressDirectoryContents()` builds
+the ZIP entirely through the Explorer shell namespace
+(`Shell.Application`/`NameSpace()` on a `.zip` path, `CopyHere`) — the same
+class of dependency already documented as unreliable on locked-down
+Windows images elsewhere in this project (see the 2.0.0-beta.2 `TrayTip()`
+group-policy entry in the README changelog). Repeated, non-transient
+failure on one machine points at that shell extension being restricted or
+disabled by group policy/EDR hardening rather than a timing race.
+
+Since a problem report only ever contains a few small text files,
+compression itself has no real benefit. `BuildProblemReportPackage()` now
+writes the report files into the temporary directory and returns their
+paths directly; `OpenProblemReportEmail()` attaches each file to the
+Outlook draft individually via `mail.Attachments.Add()`, and the manual
+fallback (`OpenProblemReportFallback()`) opens the report directory in
+Explorer instead of selecting a single ZIP. This removes
+`CompressDirectoryContents()`, `CreateEmptyZipArchive()`,
+`WaitForShellNamespace()` and `ZipArchiveContainsSourceItems()` entirely,
+along with the dependency on the Explorer zip-folder shell extension.
+
+**Rejected alternative:** keep hardening the ZIP path further (e.g. an
+own-written ZIP writer avoiding Explorer entirely). Rejected for now because
+attaching loose files is simpler, removes the failure mode completely, and
+compression provides no meaningful benefit for a few text-file attachments;
+revisit only if a future report package needs to bundle many/larger files.
+
+**Consequences**
+
+- The problem-report attachment mechanism no longer depends on any Explorer
+  shell extension.
+- Users now see multiple attachments instead of one ZIP; acceptable for an
+  internal diagnostic mail.
+- The temporary report directory (not a ZIP file) is the artifact whose
+  lifecycle `docs/TODO.md` P1 "Remove temporary problem-report artifacts"
+  still needs to address.

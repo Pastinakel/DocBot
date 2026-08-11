@@ -358,20 +358,21 @@ zijn. Afsluiten of herstarten van DocBot stopt de uitgebreide logging
 automatisch en verwijdert het tijdelijke uitgebreide logbestand.
 
 Bij **Probleemrapport afronden** stopt DocBot eerst de uitgebreide logging en
-maakt daarna een ZIP-bestand met alleen het probleemrapport, de beperkte
-standaardlog en — wanneer daarvoor toestemming was gegeven — het tijdelijke
-uitgebreide log. `settings.ini`, `hotstrings.json`, lokale configuratie en
-telemetrie-ID worden nooit als bestand toegevoegd. Gebruikte hotstringinhoud
-kan na toestemming wel in het uitgebreide log staan, zoals hierboven vermeld.
+zet daarna het probleemrapport, de beperkte standaardlog en — wanneer daarvoor
+toestemming was gegeven — het tijdelijke uitgebreide log klaar als losse
+bestanden (geen ZIP). `settings.ini`, `hotstrings.json`, lokale configuratie
+en telemetrie-ID worden nooit als bestand toegevoegd. Gebruikte
+hotstringinhoud kan na toestemming wel in het uitgebreide log staan, zoals
+hierboven vermeld.
 
 DocBot opent vervolgens een conceptbericht in Classic Outlook met het
-diagnosepakket als bijlage. Als Outlook nog niet actief is, start DocBot
-Outlook en wacht het totdat de MAPI-sessie gereed is. De gebruiker controleert
-het bericht en klikt zelf op **Verzenden**. Wanneer Classic Outlook niet
-beschikbaar is, opent DocBot een nieuw e-mailbericht zonder bijlage en toont
-het het ZIP-bestand in Verkenner, zodat de gebruiker dit handmatig kan
-toevoegen. Het ontwikkelaarsdebugvenster blijft alleen zichtbaar voor het
-daarvoor ingerichte Windows-account.
+diagnosepakket als losse bijlagen. Als Outlook nog niet actief is, start
+DocBot Outlook en wacht het totdat de MAPI-sessie gereed is. De gebruiker
+controleert het bericht en klikt zelf op **Verzenden**. Wanneer Classic
+Outlook niet beschikbaar is, opent DocBot een nieuw e-mailbericht zonder
+bijlage en toont de rapportmap in Verkenner, zodat de gebruiker de bestanden
+handmatig kan toevoegen. Het ontwikkelaarsdebugvenster blijft alleen
+zichtbaar voor het daarvoor ingerichte Windows-account.
 
 Regelgeving, informatiebeveiliging en patiëntveiligheid
 -------------------------------------------------------
@@ -411,12 +412,16 @@ Changelog
   telefoonnummers, klembordinhoud, volledige URL's, ruwe serverresponsen,
   gebruikersnaam en computernaam worden afgeschermd of niet opgenomen.
 - Probleemrapporten starten Classic Outlook zo nodig, wachten tot Outlook
-  gereed is en openen daarna een conceptmail met ZIP-bijlage. Bij een
-  Outlook-fout volgt een zichtbare handmatige fallback.
+  gereed is en openen daarna een conceptmail met de rapportbestanden als
+  losse bijlagen. Bij een Outlook-fout volgt een zichtbare handmatige
+  fallback.
 - Bij stoppen of afronden wordt de status van uitgebreide logging direct in
   het rapportagevenster bijgewerkt, ook wanneer Outlook niet beschikbaar is.
-- ZIP-opbouw wacht voortaan totdat Windows Explorer het archief herkent en
-  alle rapportbestanden met de verwachte grootte heeft overgenomen.
+- Rapportbestanden worden los aan de mail gehangen in plaats van in een ZIP.
+  De eerdere ZIP-opbouw via de Explorer-shellextensie "Compressed (zipped)
+  Folders" bleek op sommige door group policy/EDR beheerde werkplekken
+  onbetrouwbaar of volledig onbeschikbaar, waardoor probleemrapportage zelf
+  faalde.
 - De gebruikersmap wordt waar mogelijk met `attrib -U +P` als altijd lokaal
   beschikbaar gemarkeerd, zonder dat een mislukte pinactie de start blokkeert.
 - DocBot voert bij het opstarten geen algemene schrijfbaarheidstest meer uit;

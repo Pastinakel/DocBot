@@ -187,12 +187,15 @@ The implementation has two reporting paths:
 - **Reproduce with extended logging** requires an explicit consent checkbox. The in-memory session survives closing/reopening the window, but process exit/restart stops the session and deletes its temporary detailed log.
 - During a consented session, existing diagnostic events are additionally written with original values, except that the telemetry webhook remains redacted. Actually executed hotstring triggers/replacements and detailed SMS/UIA traces are logged only while the session is active.
 - Starting or stopping the session reloads runtime hotstrings so normal and key-command hotstrings can pass through diagnostic callbacks only for the consented interval.
-- Finalization stops extended logging before package/mail handling, flushes both logs, and creates a ZIP in `%TEMP%` containing `probleemrapport.txt`, the standard log when available, and the extended log only when requested and present.
-- Classic Outlook is started/awaited when necessary and receives a draft with the ZIP attached. If automation fails, DocBot opens a mail fallback where possible, selects the ZIP in Explorer, and gives explicit manual attachment instructions.
-- Local configuration files are not packaged. The temporary extended log is removed on shutdown, on a new session, and after successful report preparation; the ZIP remains available for the user/mail workflow.
+- Finalization stops extended logging before package/mail handling, flushes both logs, and writes loose files (no ZIP) into a temporary directory under `%TEMP%`: `probleemrapport.txt`, the standard log when available, and the extended log only when requested and present.
+- Classic Outlook is started/awaited when necessary and receives a draft with each report file attached individually. If automation fails, DocBot opens a mail fallback where possible, opens the report directory in Explorer, and gives explicit manual attachment instructions.
+- Local configuration files are not packaged. The temporary extended log is removed on shutdown, on a new session, and after successful report preparation; the temporary report directory remains available for the user/mail workflow.
+- Report files were previously bundled into a ZIP via the Explorer shell namespace ("Compressed (zipped) Folders"). That mechanism proved unreliable/unavailable on some group-policy/EDR-hardened workplaces, causing report finalization itself to fail; see `DECISIONS.md` D-041.
 
-The project owner completed the dedicated compiled-Windows validation of this
-problem-reporting flow on RC2 on 2026-08-09. That closes the specific
+The project owner completed the dedicated compiled-Windows validation of the
+problem-reporting flow on RC2 on 2026-08-09, before the switch to loose
+attachments in D-041 — that switch still needs its own compiled-Windows
+validation. RC2 validation closes the specific pre-D-041
 problem-reporting checklist; it does not by itself complete the broader RC3
 acceptance test covering the rest of DocBot.
 
