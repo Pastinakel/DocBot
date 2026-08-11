@@ -31,7 +31,12 @@ jobs:
       - name: Syntax valideren
         shell: pwsh
         run: |
-          $exe = "ahk\AutoHotkey64.exe"
+          $exe = Get-ChildItem -Path ahk -Recurse -Filter "AutoHotkey64.exe" | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $exe) {
+            Write-Error "AutoHotkey64.exe niet gevonden na uitpakken van de portable zip"
+            exit 1
+          }
+          Write-Host "Gebruik interpreter: $exe"
           & $exe /Validate DocBot.ahk
           if ($LASTEXITCODE -ne 0) {
             Write-Error "AutoHotkey v2-syntaxvalidatie mislukt (exit $LASTEXITCODE)"
