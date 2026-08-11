@@ -9,6 +9,7 @@ on:
     branches: [develop]
     paths:
       - '**/*.ahk'
+  workflow_dispatch: {}
 
 jobs:
   validate:
