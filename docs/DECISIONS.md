@@ -664,7 +664,8 @@ has not exited within 60 seconds, and reports failure explicitly.
 
 ## D-041 — Attach problem-report files individually instead of building a ZIP
 
-**Status:** Accepted; implemented on `release/2.2-rc`
+**Status:** Accepted; implemented on fix branch `2.2-report-zip-fix`, pending
+merge into `release/2.2-rc` via PR #22
 
 **Supersedes:** the ZIP-building half of D-032. The manual-fallback rationale
 in D-032 (degrade to a mail path instead of failing the report outright)
