@@ -202,6 +202,13 @@ Functionaliteit — Telefonie
     Enter bevestigt de blauwe keuze. Interne nummers worden in deze stand
     direct gebeld. Deze optie is alleen beschikbaar wanneer lokaal ten minste
     één SMS-actie is geconfigureerd.
+- Komt er via het klembord een nieuw nummer binnen terwijl er nog een niet
+  afgehandeld belvenster open staat (bevestiging, of de keuze
+  bellen/sms), dan sluit DocBot dat oude venster automatisch — met een
+  korte melding — en toont het venster voor het nieuwste nummer. Er staat
+  zo nooit meer dan één klembord-belvenster tegelijk open, ook niet
+  wanneer het nieuwe nummer een intern nummer is dat zonder eigen venster
+  direct wordt gebeld.
 - Onder **Instellingen > SMS actie** kiest de gebruiker welke lokaal
   geconfigureerde SMS-pagina wordt gebruikt. De dropdown toont de
   gebruikersvriendelijke `Title`; de technische `WindowTitle` wordt
@@ -444,6 +451,16 @@ Changelog
   succesmelding nadat het telefoonnummer zichtbaar is ingevuld. Een
   geforceerde repaint ná het tonen van de dialoog voorkomt dat de knoppen
   aanvankelijk nog met de native Windows-rand verschijnen.
+- Fix: een nog niet afgehandeld belvenster kon door een volgende
+  klemborddetectie onopgemerkt open blijven staan en later met een
+  verouderd nummer terugkomen. DocBot sluit een dergelijk venster nu altijd
+  automatisch (met melding) zodra een nieuw nummer wordt herkend, ook
+  wanneer dat nieuwe nummer — zoals een intern nummer bij Belactie "Bellen
+  of sms kiezen" — zonder eigen dialoog direct wordt gebeld.
+- Het klembordnummer in de centrale telefoniestatus wordt nu direct
+  geleegd na bellen, sms-actie, annuleren of sluiten van het venster, in
+  plaats van te blijven staan tot het volgende nummer of het afsluiten van
+  DocBot.
 
 ### 2.1 — Huidige stabiele release
 - Nieuwe Help-pagina met vier uitklapbare, scrollbare instructiekaarten voor
