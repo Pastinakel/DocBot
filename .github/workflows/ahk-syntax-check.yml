@@ -37,8 +37,9 @@ jobs:
             exit 1
           }
           Write-Host "Gebruik interpreter: $exe"
-          & $exe /Validate DocBot.ahk
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "AutoHotkey v2-syntaxvalidatie mislukt (exit $LASTEXITCODE)"
+          $proc = Start-Process -FilePath $exe -ArgumentList '/Validate', 'DocBot.ahk' -Wait -PassThru -NoNewWindow
+          Write-Host "Exitcode: $($proc.ExitCode)"
+          if ($proc.ExitCode -ne 0) {
+            Write-Error "AutoHotkey v2-syntaxvalidatie mislukt (exit $($proc.ExitCode))"
             exit 1
           }
