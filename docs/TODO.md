@@ -102,6 +102,32 @@ At minimum, validate the following on the managed Windows environment and, where
 
 ---
 
+## P0 — Add a clickable link to DocBot's GitHub page
+
+DocBot has no in-app pointer to its own repository
+(`https://github.com/Pastinakel/DocBot`). Add one so users and future
+maintainers can find the source, report issues, or contribute without being
+told the URL out of band.
+
+- [ ] Add a real clickable link (AHK v2 `Link`/SysLink control, not plain
+      unclickable text) on the "Over" (About) page, pointing to
+      `https://github.com/Pastinakel/DocBot`.
+- [ ] Position it at the bottom of the page, at the same y-coordinate as the
+      "Probleem melden..." button on the Help page
+      (`AddFlatButton("help", 786, 654, 170, 34, ...)`), mirrored to the left
+      side of the window instead of the right.
+- [ ] Do not resize or reposition the existing changelog text box on the
+      About page (`aboutEdit`, `x262 y118 w684 h448`) to make room for it;
+      the link goes in the already-unused footer band below the "over" card
+      (`AddCard("over", 236, 92, 736, 500)`, bottom edge at y592).
+- [ ] Clicking the link opens the URL in the default browser (`Run()`).
+
+This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
+branch from the then-current `develop` and update the branch-specific
+`AppVersion` in every commit that changes `DocBot.ahk`.
+
+---
+
 ## P1 — Finalize stable 2.2 release
 
 Only after the current RC3 is explicitly accepted.
