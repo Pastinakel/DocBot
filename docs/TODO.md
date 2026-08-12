@@ -109,18 +109,26 @@ DocBot has no in-app pointer to its own repository
 maintainers can find the source, report issues, or contribute without being
 told the URL out of band.
 
-- [ ] Add a real clickable link (AHK v2 `Link`/SysLink control, not plain
+Implemented in source on `claude/about-github-link` (branched from
+`release/2.2-rc` on explicit project-owner instruction — new functionality
+would otherwise wait for the next development cycle per the branch-workflow
+rules). Source integration is not functional validation: keep this item open
+until confirmed on a compiled build on managed Windows.
+
+- [x] Add a real clickable link (AHK v2 `Link`/SysLink control, not plain
       unclickable text) on the "Over" (About) page, pointing to
       `https://github.com/Pastinakel/DocBot`.
-- [ ] Position it at the bottom of the page, at the same y-coordinate as the
+- [x] Position it at the bottom of the page, at the same y-coordinate as the
       "Probleem melden..." button on the Help page
       (`AddFlatButton("help", 786, 654, 170, 34, ...)`), mirrored to the left
       side of the window instead of the right.
-- [ ] Do not resize or reposition the existing changelog text box on the
+- [x] Do not resize or reposition the existing changelog text box on the
       About page (`aboutEdit`, `x262 y118 w684 h448`) to make room for it;
       the link goes in the already-unused footer band below the "over" card
       (`AddCard("over", 236, 92, 736, 500)`, bottom edge at y592).
-- [ ] Clicking the link opens the URL in the default browser (`Run()`).
+- [x] Clicking the link opens the URL in the default browser (`Run()`).
+- [ ] Confirm on a compiled Windows build: link renders, is clickable,
+      opens the correct URL, and the changelog box/card layout is unaffected.
 
 This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
 branch from the then-current `develop` and update the branch-specific

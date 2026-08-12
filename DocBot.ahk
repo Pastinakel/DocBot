@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-rc.5"
+global AppVersion := "2.2-about-github-link.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -656,6 +656,17 @@ BuildMainGui() {
     aboutEdit.SetFont("s10 c" C["Text"], "Segoe UI")
     AddRound(aboutEdit, 10)
     AddPageControl("over", aboutEdit)
+
+    ; Zelfde hoogte als de "Probleem melden..."-knop op de Help-pagina
+    ; (x786 y654 w170 h34), maar gespiegeld naar links, in de al onbenutte
+    ; ruimte onder de kaart. Laat de kaart/aboutEdit hierboven ongemoeid.
+    githubLink := MainGui.AddLink(
+        "x262 y654 w300 h34",
+        'Bekijk DocBot op <a href="https://github.com/Pastinakel/DocBot">GitHub</a>'
+    )
+    githubLink.SetFont("s10 c" C["Text"], "Segoe UI")
+    githubLink.OnEvent("Click", (ctrl, info) => Run(info))
+    AddPageControl("over", githubLink)
 
     RefreshRegistrationTexts()
     RefreshHotstringList()
