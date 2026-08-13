@@ -253,6 +253,29 @@ For any nontrivial AHK edit:
 - run a real AHK v2 parse/compile check on Windows when possible;
 - do not declare a branch fixed solely from visual review.
 
+### GUI event callback pitfalls
+
+Adding the GitHub link on the About page (`OpenGithubLink`, `Link`/SysLink
+control) surfaced two runtime-only mistakes that the `/Validate`-based
+syntax check (D-040) cannot catch, because that check never executes the
+auto-execute section:
+
+- A fixed-arity inline callback (e.g. `(ctrl, info) => Run(info)`) passed to
+  `.OnEvent("Click", ...)` failed at registration time with "Invalid
+  callback function". AHK v2 validates a callback's parameter count against
+  the event, and the exact arity an event will call with is not always
+  obvious from the docs. Prefer a named function with a trailing `*` (e.g.
+  `Handler(ctrl, *)`), matching the pattern already used elsewhere in
+  `DocBot.ahk` (`ClosePhoneActionDialog(dialog, *)`).
+- For a `Link` control's `Click` event, `Info` is not reliably the clicked
+  anchor's `href`; in practice it returned the 1-based index of the clicked
+  link segment instead. Do not assume `Info` is a usable URL — if the
+  control only ever has one link, hardcode the target instead of parsing it
+  from `Info`.
+
+Both mistakes were only visible by actually running the compiled script on
+Windows and clicking the control, not from source review or CI.
+
 ### Git/GitHub tooling
 
 Large direct edits to `DocBot.ahk` through GitHub connector/API flows have caused friction. Temporary self-modifying GitHub Actions workflows were used as a workaround, which also produced confusing Actions emails and complicated history.

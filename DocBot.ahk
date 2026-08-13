@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-rc.5"
+global AppVersion := "2.2-about-github-link.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -657,6 +657,17 @@ BuildMainGui() {
     AddRound(aboutEdit, 10)
     AddPageControl("over", aboutEdit)
 
+    ; Zelfde hoogte als de "Probleem melden..."-knop op de Help-pagina
+    ; (x786 y654 w170 h34), maar gespiegeld naar links, in de al onbenutte
+    ; ruimte onder de kaart. Laat de kaart/aboutEdit hierboven ongemoeid.
+    githubLink := MainGui.AddLink(
+        "x262 y654 w300 h34",
+        'Bekijk DocBot op <a href="https://github.com/Pastinakel/DocBot">GitHub</a>'
+    )
+    githubLink.SetFont("s10 c" C["Text"], "Segoe UI")
+    githubLink.OnEvent("Click", OpenGithubLink)
+    AddPageControl("over", githubLink)
+
     RefreshRegistrationTexts()
     RefreshHotstringList()
     RefreshSpeedDialList()
@@ -664,6 +675,16 @@ BuildMainGui() {
 
     MainGui.OnEvent("Close", MainGui_Close)
     MainGui.OnEvent("Escape", MainGui_Escape)
+}
+
+; Click-event van een Link-control geeft bij deze control geen href terug
+; via Info (dat bleek in de praktijk de 1-gebaseerde index van het
+; aangeklikte linksegment, geen URL). Er staat hier maar één link, dus de
+; URL is vast hardcoded in plaats van uit Info afgeleid. * vangt eventuele
+; parameters op die de event meegeeft, zodat het exacte aantal nooit een
+; "Invalid callback function"-fout kan veroorzaken.
+OpenGithubLink(*) {
+    Run("https://github.com/Pastinakel/DocBot")
 }
 
 ; =============================================================================
