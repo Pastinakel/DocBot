@@ -16,24 +16,24 @@ At minimum, validate the following on the managed Windows environment and, where
 
 ### Startup / storage
 
-- [ ] Stable/test/dev profile selection is correct for the RC version (`DocBot-test`).
-- [ ] Existing profile data is not overwritten by bootstrap copying.
-- [ ] `attrib -U +P` failure does not block startup.
-- [ ] Missing/temporarily unavailable telemetry storage does not block core app functionality.
+- [x] Stable/test/dev profile selection is correct for the RC version (`DocBot-test`).
+- [x] Existing profile data is not overwritten by bootstrap copying.
+- [x] `attrib -U +P` failure does not block startup.
+- [x] Missing/temporarily unavailable telemetry storage does not block core app functionality.
 - [ ] Existing telemetry InstallationId is used without a rewrite.
 - [ ] New InstallationId is not used until persistence/readback succeeds.
 
 ### Hotstrings
 
-- [ ] Short replacement.
-- [ ] 200+ character replacement.
-- [ ] Multiline replacement.
-- [ ] Replacement containing `{Tab}`/`{Left}` or another supported key command.
+- [x] Short replacement.
+- [x] 200+ character replacement.
+- [x] Multiline replacement.
+- [x] Replacement containing `{Tab}`/`{Left}` or another supported key command.
 - [ ] `{{datum}}` and `{{tijd}}` expansion.
-- [ ] Existing clipboard contents survive hotstring use unchanged.
-- [ ] Save/edit/delete with AutoSave.
-- [ ] Backup/temp/atomic write path.
-- [ ] Legacy `.txt` import behavior.
+- [x] Existing clipboard contents survive hotstring use unchanged.
+- [x] Save/edit/delete with AutoSave.
+- [x] Backup/temp/atomic write path.
+- [x] Legacy `.txt` import behavior.
 
 ### Packages
 
