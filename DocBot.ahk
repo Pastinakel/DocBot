@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-about-github-link.2"
+global AppVersion := "2.2-about-github-link.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -677,13 +677,14 @@ BuildMainGui() {
     MainGui.OnEvent("Escape", MainGui_Escape)
 }
 
-; Click-event van een Link-control geeft de aangeklikte href door als
-; tweede parameter. * vangt eventuele overige argumenten op, zodat het
-; exacte aantal parameters van deze GUI-event nooit een
-; "Invalid callback function"-fout kan veroorzaken (vaste pijl-functies met
-; een star aantal parameters bleken dat wel te doen).
-OpenGithubLink(ctrl, info := "", *) {
-    Run(info != "" ? info : "https://github.com/Pastinakel/DocBot")
+; Click-event van een Link-control geeft bij deze control geen href terug
+; via Info (dat bleek in de praktijk de 1-gebaseerde index van het
+; aangeklikte linksegment, geen URL). Er staat hier maar één link, dus de
+; URL is vast hardcoded in plaats van uit Info afgeleid. * vangt eventuele
+; parameters op die de event meegeeft, zodat het exacte aantal nooit een
+; "Invalid callback function"-fout kan veroorzaken.
+OpenGithubLink(*) {
+    Run("https://github.com/Pastinakel/DocBot")
 }
 
 ; =============================================================================
