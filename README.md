@@ -17,7 +17,7 @@ ook toegepast. De software heeft geen beoogd medisch doel: zij verricht geen
 medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft
 geen diagnose-, behandel-, doserings- of monitoringsadvies.
 
-Deze README beschrijft releasecandidate 2.2 (`2.2-rc.5`) op de
+Deze README beschrijft releasecandidate 2.2 (`2.2-rc.6`) op de
 `release/2.2-rc`-branch. Versie 2.1 is de huidige stabiele productieversie op
 `main`; op deze releasebranch worden uitsluitend bugfixes, documentatie en
 releasevoorbereidingen toegevoegd.
