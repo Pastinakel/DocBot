@@ -461,6 +461,9 @@ Changelog
   geleegd na bellen, sms-actie, annuleren of sluiten van het venster, in
   plaats van te blijven staan tot het volgende nummer of het afsluiten van
   DocBot.
+- Klikbare link naar de GitHub-pagina van DocBot
+  (`https://github.com/Pastinakel/DocBot`) linksonder op het Over-scherm,
+  op dezelfde hoogte als de knop "Probleem melden..." op de Help-pagina.
 
 ### 2.1 — Huidige stabiele release
 - Nieuwe Help-pagina met vier uitklapbare, scrollbare instructiekaarten voor
