@@ -2,12 +2,15 @@
 
 _Status: voorlopige repositoryanalyse, geen juridisch advies of formeel conformiteitsoordeel._
 
-_Beoordelingsdatum: 2026-08-10._
+_Beoordelingsdatum: 2026-08-14._
 
-_Onderzochte basis: branch `release/2.2-rc`, uitgangscommit `76fe6a0`,
-`AppVersion = 2.2-rc.3`, aangevuld met de documentatiewijzigingen in dezelfde
-beoordelingsreeks. Deze wijzigingen concretiseren de intended purpose en
-gegevensbescherming en wijzigen geen functioneel gedrag._
+_Onderzochte basis: branch `release/2.2-finalize` (bestemd voor `main`),
+`AppVersion = 2.2` (stabiele release). Deze update volgt op de vorige
+beoordeling (commit `76fe6a0`, `2.2-rc.3`) en verwerkt de sindsdien in PR #23
+doorgevoerde functionele wijziging aan het telefonie-bevestigingsvenster en
+de klembordstatus (zie §5.4 en §7). De overige wijzigingen sinds
+`2.2-rc.3` (o.a. een klikbare GitHub-link op het Over-scherm) zijn
+regulatoir niet relevant._
 
 ## 1. Doel en status
 
@@ -192,6 +195,20 @@ nummer een keuze tussen annuleren, SMS of bellen tonen
 zonder nieuwe bevestiging worden gebeld. Dat is autonoom operationeel gedrag,
 maar geen medische beslissing.
 
+Sinds PR #23 (`2.2-rc.4`) sluit een nieuwe klemborddetectie een nog niet
+bevestigd bel- of sms-keuzevenster van een eerder nummer automatisch en
+vervangt dat door het venster voor het nieuwe nummer, met een zichtbare
+melding (`CloseExistingPhoneActionDialog()`, `DocBot.ahk:3899-3914`). Er kan
+zo nooit meer dan één, altijd het meest recente, te bevestigen nummer
+tegelijk openstaan; DocBot belt hierbij zelf niets — bevestigen blijft aan de
+gebruiker. Het herkende nummer wordt bovendien direct uit de centrale
+`State["IPT"]`-status gewist zodra de actuele actie is overgedragen, afgerond
+of geannuleerd (`SetClipBoardNumber()`/`ClearClipBoardNumber()`,
+`DocBot.ahk:3563-3578`; zie ook `docs/DATA_PROTECTION.md` §3.1). Beide
+wijzigingen beperken hoe lang en hoeveel klembordnummers intern zichtbaar
+blijven en veranderen geen belbeslissing; ze zijn geen nieuwe autonome
+medische actie.
+
 Bij SMS activeert DocBot een geconfigureerde Edge-pagina en vult het nummer in.
 DocBot verzendt de SMS niet zelfstandig; controle en verzending blijven bij de
 gebruiker (`README.md:192-216` en beslissing D-021). De huidige
@@ -303,6 +320,8 @@ nummerinvulling aan DocBot toegerekend.
 | Telefonieserverevents verwerken | Operationele status en meldingen | Nee |
 | Edge-tab activeren en SMS-veld vullen | Communicatieondersteuning | Nee |
 | Afsluiten, herladen of updatepad starten | Applicatiebeheer | Nee |
+| Nog niet bevestigd bel-/sms-keuzevenster sluiten en vervangen bij een nieuw klembordnummer | Voorkomt dat een verouderd venster later per ongeluk voor het verkeerde nummer wordt bevestigd; er staat nooit meer dan één venster tegelijk open | Nee |
+| Klembordnummer direct uit de centrale status wissen na overdracht, afronding of annulering | Begrenst hoe lang een herkend nummer intern zichtbaar blijft | Nee |
 
 DocBot bevat geen regels die patiëntkenmerken omzet in een
 diagnose, prognose, behandeladvies, dosering, klinische score of medisch alarm.

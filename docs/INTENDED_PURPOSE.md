@@ -4,7 +4,7 @@ _Status: goedgekeurd intern productbesluit._
 
 _Vaststellingsdatum: 2026-08-09._
 
-_Van toepassing op: DocBot `2.2-rc.3` en opvolgende versies totdat een
+_Van toepassing op: DocBot `2.2` en opvolgende versies totdat een
 herbeoordeling tot een gewijzigde verklaring leidt._
 
 ## 1. Intended-purposeverklaring
@@ -137,7 +137,7 @@ DocBot is niet bedoeld voor:
 | Goedgekeurd door | Projecteigenaar DocBot |
 | Rol | Productverantwoordelijke |
 | Datum | 2026-08-09 |
-| Van toepassing op | `2.2-rc.3` en opvolgende versies tot herbeoordeling |
+| Van toepassing op | `2.2` en opvolgende versies tot herbeoordeling |
 | Repositorybesluit | `docs/DECISIONS.md`, D-039 |
 
 Deze goedkeuring is een intern productbesluit waarmee het beoogde gebruik en
