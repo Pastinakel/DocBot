@@ -123,13 +123,13 @@ Deze bestanden staan niet in de repository:
 DocBot gebruikt bewust drie gescheiden mappen onder `A_MyDocuments`. De
 versiestring bepaalt het profiel:
 
-- een versie met uitsluitend cijfers en punten, bijvoorbeeld `2.1`, gebruikt
+- een versie met uitsluitend cijfers en punten, bijvoorbeeld `2.2`, gebruikt
   `DocBot` (main/stable);
 - `-dev` of `-rc` direct achter het numerieke versienummer, bijvoorbeeld
-  `2.1-dev.15` of `2.1-rc.1`, gebruikt `DocBot-test` (centrale
+  `2.3-dev.15` of `2.3-rc.1`, gebruikt `DocBot-test` (centrale
   ontwikkel-, test- en releasecandidateversies);
 - iedere andere prerelease met letters, bijvoorbeeld
-  `2.1-multiline.1` of `2.1-bugs-pakketview.2`, gebruikt `DocBot-dev`
+  `2.3-multiline.1` of `2.3-bugs-pakketview.2`, gebruikt `DocBot-dev`
   (feature- en fixbranches).
 
 Als `DocBot-test` nog niet bestaat, wordt die eenmalig vanuit `DocBot`
@@ -187,11 +187,11 @@ Wijzig develop en main nooit rechtstreeks. Maak altijd een pull request vanuit e
 Gebruik in de huidige ontwikkelcyclus deze versies:
 
 ```text
-main:              2.1
-develop:           2.2-dev.N
-features/fixes:    2.2-<korte-branchnaam>.N
-release candidate: 2.2-rc.N
-release:           2.2
+main:              2.2
+develop:           2.3-dev.N
+features/fixes:    2.3-<korte-branchnaam>.N
+release candidate: 2.3-rc.N
+release:           2.3
 ```
 
 Dezelfde structuur geldt voor latere releases: `main` bevat altijd de laatst
@@ -201,13 +201,13 @@ branchspecifieke prerelease-naam met een eigen lokale teller; een releasebranch
 gebruikt `-rc.N`; bij de stabiele release vervalt de prerelease-suffix.
 
 Maak een releasecandidate vanaf een actuele `develop` op een branch zoals
-`release/2.2-rc.1`. Voeg daar uitsluitend bugfixes, documentatie en
+`release/2.3-rc.1`. Voeg daar uitsluitend bugfixes, documentatie en
 releasevoorbereidingen aan toe. Nieuwe functionaliteit wacht op de volgende
 ontwikkelcyclus. Iedere commit op de releasebranch die `DocBot.ahk` wijzigt,
 verhoogt `rc.N` met één.
 
-Voorbeelden zijn `2.2-dev.7`, `2.2-ronde-kaarten.3`,
-`2.2-import.5` en `2.2-rc.1`. Houd branchspecifieke prerelease-namen
+Voorbeelden zijn `2.3-dev.7`, `2.3-ronde-kaarten.3`,
+`2.3-import.5` en `2.3-rc.1`. Houd branchspecifieke prerelease-namen
 geschikt voor SemVer: uitsluitend ASCII-letters, cijfers en koppeltekens.
 
 Iedere commit die `DocBot.ahk` wijzigt, moet in dezelfde commit ook
@@ -232,8 +232,8 @@ releasetag.
 ## Releases, versiegeschiedenis en tags
 
 De releasebranch wordt via een pull request naar `main` gemerged. Zet
-`AppVersion` pas voor de definitieve releasecommit van `2.2-rc.N` naar
-de stabiele versie `2.2`.
+`AppVersion` pas voor de definitieve releasecommit van `2.3-rc.N` naar
+de stabiele versie `2.3`.
 
 Bij een stabiele release moet in dezelfde commit-cyclus:
 
@@ -243,7 +243,7 @@ Bij een stabiele release moet in dezelfde commit-cyclus:
 2. Een annotated tag met `v`-prefix worden aangemaakt op de stabiele
    versiecommit, bijvoorbeeld:
    ```bash
-   git tag -a v2.1 -m "2.1"
+   git tag -a v2.2 -m "2.2"
    ```
 3. De tag worden gepusht:
    ```bash
