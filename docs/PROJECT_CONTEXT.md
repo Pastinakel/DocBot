@@ -1,6 +1,6 @@
 # DocBot — Project Context
 
-_Last updated: 2026-08-09. This document combines the repository state on the 2.2 development and release-candidate lines with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
+_Last updated: 2026-08-14. This document combines the repository state around the DocBot 2.2 release and the start of the 2.3 development line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
 
 ## 1. Purpose
 
@@ -19,7 +19,7 @@ The project is deliberately optimized for a managed Windows workplace. Several d
 
 Treat the repository as the source of truth when this document and code ever disagree.
 
-Current top-level structure on the 2.2 development/release-candidate lines:
+Current top-level structure:
 
 - `DocBot.ahk` — the main application. It is large and still intentionally monolithic.
 - `Telemetry.ahk` — optional telemetry module.
@@ -37,25 +37,32 @@ There is currently no conventional `tests/` directory and no `migrations/` direc
 
 ## 3. Branch and release status at handover
 
-Repository state checked locally on 2026-08-09:
+Repository state checked on 2026-08-14, after the DocBot 2.2 release:
 
-- `main` is the production line and represents stable DocBot 2.1.
-- `develop` is the central 2.2 development line and contains `AppVersion = 2.2-dev.6` at merge commit `aecb888`.
-- The consent-based extended-logging work was integrated into `develop` through its preserved merge history.
-- `release/2.2-rc` contains that updated development state through merge commit `f0b67f3` and currently has `AppVersion = 2.2-rc.3`; RC3 changes only intended-purpose and related user-facing wording.
-- `feature/extended-logging` is no longer the branch to test or integrate; the current RC code is the source of truth for release validation.
+- `main` is the production line and represents stable **DocBot 2.2**, merged
+  from `release/2.2-rc` via PR #27 (merge commit `a156dfe`) and tagged
+  `v2.2` on that commit.
+- The full RC3 acceptance test (`docs/TODO.md`) was completed and accepted
+  by the project owner before this merge; the release-finalization steps
+  (AppVersion, README, regulatory/data-protection documentation, tag) are
+  recorded as done in `docs/TODO.md`.
+- `release/2.2-rc` and `release/2.2-finalize` are the historical release
+  branches for 2.2; no further work is expected on them.
+- `develop` is being brought back in line with the released `main` (merging
+  the release-only fixes, per `docs/DECISIONS.md` D-005) and will start the
+  next development line as `AppVersion = 2.3-dev.1`.
+- `feature/extended-logging` is no longer the branch to test or integrate;
+  its work shipped as part of 2.2.
+- The `.github/workflows/ahk-syntax-check.yml` CI syntax-only gate (see
+  D-040 and `docs/ARCHITECTURE.md` §19) reached `main` as part of the 2.2
+  release and is being brought back to `develop` in the same step as the
+  rest of the release-only fixes.
 
-The project owner approved problem reporting and consent-based extended logging as a late exception to the 2.2 feature freeze. That integration and the RC2 version transition are complete in Git. The current RC3 wording change does **not** complete release acceptance: a compiled Windows check of the changed source plus the broader managed-workplace, telephony, and internal-network acceptance paths remains required before stable 2.2.
-
-Update, 2026-08-11: `release/2.2-rc` also merged PR #19 (merge commit
-`2ee42b6`), adding `.github/workflows/ahk-syntax-check.yml`. This is a CI
-syntax-only gate (see D-040 and `docs/ARCHITECTURE.md` §19); it does not
-change `AppVersion`, does not touch `DocBot.ahk` runtime behavior, and does
-not itself count toward the RC3 acceptance checklist in `docs/TODO.md`. The
-workflow exists only on `release/2.2-rc` so far; propagating it to
-`develop` is open follow-up work.
-
-Do not infer functional validation from source integration alone. The earlier feature work contained repeated AutoHotkey v2 multiline-concatenation failures, so the integrated RC must still pass a real AHK v2 parse/compile/run and functional test on Windows.
+Do not infer functional validation from source integration alone for future
+cycles. The 2.2 feature work contained repeated AutoHotkey v2
+multiline-concatenation failures during development, which is why a real
+AHK v2 parse/compile/run and functional test on Windows — not just source
+review — was required before accepting the RC.
 
 ## 4. Product requirements that must survive refactors
 

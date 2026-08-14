@@ -1,16 +1,20 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-10. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-14. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
-- **P0** — blocks the current 2.2 release path or risks a broken build.
-- **P1** — should be completed before/around 2.2 release or immediately afterwards.
+- **P0** — blocks the current release path or risks a broken build.
+- **P1** — should be completed before/around the current release or immediately afterwards.
 - **P2** — valuable engineering improvement; not a reason to destabilize the current release.
 
 ---
 
-## P0 — Full 2.2 RC3 acceptance test
+## P0 — Full 2.2 RC3 acceptance test (completed — DocBot 2.2 released)
+
+DocBot 2.2 shipped: `main` is tagged `v2.2` (merge commit `a156dfe`, PR #27).
+This checklist is kept as a record of what the RC3 acceptance test covered;
+all items below were confirmed before the release.
 
 At minimum, validate the following on the managed Windows environment and, where required, on the internal hospital network.
 
@@ -104,18 +108,16 @@ At minimum, validate the following on the managed Windows environment and, where
 
 ## P1 — Finalize stable 2.2 release
 
-Only after the current RC3 is explicitly accepted.
-
 - [x] On the release branch, set `AppVersion` from the final `2.2-rc.N` to stable `2.2` in the definitive release commit.
 - [x] Change README status from release candidate/development wording to stable 2.2 wording.
 - [x] Finalize `### 2.2` in the README Changelog; it remains the only release-history source.
 - [x] Verify the README `Telemetrie` section exactly matches the shipped payload and intervals.
 - [x] Verify license/documentation references identify the current project license and bundled third-party licenses correctly.
-- [ ] Merge the release PR into `main` with **Create a merge commit**.
-- [ ] Create annotated tag `v2.2` on the stable release commit.
-- [ ] Push/verify the tag on `origin`.
-- [ ] Bring release-only fixes back to `develop` via PR/merge commit.
-- [ ] Start the next development version on `develop` according to the normal version scheme.
+- [x] Merge the release PR into `main` with **Create a merge commit** (PR #27, merge commit `a156dfe`).
+- [x] Create annotated tag `v2.2` on the stable release commit.
+- [x] Push/verify the tag on `origin`.
+- [ ] Bring release-only fixes back to `develop` via PR/merge commit (this documentation update is part of that PR).
+- [ ] Start the next development version on `develop` according to the normal version scheme (`AppVersion = 2.3-dev.1`; to be done as a direct follow-up commit on `develop` after this PR merges, matching how `rc.N`/`dev.N` bumps are handled elsewhere).
 
 ---
 
