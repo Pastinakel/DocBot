@@ -4,9 +4,9 @@ _Status: technisch concept met openstaande organisatorische invulpunten._
 
 _Opgesteld: 2026-08-09._
 
-_Onderzochte basis: branch `release/2.2-finalize` (bestemd voor `main`),
-DocBot `2.2` (stabiele release). De feitelijke gegevensstromen in §3.1 waren
-al bijgewerkt voor het bel-/klembordgedrag van PR #23; alleen dit versieanker
+_Onderzochte basis: `main`, tag `v2.2` (commit `a156dfe`), DocBot `2.2`
+(stabiele release). De feitelijke gegevensstromen in §3.1 waren al
+bijgewerkt voor het bel-/klembordgedrag van PR #23; alleen dit versieanker
 volgde nog niet._
 
 _Dit document is geen juridisch advies, verwerkingsregister, goedgekeurde DPIA

@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-08-09. Repository facts refer to the current 2.2 development and RC3 lines unless noted otherwise._
+_Last updated: 2026-08-14. Repository facts refer to stable DocBot 2.2 (`main`, tag `v2.2`) and the start of the 2.3 development line unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -415,7 +415,7 @@ The developer-only debug UI is gated by Windows account in current code.
 
 ### 15.2 Integrated problem reporting and extended logging
 
-The current 2.2 development and RC3 code contains the `Probleem melden...`
+The current DocBot 2.2 code contains the `Probleem melden...`
 flow. Help and the tray menu open the same reporting GUI and session state.
 `ProblemReportSession` is held in memory and tracks the phase, consented logging
 state, start time, user description, temporary log path, and finalization lock.
@@ -460,9 +460,10 @@ Architectural boundaries:
 The project owner completed the dedicated compiled-Windows validation of the
 RC2 flow on 2026-08-09, including ZIP behavior, Outlook/fallback cases,
 session state, and sensitive-data boundaries — predating the switch to loose
-attachments in D-041, which still needs its own compiled-Windows validation.
-The broader full-RC3 acceptance test is a separate release gate and remains
-tracked in `TODO.md`.
+attachments in D-041. The broader full-RC3 acceptance test, covering the
+loose-attachment behavior together with the rest of the application, was
+subsequently completed and accepted before the 2.2 release (see
+`docs/TODO.md`).
 
 ## 16. Update/restart architecture
 
@@ -526,8 +527,8 @@ v2 parse/syntax errors — including the multiline-concatenation class of
 regression described in D-033 — before manual Windows testing. It does not
 check runtime logic, telephony/SMS/UIA behavior, or GUI rendering; those
 still require the manual and internal-network validation above. The check
-currently exists only on `release/2.2-rc`, not yet on `develop` or `main`
-(see `docs/TODO.md`).
+reached `main` as part of the 2.2 release (via `release/2.2-rc`) and is
+being brought back to `develop` in the same step (see `docs/TODO.md`).
 
 A GUI-subsystem executable such as AutoHotkey can show a blocking error
 dialog on some parse failures even when told to write errors to stdout, so

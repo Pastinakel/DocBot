@@ -77,15 +77,20 @@ Only an explicitly requested production hotfix starts from `main`.
 
 **Status:** Accepted
 
-Current 2.2 scheme:
+Current scheme, after the DocBot 2.2 release (tag `v2.2` on `main`):
 
 ```text
-main                 2.1 until final 2.2 release
-develop              2.2-dev.N
-feature/fix          2.2-<short-branch-name>.N
-release candidate    2.2-rc
-stable release       2.2
+main                 2.2 (stable)
+develop              2.3-dev.N
+feature/fix          2.3-<short-branch-name>.N
+release candidate    2.3-rc
+stable release       2.3
 ```
+
+The same numeric scheme applied to the 2.2 cycle that just shipped:
+`main` carried `2.1` until the final `2.2` release; `develop` used
+`2.2-dev.N`; feature/fix branches used `2.2-<short-branch-name>.N`; the
+release candidate used `2.2-rc.N`.
 
 Every commit that changes `DocBot.ahk` must update `global AppVersion` in that same commit. A commit that does not change `DocBot.ahk` must not change AppVersion.
 
@@ -476,7 +481,7 @@ New fields or broader collection require explicit project-owner approval.
 
 ## D-031 — Standard logging is limited; detailed logging requires consent
 
-**Status:** Accepted; integrated in the 2.2 development and RC2 lines
+**Status:** Accepted; integrated in the 2.2 development and RC2 lines, shipped in stable 2.2
 
 Baseline troubleshooting logging exists continuously, but detailed session logging can be enabled only after explicit user consent in the `Probleem melden...` workflow.
 
@@ -498,7 +503,7 @@ Diagnostics must be useful without turning normal operation into unrestricted se
 
 ## D-032 — Problem reporting should degrade to a manual mail path
 
-**Status:** Accepted; integrated in the 2.2 development and RC2 lines
+**Status:** Accepted; integrated in the 2.2 development and RC2 lines (superseded by D-041 for the ZIP-building half, shipped in stable 2.2)
 
 Problem reporting creates a ZIP and prepares a Classic Outlook draft. If Outlook automation cannot be used, the user receives a manual fallback that selects the ZIP in Explorer, attempts to open a message without attachment, and explains that the ZIP must be attached manually.
 
@@ -576,7 +581,7 @@ Do not conflate "the patch was edited and pushed successfully" with "DocBot was 
 
 ## D-038 — Release 2.2 may include extended logging as an explicit freeze exception
 
-**Status:** Accepted; integration completed for RC2
+**Status:** Accepted; shipped in stable 2.2
 
 The 2.2 RC branch was created under a feature freeze. The project owner explicitly approved the extended problem-reporting/logging feature as an exception.
 
@@ -584,10 +589,10 @@ The 2.2 RC branch was created under a feature freeze. The project owner explicit
 
 The feature history was merged into `develop`; the updated development state
 was then merged into `release/2.2-rc` as RC2. The exception is therefore
-integrated. The branch is now RC3 because intended-purpose and related
-user-facing wording changed. Complete acceptance of the current release
-candidate remains a release gate; only after explicit acceptance may stable
-`2.2` and tag `v2.2` be prepared.
+integrated. The branch went through RC3 because intended-purpose and related
+user-facing wording changed, then RC4–RC6 for further fixes. The RC was
+explicitly accepted, and stable `2.2` was released and tagged `v2.2` on
+`main`.
 
 Do not use this exception as permission to add unrelated new functionality to the release branch.
 
@@ -628,7 +633,7 @@ limitations, standards relevance, and reassessment triggers are recorded in
 
 ## D-040 — Automated AutoHotkey v2 syntax check as a merge gate
 
-**Status:** Accepted; implemented on `release/2.2-rc`, not yet on `develop`
+**Status:** Accepted; shipped on `main` as part of 2.2, being brought back to `develop`
 
 D-033 called for an actual AutoHotkey v2 parse/compile check after repeated
 multiline-concatenation regressions escaped source review. `.github/workflows/ahk-syntax-check.yml`
@@ -656,15 +661,16 @@ has not exited within 60 seconds, and reports failure explicitly.
 - Any future CI step that shells out to a Windows GUI-subsystem executable
   should use the same explicit-timeout pattern rather than relying on the
   process to exit and set `$LASTEXITCODE` cleanly.
-- The workflow currently exists only on `release/2.2-rc` (merged via PR #19,
-  merge commit `2ee42b6`). Propagating it to `develop` is open work in
-  `docs/TODO.md`.
+- The workflow was merged into `release/2.2-rc` via PR #19 (merge commit
+  `2ee42b6`) and reached `main` with the 2.2 release. It is being
+  propagated to `develop` in the same step that brings back the other
+  release-only fixes (see `docs/TODO.md`).
 
 ---
 
 ## D-041 — Attach problem-report files individually instead of building a ZIP
 
-**Status:** Accepted; merged into `release/2.2-rc` via PR #22
+**Status:** Accepted; merged into `release/2.2-rc` via PR #22, shipped in stable 2.2
 
 **Supersedes:** the ZIP-building half of D-032. The manual-fallback rationale
 in D-032 (degrade to a mail path instead of failing the report outright)
