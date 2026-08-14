@@ -16,89 +16,89 @@ At minimum, validate the following on the managed Windows environment and, where
 
 ### Startup / storage
 
-- [ ] Stable/test/dev profile selection is correct for the RC version (`DocBot-test`).
-- [ ] Existing profile data is not overwritten by bootstrap copying.
-- [ ] `attrib -U +P` failure does not block startup.
-- [ ] Missing/temporarily unavailable telemetry storage does not block core app functionality.
-- [ ] Existing telemetry InstallationId is used without a rewrite.
-- [ ] New InstallationId is not used until persistence/readback succeeds.
+- [x] Stable/test/dev profile selection is correct for the RC version (`DocBot-test`).
+- [x] Existing profile data is not overwritten by bootstrap copying.
+- [x] `attrib -U +P` failure does not block startup.
+- [x] Missing/temporarily unavailable telemetry storage does not block core app functionality.
+- [x] Existing telemetry InstallationId is used without a rewrite.
+- [x] New InstallationId is not used until persistence/readback succeeds.
 
 ### Hotstrings
 
-- [ ] Short replacement.
-- [ ] 200+ character replacement.
-- [ ] Multiline replacement.
-- [ ] Replacement containing `{Tab}`/`{Left}` or another supported key command.
-- [ ] `{{datum}}` and `{{tijd}}` expansion.
-- [ ] Existing clipboard contents survive hotstring use unchanged.
-- [ ] Save/edit/delete with AutoSave.
-- [ ] Backup/temp/atomic write path.
-- [ ] Legacy `.txt` import behavior.
+- [x] Short replacement.
+- [x] 200+ character replacement.
+- [x] Multiline replacement.
+- [x] Replacement containing `{Tab}`/`{Left}` or another supported key command.
+- [x] `{{datum}}` and `{{tijd}}` expansion.
+- [x] Existing clipboard contents survive hotstring use unchanged.
+- [x] Save/edit/delete with AutoSave.
+- [x] Backup/temp/atomic write path.
+- [x] Legacy `.txt` import behavior.
 
 ### Packages
 
-- [ ] Package catalogue loads.
-- [ ] Large spelling package opens acceptably.
-- [ ] Enable/disable package and item.
-- [ ] Personal conflict -> `Overruled` by default.
-- [ ] Explicit package priority -> `Voorrang`.
-- [ ] Package/package duplicate -> `Conflict`.
-- [ ] Save package item as personal copy.
-- [ ] Closing package manager during/after load remains safe.
+- [x] Package catalogue loads.
+- [x] Large spelling package opens acceptably.
+- [x] Enable/disable package and item.
+- [x] Personal conflict -> `Overruled` by default.
+- [x] Explicit package priority -> `Voorrang`.
+- [x] Package/package duplicate -> `Conflict`.
+- [x] Save package item as personal copy.
+- [x] Closing package manager during/after load remains safe.
 
 ### Telephony
 
-- [ ] Registration/link-code request.
-- [ ] Successful phone linking.
-- [ ] Refresh cooldown/countdown.
-- [ ] Poll loop continues without overlapping requests.
-- [ ] Poll loop recovers after the known stop/restart scenarios.
-- [ ] Call is blocked when no phone is linked.
-- [ ] Linking call remains allowed.
-- [ ] External Dutch number normalization.
-- [ ] Internal four-digit number path.
-- [ ] Speed dial from main UI and tray menu.
+- [x] Registration/link-code request.
+- [x] Successful phone linking.
+- [x] Refresh cooldown/countdown.
+- [x] Poll loop continues without overlapping requests.
+- [x] Poll loop recovers after the known stop/restart scenarios.
+- [x] Call is blocked when no phone is linked.
+- [x] Linking call remains allowed.
+- [x] External Dutch number normalization.
+- [x] Internal four-digit number path.
+- [x] Speed dial from main UI and tray menu.
 
 ### Call action / SMS
 
-- [ ] All four `Belactie` states behave correctly.
-- [ ] SMS is not offered when no valid local SMS action exists.
-- [ ] SMS is offered only for eligible mobile numbers.
-- [ ] Single SMS action config remains compatible.
-- [ ] Multiple SMS action config and selector work.
-- [ ] Dialog initially paints the selected button correctly.
-- [ ] Left/right selection works.
-- [ ] Enter activates the visually selected button.
-- [ ] Existing Edge foreground tab path.
-- [ ] Existing Edge background tab path through UIA.
-- [ ] Missing tab -> configured URL opens.
-- [ ] Telephone field is filled through UIA.
-- [ ] JavaScript fallback still works if needed.
-- [ ] No obsolete "number filled" success notification is shown.
-- [ ] DocBot does not send the SMS automatically.
+- [x] All four `Belactie` states behave correctly.
+- [x] SMS is not offered when no valid local SMS action exists.
+- [x] SMS is offered only for eligible mobile numbers.
+- [x] Single SMS action config remains compatible.
+- [x] Multiple SMS action config and selector work.
+- [x] Dialog initially paints the selected button correctly.
+- [x] Left/right selection works.
+- [x] Enter activates the visually selected button.
+- [x] Existing Edge foreground tab path.
+- [x] Existing Edge background tab path through UIA.
+- [x] Missing tab -> configured URL opens.
+- [x] Telephone field is filled through UIA.
+- [x] JavaScript fallback still works if needed.
+- [x] No obsolete "number filled" success notification is shown.
+- [x] DocBot does not send the SMS automatically.
 
 ### Help / UI / tray
 
-- [ ] Sidebar navigation.
-- [ ] Help accordions and clickable page links.
-- [ ] Custom notification window appears on managed Windows where TrayTip is unavailable.
-- [ ] Main window/tray state refreshes after telephony changes.
-- [ ] Start active/background/minimized behavior.
+- [x] Sidebar navigation.
+- [x] Help accordions and clickable page links.
+- [x] Custom notification window appears on managed Windows where TrayTip is unavailable.
+- [x] Main window/tray state refreshes after telephony changes.
+- [x] Start active/background/minimized behavior.
 
 ### Diagnostics / problem reporting
 
-- [ ] Baseline debug log remains available.
-- [ ] Developer debug window restriction remains intentional.
+- [x] Baseline debug log remains available.
+- [x] Developer debug window restriction remains intentional.
 - [x] Integrated problem-reporting and extended-logging validation completed on RC2.
 
 ### Deployment/update
 
-- [ ] Compile final RC executable with the authorized local config.
-- [ ] `Build-EPD_Machine.bat` behavior on intended folder layout.
-- [ ] `signal.txt` shutdown/update flow.
-- [ ] Executable replacement and byte verification.
-- [ ] Restart task preserves active/background/minimized state.
-- [ ] Update signal is removed on both success and failure.
+- [x] Compile final RC executable with the authorized local config.
+- [x] `Build-EPD_Machine.bat` behavior on intended folder layout.
+- [x] `signal.txt` shutdown/update flow.
+- [x] Executable replacement and byte verification.
+- [x] Restart task preserves active/background/minimized state.
+- [x] Update signal is removed on both success and failure.
 
 ---
 
