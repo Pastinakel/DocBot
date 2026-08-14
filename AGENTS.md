@@ -14,9 +14,53 @@ DocBot is een AutoHotkey v2-hulpmiddel voor medewerkers met twee hoofdfuncties:
 ## Bestanden
 
 - `DocBot.ahk` — huidig hoofdscript; werk hieraan voor hotstrings, telefonie en de interface.
-- `JXON.ahk` — JSON-library (TheArkive, MIT), gebruikt voor hotstring-opslag.
+- `ThirdParty/JXON/JXON.ahk` — JSON-library (TheArkive, MIT), gebruikt voor hotstring-opslag.
+- `ThirdParty/ColorButton/ColorButton.ahk` — knopbibliotheek (Nikola Perovic, MIT).
+- `ThirdParty/UIA-v2/UIA.ahk` — UI Automation-library voor interactie met Edge.
+- `ThirdParty/<library>/LICENSE` — oorspronkelijke licentie van de betreffende externe library.
 - `README.md` — volledige documentatie over installatie, functionaliteit, telefonie, diagnostiek en wijzigingen.
-- De historische legacybron staat uitsluitend in de Git-geschiedenis en op `archive/legacy-v2-final`; voeg hem niet opnieuw toe aan actieve branches.
+- Voeg verwijderde legacybestanden niet opnieuw toe aan actieve branches.
+
+Plaats meegeleverde externe libraries altijd in een eigen map onder
+`ThirdParty/`, met hun oorspronkelijke licentiebestand in dezelfde map.
+Pas bij een verplaatsing zowel alle `#Include`-paden als de bestandenlijst
+in `README.md`, `AGENTS.md` en `CLAUDE.md` aan.
+
+## Projectdocumentatie
+
+De map `docs/` bevat duurzame projectkennis die niet uit losse chats of
+agentgeheugen mag worden afgeleid. Gebruik `AGENTS.md` als navigatiekaart en
+lees vóór uitvoering de documenten die voor de taak relevant zijn:
+
+1. Lees `docs/PROJECT_CONTEXT.md` voor productcontext, requirements, bekende
+   bugs en de actuele ontwikkel- en releasestatus.
+2. Lees `docs/INTENDED_PURPOSE.md` vóór wijzigingen aan het beoogde gebruik,
+   gebruikers, gebruiksomgeving, invoer, uitvoer, autonome acties, beperkingen
+   of uitgesloten medische toepassingen.
+3. Lees `docs/DATA_PROTECTION.md` vóór wijzigingen aan persoonsgegevens,
+   gegevensstromen, ontvangers, bewaartermijnen, autorisaties,
+   transportbeveiliging of DPIA-relevante functionaliteit.
+4. Lees `docs/ARCHITECTURE.md` voordat je architectuur, opslag, dataflows,
+   componentgrenzen of integraties wijzigt.
+5. Lees `docs/DECISIONS.md` voordat je een bestaande ontwerpkeuze vervangt,
+   terugdraait of opnieuw bespreekt.
+6. Lees `docs/TODO.md` bij werk aan openstaande taken, releaseplanning of
+   bekende vervolgacties.
+7. Lees `docs/REGULATORY_ASSESSMENT.md` vóór wijzigingen aan de intended
+   purpose, patiëntgegevens, klinische pakketinhoud, beslislogica, autonome
+   acties, logging/telemetrie of integraties die de MDR-kwalificatie,
+   patiëntveiligheid of NEN 7510-scope kunnen beïnvloeden.
+
+Behandel deze documenten als duurzame projectcontext, maar controleer vóór
+implementatie altijd of statusgegevens nog overeenkomen met de actuele code,
+branches en pull requests. Werk de relevante `docs/`-bestanden bij wanneer een
+wijziging hun inhoud achterhaald maakt.
+
+`docs/REGULATORY_ASSESSMENT.md` is een voorlopige repositoryanalyse en geen
+juridisch of gecertificeerd conformiteitsoordeel. Pas de daarin vastgelegde
+kwalificatie niet stilzwijgend toe op nieuwe medische functionaliteit: voer bij
+een genoemde herbeoordelingstrigger eerst een nieuwe kwalificatie- en
+risicoanalyse uit.
 
 ## Hotstringmodel en uitvoer
 
@@ -143,11 +187,11 @@ Wijzig develop en main nooit rechtstreeks. Maak altijd een pull request vanuit e
 Gebruik in de huidige ontwikkelcyclus deze versies:
 
 ```text
-main:              2.0.1
-develop:           2.1-dev.N
-features/fixes:    2.1-<korte-branchnaam>.N
-release candidate: 2.1-rc.N
-release:           2.1
+main:              2.1
+develop:           2.2-dev.N
+features/fixes:    2.2-<korte-branchnaam>.N
+release candidate: 2.2-rc.N
+release:           2.2
 ```
 
 Dezelfde structuur geldt voor latere releases: `main` bevat altijd de laatst
@@ -157,13 +201,13 @@ branchspecifieke prerelease-naam met een eigen lokale teller; een releasebranch
 gebruikt `-rc.N`; bij de stabiele release vervalt de prerelease-suffix.
 
 Maak een releasecandidate vanaf een actuele `develop` op een branch zoals
-`release/2.1-rc.1`. Voeg daar uitsluitend bugfixes, documentatie en
+`release/2.2-rc.1`. Voeg daar uitsluitend bugfixes, documentatie en
 releasevoorbereidingen aan toe. Nieuwe functionaliteit wacht op de volgende
 ontwikkelcyclus. Iedere commit op de releasebranch die `DocBot.ahk` wijzigt,
 verhoogt `rc.N` met één.
 
-Voorbeelden zijn `2.1-dev.7`, `2.1-ronde-kaarten.3`,
-`2.1-import.5` en `2.1-rc.1`. Houd branchspecifieke prerelease-namen
+Voorbeelden zijn `2.2-dev.7`, `2.2-ronde-kaarten.3`,
+`2.2-import.5` en `2.2-rc.1`. Houd branchspecifieke prerelease-namen
 geschikt voor SemVer: uitsluitend ASCII-letters, cijfers en koppeltekens.
 
 Iedere commit die `DocBot.ahk` wijzigt, moet in dezelfde commit ook
@@ -188,8 +232,8 @@ releasetag.
 ## Releases, versiegeschiedenis en tags
 
 De releasebranch wordt via een pull request naar `main` gemerged. Zet
-`AppVersion` pas voor die definitieve releasecommit van `2.1-rc.N` naar
-de stabiele versie `2.1`.
+`AppVersion` pas voor de definitieve releasecommit van `2.2-rc.N` naar
+de stabiele versie `2.2`.
 
 Bij een stabiele release moet in dezelfde commit-cyclus:
 

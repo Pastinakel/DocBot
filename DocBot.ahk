@@ -1,9 +1,11 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 Persistent true
-#Include JXON.ahk
-#Include ColorButton.ahk
+#Include ThirdParty\JXON\JXON.ahk
+#Include ThirdParty\ColorButton\ColorButton.ahk
 #Include Telemetry.ahk
+#Include ThirdParty\UIA-v2\UIA.ahk
+#Include ThirdParty\UIA-v2\UIA_Browser.ahk
 
 ; De echte lokale configuratie wordt bewust niet door Git gevolgd. Tijdens
 ; compilatie neemt Ahk2Exe dit include-bestand wel in de executable op.
@@ -22,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.1"
+global AppVersion := "2.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -78,6 +80,11 @@ global IPTConfig := Map(
     "RegisterMinIntervalMs", 10000
 )
 
+; SmsCallAction mag voor achterwaartse compatibiliteit één Map zijn, of een
+; Array met meerdere Maps. In de GUI wordt uitsluitend Title getoond;
+; WindowTitle blijft een technische waarde voor de Edge/UIA-herkenning.
+global SmsCallActions := GetConfiguredSmsCallActions()
+
 ; Signal.txt-mechanisme voor gecoördineerd afsluiten/herladen vanaf de
 ; centrale netwerklocatie van de executable — zie CheckSignalFile().
 global SignalConfig := Map(
@@ -88,8 +95,8 @@ global SignalConfig := Map(
 )
 
 global State := Map(
-    "AutoCall", true,
-    "DirectCall", false,
+    "CallAction", 1,
+    "SmsCallActionTitle", SmsCallActions.Length ? SmsCallActions[1]["Title"] : "",
     "TextReplacement", true,
     "AutoSave", true,
     "HotstringFile", DefaultHotstringFile,
@@ -139,13 +146,29 @@ global IPTRegisterRequest := 0
 global IPTPollRequest := 0
 global IPTDialRequest := 0
 
-; Achtergrondlogging (zie DIAGNOSTIEK & LOGGING) — begrensd en gebufferd,
-; zodat er al diagnostische data is zodra iemand een probleem meldt.
+; Beperkte standaardlogging en toestemmingsgebonden uitgebreide logging.
 global DebugLogBuffer := ""
+global ExtendedDebugLogBuffer := ""
 global DebugFlushPending := false
+global ExtendedDebugFlushPending := false
 global DebugWindow := 0
 global DebugLogEdit := 0
 global DebugAutoScroll := true
+
+; De probleemrapportagesessie leeft uitsluitend in het geheugen. Het sluiten
+; van het venster behoudt de sessie; afsluiten of herstarten van DocBot stopt
+; uitgebreide logging en verwijdert het tijdelijke uitgebreide logbestand.
+global ProblemReportGui := 0
+global ProblemReportDescriptionEdit := 0
+global ProblemReportConsentCheck := 0
+global ProblemReportSession := Map(
+    "Phase", "start",
+    "ExtendedActive", false,
+    "StartedAt", "",
+    "Description", "",
+    "ExtendedLogPath", "",
+    "Finalizing", false
+)
 
 ; Eigen, altijd-zichtbaar meldingsvenstertje i.p.v. TrayTip() — zie
 ; ShowNotification(). Op zakelijk beheerde Windows-machines wordt het
@@ -153,8 +176,12 @@ global DebugAutoScroll := true
 ; door group policy (geen foutmelding, de balloon verschijnt gewoon niet).
 global NotificationGui := 0
 
-global AutoCallCheck := 0
-global DirectCallCheck := 0
+; Gedeelde toetsenbordstatus voor de belbevestiging en de keuze
+; Annuleren / SMS / Bellen. Links/rechts verplaatst de visuele selectie;
+; Enter voert de geselecteerde echte Button-control uit.
+global PhoneActionDialogState := 0
+
+global CallActionSelector := 0
 global TextReplacementCheck := 0
 global OverviewPhoneActionsText := 0
 global OverviewLongHotstringActionsText := 0
@@ -201,6 +228,7 @@ global PackageManagerStatusText := 0
 global RuntimeHotstrings := Map()
 
 InitializeUserStorage()
+MarkUserStorageAlwaysAvailable(UserDataDir)
 InitializeBundledPackages()
 LoadAppSettings()
 InitializeHotstringStorage()
@@ -208,6 +236,8 @@ InitializePackageSettings()
 InitializeSpeedDialStorage()
 ReloadRuntimeHotstrings()
 Telemetry_Initialize(ConfigFile, AppVersion, GetTelemetryStatus)
+InitializeDiagnosticLogging()
+DebugLog("i", "DocBot gestart", "Versie " AppVersion ".")
 
 if HasCommandLineArgument("--docbot-update-restart")
     SetTimer(CleanupScheduledRestartTask, -2000)
@@ -215,6 +245,7 @@ if HasCommandLineArgument("--docbot-update-restart")
 BuildMainGui()
 BuildTrayMenu()
 OnMessage(0x404, TrayIconMessage)  ; tray-icon notifications
+OnMessage(0x0100, PhoneActionDialogKeyDown)  ; WM_KEYDOWN voor beide Belactie-dialogen
 OnExit(HandleAppExit)
 showOptions := "w1000 h700 Center"
 if StartupWindowState = "minimized"
@@ -251,7 +282,7 @@ BuildMainGui() {
     global MainGui, C, State, AppVersion
     global RegisteredNumberText, RegistrationNumberText, RegistrationStatusText, RegistrationRefreshButton
     global RegistrationHelperText
-    global AutoCallCheck, DirectCallCheck, TextReplacementCheck
+    global CallActionSelector, TextReplacementCheck
     global OverviewPhoneActionsText, OverviewLongHotstringActionsText
     global HotLV, HotSearch, HotTriggerEdit, HotEnabledCheck
     global HotReplacementSingleGroup, HotReplacementMultiGroup
@@ -319,35 +350,47 @@ BuildMainGui() {
     AddCardLabel("overzicht", 260, 108, 220, 20, "Geregistreerd nummer", "s10 c" C["Muted"])
     RegistrationStatusText := AddCardLabel("overzicht", 792, 108, 148, 20, "", "s9 bold c" C["Success"], "Right")
     RegisteredNumberText := AddCardLabel("overzicht", 260, 132, 340, 42, "", "s28 bold c" C["Text"])
-    RegistrationHelperText := AddCardLabel("overzicht", 260, 184, 320, 26, "Dit nummer is momenteel gekoppeld aan de sessie.", "s9 c" C["Muted"])
+    RegistrationHelperText := AddCardLabel("overzicht", 260, 184, 360, 26, "Dit nummer is momenteel gekoppeld aan de sessie.", "s9 c" C["Muted"])
     AddCardLabel("overzicht", 694, 108, 246, 20, "Bel dit nummer om te registreren", "s10 c" C["Muted"], "Right")
     RegistrationNumberText := AddCardLabel("overzicht", 694, 136, 246, 34, State["IPT"]["UpdateTel"], "s21 bold c" C["Text"], "Right")
     RegistrationRefreshButton := AddFlatButton("overzicht", 740, 180, 200, 36, Chr(0xE72C) "  Verversen", RefreshRegistrationStatus, true)
 
-    AddCard("overzicht", 236, 246, 736, 112)
-    AddCardLabel("overzicht", 260, 262, 180, 22, "Belopties", "s13 bold c" C["Text"])
-    AutoCallCheck := AddToggle("overzicht", 260, 292, "AutoCall", State["AutoCall"], SettingChanged.Bind("AutoCall"))
-    AddCardLabel("overzicht", 260, 320, 330, 26, "Bel het telefoonnummer op het klembord na een actie vanuit HiX.", "s8 c" C["Muted"])
-    DirectCallCheck := AddToggle("overzicht", 606, 292, "DirectCall", State["DirectCall"], SettingChanged.Bind("DirectCall"))
-    AddCardLabel("overzicht", 606, 320, 330, 26, "Bel direct zonder extra bevestiging.", "s8 c" C["Muted"])
+    AddCard("overzicht", 236, 246, 736, 142)
+    AddCardLabel("overzicht", 260, 262, 180, 22, "Belactie", "s13 bold c" C["Text"])
+    CallActionSelector := AddCallActionSelector(
+        "overzicht",
+        State["CallAction"],
+        CallActionChanged
+    )
+    AddCardLabel(
+        "overzicht",
+        606,
+        346,
+        338,
+        34,
+        HasConfiguredSmsCallActions()
+            ? "Bij 'Bellen of sms kiezen' krijgen externe nummers een keuze; interne nummers worden direct gebeld."
+            : "Configureer eerst een SMS-pagina om de keuze tussen bellen en sms beschikbaar te maken.",
+        "s8 c" C["Muted"]
+    )
 
-    AddCard("overzicht", 236, 370, 736, 112)
-    AddCardLabel("overzicht", 260, 386, 240, 22, "Tekstvervanging", "s13 bold c" C["Text"])
-    TextReplacementCheck := AddToggle("overzicht", 260, 416, "Actief", State["TextReplacement"], SettingChanged.Bind("TextReplacement"))
-    AddCardLabel("overzicht", 260, 444, 390, 24, "Vervang opgeslagen afkortingen automatisch tijdens het typen.", "s8 c" C["Muted"])
-    AddFlatButton("overzicht", 756, 414, 200, 36, Chr(0xE8FD) "  Hotstrings beheren", ShowPage.Bind("tekstvervanging"), false)
+    AddCard("overzicht", 236, 400, 736, 104)
+    AddCardLabel("overzicht", 260, 416, 240, 22, "Tekstvervanging", "s13 bold c" C["Text"])
+    TextReplacementCheck := AddToggle("overzicht", 260, 446, "Actief", State["TextReplacement"], SettingChanged.Bind("TextReplacement"))
+    AddCardLabel("overzicht", 260, 474, 390, 20, "Vervang opgeslagen afkortingen automatisch tijdens het typen.", "s8 c" C["Muted"])
+    AddFlatButton("overzicht", 756, 444, 200, 36, Chr(0xE8FD) "  Hotstrings beheren", ShowPage.Bind("tekstvervanging"), false)
 
-    AddCard("overzicht", 236, 494, 736, 128)
-    AddCardLabel("overzicht", 260, 510, 200, 22, "Gebruik", "s13 bold c" C["Text"])
-    phoneUsageIcon := AddCardLabel("overzicht", 270, 546, 36, 34, Chr(0xE717), "s20 c" C["Primary"], "Center")
+    AddCard("overzicht", 236, 516, 736, 128)
+    AddCardLabel("overzicht", 260, 532, 200, 22, "Gebruik", "s13 bold c" C["Text"])
+    phoneUsageIcon := AddCardLabel("overzicht", 270, 568, 36, 34, Chr(0xE717), "s20 c" C["Primary"], "Center")
     phoneUsageIcon.SetFont("s20 c" C["Primary"], "Segoe MDL2 Assets")
-    AddCardLabel("overzicht", 320, 540, 160, 18, "Belacties", "s9 c" C["Muted"])
-    OverviewPhoneActionsText := AddCardLabel("overzicht", 320, 560, 160, 34, Telemetry_GetPhoneActions(), "s22 bold c" C["Text"])
-    hotstringUsageIcon := AddCardLabel("overzicht", 600, 546, 36, 34, Chr(0xE8FD), "s20 c" C["Primary"], "Center")
+    AddCardLabel("overzicht", 320, 562, 160, 18, "Belacties", "s9 c" C["Muted"])
+    OverviewPhoneActionsText := AddCardLabel("overzicht", 320, 582, 160, 34, Telemetry_GetPhoneActions(), "s22 bold c" C["Text"])
+    hotstringUsageIcon := AddCardLabel("overzicht", 600, 568, 36, 34, Chr(0xE8FD), "s20 c" C["Primary"], "Center")
     hotstringUsageIcon.SetFont("s20 c" C["Primary"], "Segoe MDL2 Assets")
-    AddCardLabel("overzicht", 650, 540, 220, 18, "Lange hotstrings", "s9 c" C["Muted"])
-    OverviewLongHotstringActionsText := AddCardLabel("overzicht", 650, 560, 160, 34, Telemetry_GetLongHotstringActions(), "s22 bold c" C["Text"])
-    AddCardLabel("overzicht", 650, 592, 280, 18, "Lange en meerregelige vervangingen", "s8 c" C["Muted"])
+    AddCardLabel("overzicht", 650, 562, 220, 18, "Lange hotstrings", "s9 c" C["Muted"])
+    OverviewLongHotstringActionsText := AddCardLabel("overzicht", 650, 582, 160, 34, Telemetry_GetLongHotstringActions(), "s22 bold c" C["Text"])
+    AddCardLabel("overzicht", 650, 614, 280, 18, "Lange en meerregelige vervangingen", "s8 c" C["Muted"])
 
     overviewFooter := MainGui.AddText("x236 y672 w736 h18 Right Background" C["Window"], "Sluiten verbergt DocBot in het systeemvak")
     overviewFooter.SetFont("s8 c" C["Muted"], "Segoe UI")
@@ -476,7 +519,7 @@ BuildMainGui() {
     ; PAGINA: INSTELLINGEN
     ; -------------------------------------------------------------------------
 
-    AddPageHeader("instellingen", "Instellingen", "Beheer de opslag en import van hotstrings.")
+    AddPageHeader("instellingen", "Instellingen", "Beheer de opslag, import en SMS-integratie.")
 
     AddCard("instellingen", 236, 92, 736, 194)
     AddCardLabel("instellingen", 260, 114, 250, 24, "Hotstringbestand", "s14 bold c" C["Text"])
@@ -491,7 +534,47 @@ BuildMainGui() {
     AddFlatButton("instellingen", 692, 230, 132, 36, "📂  Laden", ManualLoadHotstrings.Bind(filePathEdit), false)
     AddFlatButton("instellingen", 832, 230, 132, 36, "💾  Opslaan", ManualSaveHotstrings.Bind(filePathEdit), true)
 
-    AddFlatButton("instellingen", 824, 304, 140, 38, "Opslaan", SaveSettings.Bind(autoSaveCheck, filePathEdit), true, C["Window"])
+    AddCard("instellingen", 236, 304, 736, 202)
+    AddCardLabel("instellingen", 260, 326, 250, 24, "SMS actie", "s14 bold c" C["Text"])
+    AddCardLabel("instellingen", 260, 366, 200, 20, "SMS-pagina", "s10 c" C["Muted"])
+
+    smsActionTitles := GetSmsCallActionTitles()
+    smsActionOptions := smsActionTitles.Length
+        ? smsActionTitles
+        : ["Geen SMS-pagina's geconfigureerd"]
+    selectedSmsActionIndex := FindSmsCallActionIndexByTitle(State["SmsCallActionTitle"])
+    if selectedSmsActionIndex = 0
+        selectedSmsActionIndex := 1
+
+    smsActionDropDown := MainGui.AddDropDownList(
+        "x260 y390 w688 Choose" selectedSmsActionIndex,
+        smsActionOptions
+    )
+    if smsActionTitles.Length = 0
+        smsActionDropDown.Enabled := false
+    AddPageControl("instellingen", smsActionDropDown)
+
+    AddCardLabel(
+        "instellingen",
+        260, 430, 688, 20,
+        "Deze pagina wordt gebruikt bij de belactie 'Bellen of sms kiezen'.",
+        "s9 c" C["Muted"]
+    )
+    smsAvailabilityText := smsActionTitles.Length = 1
+        ? "1 SMS-pagina beschikbaar via lokale configuratie."
+        : smsActionTitles.Length " SMS-pagina's beschikbaar via lokale configuratie."
+    if smsActionTitles.Length = 0
+        smsAvailabilityText := "Geen SMS-pagina beschikbaar; de bijbehorende belactie is uitgeschakeld."
+    AddCardLabel("instellingen", 260, 462, 688, 20, smsAvailabilityText, "s9 c" C["Muted"])
+
+    AddFlatButton(
+        "instellingen",
+        824, 526, 140, 38,
+        "Opslaan",
+        SaveSettings.Bind(autoSaveCheck, filePathEdit, smsActionDropDown),
+        true,
+        C["Window"]
+    )
 
     ; -------------------------------------------------------------------------
     ; PAGINA: HELP
@@ -508,15 +591,18 @@ BuildMainGui() {
         Map("Overzicht", "overzicht")
     )
     AddHelpAccordionSection(
-        "Hoe bel ik vanuit HiX?",
-        "Zet AutoCall aan op de pagina Overzicht in DocBot."
-        "`r`n`r`nKlik linksboven in HiX op het pijltje naast het telefoonnummer van de patiënt. "
-        "Klik vervolgens op het getoonde telefoonnummer. DocBot herkent het nummer en opent de belactie."
-        "`r`n`r`nMet DirectCall in DocBot ingeschakeld wordt direct gebeld. "
-        "Anders vraagt DocBot eerst om bevestiging."
+        "Hoe bel of sms ik vanuit een applicatie?",
+        "Kies bij Belactie op de pagina Overzicht wat DocBot met een herkend nummer moet doen."
+        "`r`n`r`nKopieer in de gebruikte applicatie het gewenste telefoonnummer. "
+        "DocBot herkent het nummer en voert de gekozen belactie uit."
+        "`r`n`r`nIn HiX klik je linksboven op het pijltje naast het telefoonnummer van de patiënt "
+        "en vervolgens op het getoonde telefoonnummer."
+        "`r`n`r`nJe kunt kiezen voor niets doen, bellen na bevestiging, direct bellen of bij externe nummers kiezen tussen bellen en sms. "
+        "Interne nummers worden bij die laatste keuze direct gebeld."
+        "`r`n`r`nBij een extern Nederlands 06-nummer opent SMS de onder Instellingen gekozen pagina en vult DocBot het telefoonnummer in."
         "`r`n`r`nSoms toont HiX na het kopiëren van het nummer een foutmelding. "
         "Deze melding kun je negeren zonder HiX af te sluiten.",
-        ["AutoCall", "Overzicht", "DirectCall"],
+        ["Belactie", "Overzicht", "niets doen", "bellen na bevestiging", "direct bellen", "bellen en sms", "Interne nummers", "Instellingen", "SMS"],
         Map("Overzicht", "overzicht")
     )
     AddHelpAccordionSection(
@@ -541,12 +627,15 @@ BuildMainGui() {
     )
     RefreshHelpAccordion()
 
-    helpFooter := MainGui.AddText(
-        "x236 y672 w736 h18 Right Background" C["Window"],
-        "Sluiten verbergt DocBot in het systeemvak"
+    ; De bestaande footer wordt volledig vervangen door een herkenbare
+    ; ingang naar dezelfde probleemrapportage als in het systeemvakmenu.
+    AddFlatButton(
+        "help",
+        786, 654, 170, 34,
+        "Probleem melden...",
+        ShowProblemReportWindow,
+        false
     )
-    helpFooter.SetFont("s8 c" C["Muted"], "Segoe UI")
-    AddPageControl("help", helpFooter)
 
     ; -------------------------------------------------------------------------
     ; PAGINA: OVER
@@ -568,6 +657,17 @@ BuildMainGui() {
     AddRound(aboutEdit, 10)
     AddPageControl("over", aboutEdit)
 
+    ; Zelfde hoogte als de "Probleem melden..."-knop op de Help-pagina
+    ; (x786 y654 w170 h34), maar gespiegeld naar links, in de al onbenutte
+    ; ruimte onder de kaart. Laat de kaart/aboutEdit hierboven ongemoeid.
+    githubLink := MainGui.AddLink(
+        "x262 y654 w300 h34",
+        'Bekijk DocBot op <a href="https://github.com/Pastinakel/DocBot">GitHub</a>'
+    )
+    githubLink.SetFont("s10 c" C["Text"], "Segoe UI")
+    githubLink.OnEvent("Click", OpenGithubLink)
+    AddPageControl("over", githubLink)
+
     RefreshRegistrationTexts()
     RefreshHotstringList()
     RefreshSpeedDialList()
@@ -575,6 +675,16 @@ BuildMainGui() {
 
     MainGui.OnEvent("Close", MainGui_Close)
     MainGui.OnEvent("Escape", MainGui_Escape)
+}
+
+; Click-event van een Link-control geeft bij deze control geen href terug
+; via Info (dat bleek in de praktijk de 1-gebaseerde index van het
+; aangeklikte linksegment, geen URL). Er staat hier maar één link, dus de
+; URL is vast hardcoded in plaats van uit Info afgeleid. * vangt eventuele
+; parameters op die de event meegeeft, zodat het exacte aantal nooit een
+; "Invalid callback function"-fout kan veroorzaken.
+OpenGithubLink(*) {
+    Run("https://github.com/Pastinakel/DocBot")
 }
 
 ; =============================================================================
@@ -959,7 +1069,7 @@ AddExitButton(y) {
 
 ConfirmExitApp(*) {
     if MsgBox(
-        "DocBot volledig afsluiten? Dit sluit ook het systeemvak-icoon, en AutoCall/DirectCall werken dan niet meer totdat je DocBot opnieuw start.",
+        "DocBot volledig afsluiten? Dit sluit ook het systeemvak-icoon, en automatische belacties werken dan niet meer totdat je DocBot opnieuw start.",
         "DocBot afsluiten",
         "YesNo Icon!"
     ) = "Yes"
@@ -1073,6 +1183,102 @@ RedrawFlatButtons(*) {
             )
         }
     }
+}
+
+AddCallActionSelector(pageKey, initialValue, callback) {
+    options := [
+        Map("Value", 0, "X", 260, "Y", 292, "Width", 260, "Caption", "Niets doen"),
+        Map("Value", 1, "X", 606, "Y", 292, "Width", 320, "Caption", "Bellen na bevestiging"),
+        Map("Value", 2, "X", 260, "Y", 320, "Width", 260, "Caption", "Direct bellen")
+    ]
+    if HasConfiguredSmsCallActions() {
+        options.Push(
+            Map("Value", 3, "X", 606, "Y", 320, "Width", 320, "Caption", "Bellen of sms kiezen")
+        )
+    }
+    return CallActionChoiceGroup(pageKey, options, NormalizeCallAction(initialValue), callback)
+}
+
+class CallActionChoiceGroup {
+    __New(pageKey, options, initialValue, callback) {
+        global MainGui, C
+
+        this._value := initialValue
+        this.Callback := callback
+        this.Choices := []
+        this.UnselectedBitmap := CreateRadioChoiceBitmap(false, C["Primary"], C["Border"], C["Card"])
+        this.SelectedBitmap := CreateRadioChoiceBitmap(true, C["Primary"], C["Border"], C["Card"])
+
+        for _, option in options {
+            picture := MainGui.AddPicture(
+                "x" option["X"] " y" option["Y"] " w20 h20",
+                "HBITMAP:*" this.UnselectedBitmap
+            )
+            AddPageControl(pageKey, picture)
+
+            label := MainGui.AddText(
+                "x" (option["X"] + 28) " y" option["Y"]
+                " w" (option["Width"] - 28) " h22 Background" C["Card"],
+                option["Caption"]
+            )
+            label.SetFont("s10 c" C["Text"], "Segoe UI")
+            AddPageControl(pageKey, label)
+
+            clickHandler := ObjBindMethod(this, "HandleClick", option["Value"])
+            picture.OnEvent("Click", clickHandler)
+            label.OnEvent("Click", clickHandler)
+            this.Choices.Push(Map("Value", option["Value"], "Picture", picture))
+        }
+
+        this.Render()
+    }
+
+    Value {
+        get => this._value
+        set {
+            this._value := value
+            this.Render()
+            return value
+        }
+    }
+
+    HandleClick(value, *) {
+        this.Value := value
+        if IsObject(this.Callback)
+            this.Callback.Call(value)
+    }
+
+    Render() {
+        for _, choice in this.Choices {
+            bitmap := choice["Value"] = this._value ? this.SelectedBitmap : this.UnselectedBitmap
+            choice["Picture"].Value := "HBITMAP:*" bitmap
+            try choice["Picture"].Redraw()
+        }
+    }
+}
+
+CreateRadioChoiceBitmap(isSelected, primaryColor, borderColor, surfaceColor) {
+    pBitmap := UiCreateBitmap(20, 20, &graphics)
+    DllCall("gdiplus\GdipGraphicsClear", "ptr", graphics, "uint", UiArgb(surfaceColor))
+
+    outerBrush := 0
+    DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(isSelected ? primaryColor : borderColor), "ptr*", &outerBrush)
+    DllCall("gdiplus\GdipFillEllipse", "ptr", graphics, "ptr", outerBrush, "float", 1.0, "float", 1.0, "float", 18.0, "float", 18.0)
+    DllCall("gdiplus\GdipDeleteBrush", "ptr", outerBrush)
+
+    innerBrush := 0
+    DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(surfaceColor), "ptr*", &innerBrush)
+    DllCall("gdiplus\GdipFillEllipse", "ptr", graphics, "ptr", innerBrush, "float", 3.0, "float", 3.0, "float", 14.0, "float", 14.0)
+    DllCall("gdiplus\GdipDeleteBrush", "ptr", innerBrush)
+
+    if isSelected {
+        dotBrush := 0
+        DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(primaryColor), "ptr*", &dotBrush)
+        DllCall("gdiplus\GdipFillEllipse", "ptr", graphics, "ptr", dotBrush, "float", 6.0, "float", 6.0, "float", 8.0, "float", 8.0)
+        DllCall("gdiplus\GdipDeleteBrush", "ptr", dotBrush)
+    }
+
+    return UiFinishBitmap(pBitmap, graphics)
 }
 
 AddToggle(pageKey, x, y, caption, initialValue, callback) {
@@ -1352,7 +1558,8 @@ BuildAboutText() {
     global AppVersion
 
     text := "DocBot versie " AppVersion "`r`n`r`n"
-    text .= "DocBot is een tool die telefoonnummers kan kiezen via de interne IP-telefonie en teksten kan vervangen via hotstrings, geschreven om het werken met digitale hulpmiddelen in de werkplek van het Meander wat makkelijker te maken.`r`n`r`n"
+    text .= "DocBot is productiviteitssoftware voor medewerkers in een beheerde bedrijfsomgeving. De software vervangt ingestelde afkortingen (hotstrings), herkent en normaliseert telefoonnummers op het Windows-klembord en kan deze doorgeven aan een geconfigureerde interne telefoniedienst of invullen in een geconfigureerde SMS-webapplicatie. DocBot verzendt zelf geen SMS-berichten.`r`n`r`n"
+    text .= "DocBot is ontstaan vanuit behoeften in een ziekenhuisomgeving en wordt daar ook toegepast. De software verricht geen medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft geen diagnose-, behandel-, doserings- of monitoringsadvies.`r`n`r`n"
     text .= "Het is een projectje dat in vrije tijd wordt onderhouden en waar het Meander geen support op levert. Suggesties zijn welkom.`r`n`r`n"
     text .= "DocBot is het resultaat van een langlopende en zeer inspirerende samenwerking vanuit de drive om te innoveren tussen Steven Giesbers, Seyit Seme en onderstaande.`r`n`r`n"
     text .= "Nico Feenstra`r`n`r`n"
@@ -1518,7 +1725,7 @@ RefreshRegistrationTexts() {
 RefreshSidebarStatuses() {
     global State, SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText, C
 
-    if !State["AutoCall"] {
+    if State["CallAction"] = 0 {
         SidebarPhoneDot.SetFont("s8 c" C["Danger"], "Segoe UI")
         SidebarPhoneText.Value := "Inactief"
     } else if Trim(State["IPT"]["UserTel"]) = "" {
@@ -1563,6 +1770,15 @@ RefreshUsageStatistics() {
         OverviewPhoneActionsText.Value := Telemetry_GetPhoneActions()
     if IsObject(OverviewLongHotstringActionsText)
         OverviewLongHotstringActionsText.Value := Telemetry_GetLongHotstringActions()
+}
+
+CallActionChanged(value, *) {
+    global State
+
+    State["CallAction"] := NormalizeCallAction(value)
+    SaveAppSettings()
+    RefreshSidebarStatuses()
+    BuildTrayMenu()
 }
 
 SettingChanged(key, control, *) {
@@ -2273,55 +2489,254 @@ GetUniversalNetworkPath(path) {
 }
 
 ; =============================================================================
-; DIAGNOSTIEK & LOGGING
+; DIAGNOSTIEK, LOGGING & PROBLEEMRAPPORTAGE
 ; =============================================================================
 
-; Stille achtergrondlogging: verzamelt regels in het geheugen en schrijft ze
-; periodiek in één keer weg, i.p.v. een losse FileAppend per regel.
-DebugLog(richting, label, tekst) {
+; De standaardlog is bewust beperkt en centraal geschoond. Na expliciete
+; toestemming kopieert DebugLog() dezelfde gebeurtenis met de oorspronkelijke
+; waarden naar het tijdelijke uitgebreide log. Aanvullende SMS/UIA- en
+; hotstringdetails worden uitsluitend rechtstreeks via ExtendedDebugLog()
+; geschreven zolang die toegestane sessie actief is.
+DebugLog(richting, label, tekst := "") {
     global DebugLogBuffer, DebugFlushPending, DebugLogEdit, DebugAutoScroll
+    global ProblemReportSession
 
-    tijd := FormatTime(A_Now, "HH:mm:ss") . "." . A_MSec
-    regel := tijd . " " . richting . " " . label . "`r`n" . tekst . "`r`n───`r`n"
-
+    veiligeLabel := SanitizeLogText(label)
+    veiligeTekst := SanitizeStandardLogText(veiligeLabel, tekst)
+    regel := BuildDebugLogLine(richting, veiligeLabel, veiligeTekst)
     DebugLogBuffer .= regel
 
     if !DebugFlushPending {
         DebugFlushPending := true
-        SetTimer FlushDebugLog, -2000   ; verzamel 2 seconden, dan in één keer wegschrijven
+        SetTimer FlushDebugLog, -2000
     }
 
-    if IsObject(DebugLogEdit) {
-        DebugLogEdit.Value .= regel
-        ; venster begrenzen: bij te veel regels de oudste helft afknippen
-        if StrLen(DebugLogEdit.Value) > 500000 {
-            volledigeTekst := DebugLogEdit.Value
-            DebugLogEdit.Value := SubStr(volledigeTekst, StrLen(volledigeTekst) // 2)
+    AppendDebugWindowLine(regel)
+
+    if ProblemReportSession["ExtendedActive"] {
+        ; De telemetrie-webhook blijft ook tijdens een toegestane sessie een
+        ; lokaal geheim. Voor alle overige bestaande diagnosegebeurtenissen
+        ; bewaart het uitgebreide log juist de oorspronkelijke waarden.
+        extendedText := StrLower(label "") = "telemetrie"
+            ? SanitizeLogText(tekst)
+            : tekst
+        ExtendedDebugLog(richting, label, extendedText)
+    }
+}
+
+ExtendedDebugLog(richting, label, tekst := "") {
+    global ProblemReportSession, ExtendedDebugLogBuffer
+    global ExtendedDebugFlushPending
+
+    if !ProblemReportSession["ExtendedActive"]
+        return
+
+    regel := BuildDebugLogLine(
+        richting,
+        label "",
+        tekst ""
+    )
+    ExtendedDebugLogBuffer .= regel
+
+    if !ExtendedDebugFlushPending {
+        ExtendedDebugFlushPending := true
+        SetTimer FlushExtendedDebugLog, -500
+    }
+
+    AppendDebugWindowLine("[UITGEBREID] " regel)
+}
+
+BuildDebugLogLine(richting, label, tekst := "") {
+    tijd := FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") "." A_MSec
+    regel := tijd " " richting " " label
+    if Trim(tekst) != ""
+        regel .= "`r`n" tekst
+    return regel "`r`n───`r`n"
+}
+
+SanitizeStandardLogText(label, tekst) {
+    veilig := SanitizeLogText(tekst)
+    labelLower := StrLower(label)
+
+    if veilig != ""
+        && (
+            InStr(labelLower, " status ")
+            || InStr(labelLower, "response")
+            || InStr(labelLower, "parse-fout")
+        )
+        return "<responsinhoud niet opgenomen in standaardlog>"
+
+    return veilig
+}
+
+SanitizeLogText(value) {
+    veilig := value ""
+
+    veilig := RegExReplace(
+        veilig,
+        "\\\\[^\s\r\n]+",
+        "<netwerkpad afgeschermd>"
+    )
+    veilig := RegExReplace(
+        veilig,
+        "i)\b[A-Z]:\\[^\r\n]+",
+        "<lokaal pad afgeschermd>"
+    )
+
+    userProfile := EnvGet("USERPROFILE")
+    if userProfile != ""
+        veilig := StrReplace(veilig, userProfile, "%USERPROFILE%")
+    if A_UserName != ""
+        veilig := StrReplace(veilig, A_UserName, "<gebruiker>")
+    if A_ComputerName != ""
+        veilig := StrReplace(veilig, A_ComputerName, "<computer>")
+
+    veilig := RegExReplace(veilig, "i)https?://\S+", "<url afgeschermd>")
+    veilig := RegExReplace(
+        veilig,
+        "\b(?:(?:\+31|0031|0)6\d{8}|0\d{9})\b",
+        "<telefoonnummer afgeschermd>"
+    )
+    veilig := RegExReplace(veilig, "\b\d{4}\b", "<intern nummer afgeschermd>")
+
+    trimmed := Trim(veilig)
+    if (
+        (SubStr(trimmed, 1, 1) = "<" && InStr(trimmed, ">"))
+        || (SubStr(trimmed, 1, 1) = "{" && SubStr(trimmed, -1) = "}")
+    )
+        veilig := "<gestructureerde inhoud niet opgenomen>"
+
+    if StrLen(veilig) > 2000
+        veilig := SubStr(veilig, 1, 2000) "… <afgekapt>"
+
+    return veilig
+}
+
+AppendDebugWindowLine(regel) {
+    global DebugLogEdit, DebugAutoScroll
+
+    if !IsObject(DebugLogEdit)
+        return
+
+    DebugLogEdit.Value .= regel
+    if StrLen(DebugLogEdit.Value) > 500000 {
+        volledigeTekst := DebugLogEdit.Value
+        DebugLogEdit.Value := SubStr(
+            volledigeTekst,
+            StrLen(volledigeTekst) // 2
+        )
+    }
+    if DebugAutoScroll
+        SendMessage(0x115, 7, 0, DebugLogEdit)
+}
+
+GetStandardDebugLogPath() {
+    return EnvGet("LocalAppData") "\DocBot\debug.log"
+}
+
+InitializeDiagnosticLogging() {
+    static formatMarker := "DocBot standaardlog v2"
+    logPath := GetStandardDebugLogPath()
+    SplitPath(logPath, , &logDir)
+
+    try {
+        if !DirExist(logDir)
+            DirCreate(logDir)
+
+        isCurrentFormat := false
+        if FileExist(logPath) {
+            try {
+                logFile := FileOpen(logPath, "r", "UTF-8")
+                header := logFile.Read(256)
+                logFile.Close()
+                isCurrentFormat := InStr(header, formatMarker) > 0
+            } catch {
+                isCurrentFormat := false
+            }
         }
-        if DebugAutoScroll
-            SendMessage(0x115, 7, 0, DebugLogEdit)  ; WM_VSCROLL, SB_BOTTOM — automeescrollen
+
+        ; Oudere DocBot-versies konden volledige URL's en ruwe responsen
+        ; vastleggen. Neem zo'n historisch bestand nooit stilzwijgend op in
+        ; een nieuw probleemrapport.
+        if !isCurrentFormat {
+            if FileExist(logPath)
+                FileDelete(logPath)
+            if FileExist(logPath ".oud")
+                FileDelete(logPath ".oud")
+        }
+
+        if !FileExist(logPath) {
+            FileAppend(
+                formatMarker "`r`n"
+                "Alle regels vanaf dit punt zijn centraal geschoond.`r`n"
+                "───`r`n",
+                logPath,
+                "UTF-8"
+            )
+        }
+    } catch {
+        ; Diagnostiek mag de normale start van DocBot nooit blokkeren.
     }
 }
 
 FlushDebugLog() {
     global DebugLogBuffer, DebugFlushPending
 
-    ; %LocalAppData% i.p.v. A_MyDocuments: dat laatste is bij deze gebruiker
-    ; OneDrive-gesynchroniseerd en een puur lokaal, wegwerpbaar logbestand
-    ; hoort daar niet elke schrijfactie de sync te triggeren.
-    ; (A_LocalAppData bestaat niet als ingebouwde AHK-variabele; vandaar EnvGet.)
-    logDir := EnvGet("LocalAppData") . "\DocBot"
-    logPath := logDir . "\debug.log"
+    if DebugLogBuffer = "" {
+        DebugFlushPending := false
+        return
+    }
 
-    if !DirExist(logDir)
-        DirCreate(logDir)
+    logPath := GetStandardDebugLogPath()
+    SplitPath(logPath, , &logDir)
 
-    if FileExist(logPath) && FileGetSize(logPath) > 2000000  ; 2MB
-        FileMove(logPath, logPath . ".oud", true)  ; simpele rotatie, 1 backup
+    try {
+        if !DirExist(logDir)
+            DirCreate(logDir)
 
-    FileAppend(DebugLogBuffer, logPath, "UTF-8")
-    DebugLogBuffer := ""
-    DebugFlushPending := false
+        if FileExist(logPath) && FileGetSize(logPath) > 2000000 {
+            FileMove(logPath, logPath ".oud", true)
+            FileAppend(
+                "DocBot standaardlog v2`r`n"
+                "Alle regels vanaf dit punt zijn centraal geschoond.`r`n"
+                "───`r`n",
+                logPath,
+                "UTF-8"
+            )
+        }
+
+        FileAppend(DebugLogBuffer, logPath, "UTF-8")
+        DebugLogBuffer := ""
+    } catch {
+        ; Logging mag de hoofdfunctionaliteit nooit blokkeren.
+    } finally {
+        DebugFlushPending := false
+    }
+}
+
+FlushExtendedDebugLog() {
+    global ExtendedDebugLogBuffer, ExtendedDebugFlushPending
+    global ProblemReportSession
+
+    if ExtendedDebugLogBuffer = "" {
+        ExtendedDebugFlushPending := false
+        return
+    }
+
+    logPath := ProblemReportSession["ExtendedLogPath"]
+    if logPath = "" {
+        ExtendedDebugLogBuffer := ""
+        ExtendedDebugFlushPending := false
+        return
+    }
+
+    try FileAppend(ExtendedDebugLogBuffer, logPath, "UTF-8")
+    catch {
+        ; Ook uitgebreide logging mag DocBot niet laten vastlopen.
+    } finally {
+        ExtendedDebugLogBuffer := ""
+        ExtendedDebugFlushPending := false
+    }
 }
 
 ; Live debugvenster — alleen bereikbaar via het systeemvakmenu als IsDevMode.
@@ -2334,76 +2749,785 @@ ShowDebugWindow(*) {
     }
 
     DebugWindow := Gui("+Resize", "DocBot - Telefonie debug")
-    DebugLogEdit := DebugWindow.AddEdit("w700 h400 ReadOnly VScroll +Wrap", "")
+    DebugLogEdit := DebugWindow.AddEdit(
+        "w700 h400 ReadOnly VScroll +Wrap",
+        ""
+    )
     DebugLogEdit.SetFont("s9", "Consolas")
 
     clearBtn := DebugWindow.AddButton("w100", "Wissen")
     clearBtn.OnEvent("Click", (*) => DebugLogEdit.Value := "")
 
-    autoScrollCheck := DebugWindow.AddCheckbox("x+10 y+0 Checked", "Automatisch meescrollen")
-    autoScrollCheck.OnEvent("Click", (*) => DebugAutoScroll := autoScrollCheck.Value)
+    autoScrollCheck := DebugWindow.AddCheckbox(
+        "x+10 y+0 Checked",
+        "Automatisch meescrollen"
+    )
+    autoScrollCheck.OnEvent(
+        "Click",
+        (*) => DebugAutoScroll := autoScrollCheck.Value
+    )
 
-    DebugWindow.OnEvent("Close", (*) => (DebugWindow := 0, DebugLogEdit := 0))
+    DebugWindow.OnEvent(
+        "Close",
+        (*) => (DebugWindow := 0, DebugLogEdit := 0)
+    )
     DebugWindow.Show()
 }
 
-; Bouwt een diagnosepakket met uitsluitend het logbestand en zet een
-; conceptmail klaar — de gebruiker hoeft zelf niets in te kunnen zien.
-SendDiagnostics(*) {
-    zipPath := A_Temp . "\DocBot_diagnose_" . FormatTime(A_Now, "yyyyMMdd_HHmmss") . ".zip"
-    logPath := EnvGet("LocalAppData") . "\DocBot\debug.log"
+ShowProblemReportWindow(*) {
+    global ProblemReportGui
 
-    if !FileExist(logPath) {
-        MsgBox("Er is nog geen logbestand. Vraag de gebruiker het probleem eerst nogmaals te laten optreden.", "DocBot")
-        return
+    if IsObject(ProblemReportGui) {
+        try {
+            if DllCall("IsWindow", "ptr", ProblemReportGui.Hwnd, "int") {
+                ProblemReportGui.Show()
+                WinActivate("ahk_id " ProblemReportGui.Hwnd)
+                return
+            }
+        } catch {
+        }
     }
 
-    ; Alleen het logbestand meenemen — NOOIT settings.ini of credential-gerelateerde
-    ; bestanden, want daar kunnen wachtwoorden in staan
-    Compress(logPath, zipPath)
+    BuildProblemReportWindow()
+}
 
-    try {
-        outlook := ComObject("Outlook.Application")
-        fullName := outlook.Session.CurrentUser.Name
-        mail := outlook.CreateItem(0)
-        mail.To := "n.feenstra@meandermc.nl"
-        mail.Subject := "DocBot probleem - " . A_UserName . " - versie: " . AppVersion
-        mail.Body := "Hoi Nico, `r`n`r`nIk heb het volgende probleem met " . A_ScriptName . ":`r`n`r`nAutomatisch gegenereerd diagnosepakket is bijgevoegd.`r`n`r`nMet vriendelijke groeten,`r`n`r`n" . fullName
-        mail.Attachments.Add(zipPath)
-        mail.Display()  ; toont als concept, gebruiker moet zelf op Verzenden klikken
-    } catch {
-        Run("explorer.exe /select," . zipPath)  ; fallback: gebruiker mailt/teamst het zelf
+BuildProblemReportWindow() {
+    global MainGui, C, ProblemReportGui, ProblemReportDescriptionEdit
+    global ProblemReportConsentCheck, ProblemReportSession
+
+    CaptureProblemReportDescription()
+
+    if IsObject(ProblemReportGui)
+        try ProblemReportGui.Destroy()
+
+    ProblemReportDescriptionEdit := 0
+    ProblemReportConsentCheck := 0
+
+    ProblemReportGui := Gui(
+        "+Owner" MainGui.Hwnd " -MaximizeBox -MinimizeBox",
+        "DocBot - Probleem melden"
+    )
+    ProblemReportGui.BackColor := C["Window"]
+    ProblemReportGui.SetFont("s10 c" C["Text"], "Segoe UI")
+    ProblemReportGui.MarginX := 0
+    ProblemReportGui.MarginY := 0
+
+    if ProblemReportSession["Phase"] = "start"
+        BuildProblemReportStartState(ProblemReportGui)
+    else
+        BuildProblemReportProgressState(ProblemReportGui)
+
+    ProblemReportGui.OnEvent("Close", HideProblemReportWindow)
+    ProblemReportGui.OnEvent("Escape", HideProblemReportWindow)
+    ProblemReportGui.Show("w680 h620 Center")
+}
+
+BuildProblemReportStartState(gui) {
+    global C, ProblemReportDescriptionEdit, ProblemReportConsentCheck
+    global ProblemReportSession
+
+    title := gui.AddText(
+        "x28 y22 w624 h38 Background" C["Window"],
+        "Probleem melden"
+    )
+    title.SetFont("s22 bold c" C["Text"], "Segoe UI")
+
+    intro := gui.AddText(
+        "x28 y66 w624 h42 Background" C["Window"],
+        "Loop je ergens tegenaan? Met dit scherm kun je een probleemrapport "
+        "maken en opsturen."
+    )
+    intro.SetFont("s10 c" C["Text"], "Segoe UI")
+
+    gui.AddText(
+        "x28 y116 w624 h20 Background" C["Window"],
+        "Korte beschrijving (optioneel)"
+    )
+    ProblemReportDescriptionEdit := gui.AddEdit(
+        "x28 y140 w624 h92 Multi VScroll",
+        ProblemReportSession["Description"]
+    )
+    SetCueText(
+        ProblemReportDescriptionEdit,
+        "Wat gaat er mis? Wanneer gebeurt het?"
+    )
+
+    directCard := gui.AddText(
+        "x28 y250 w624 h82 BackgroundFFFFFF",
+        ""
+    )
+    directTitle := gui.AddText(
+        "x50 y262 w330 h22 BackgroundFFFFFF",
+        "Probleem direct melden"
+    )
+    directTitle.SetFont("s11 bold c" C["Text"], "Segoe UI")
+    directText := gui.AddText(
+        "x50 y288 w360 h28 BackgroundFFFFFF",
+        "Gebruik alleen de beperkte standaardlog die al beschikbaar is."
+    )
+    directText.SetFont("s9 c" C["Muted"], "Segoe UI")
+    directButton := gui.AddButton(
+        "x462 y272 w166 h38",
+        "Direct melden"
+    )
+    directButton.OnEvent(
+        "Click",
+        FinalizeProblemReport.Bind(false)
+    )
+
+    extendedCard := gui.AddText(
+        "x28 y348 w624 h210 Background" C["PrimarySoft"],
+        ""
+    )
+    extendedTitle := gui.AddText(
+        "x50 y360 w360 h22 Background" C["PrimarySoft"],
+        "Probleem opnieuw reproduceren"
+    )
+    extendedTitle.SetFont("s11 bold c" C["Text"], "Segoe UI")
+    extendedText := gui.AddText(
+        "x50 y386 w570 h34 Background" C["PrimarySoft"],
+        "Schakel tijdelijk uitgebreide logging in, voer het probleem opnieuw "
+        "uit en rond daarna het rapport af."
+    )
+    extendedText.SetFont("s9 c" C["Text"], "Segoe UI")
+
+    privacyTitle := gui.AddText(
+        "x50 y426 w218 h22 Background" C["PrimarySoft"],
+        "Privacy en Expliciete toestemming:"
+    )
+    privacyTitle.SetFont("s9 bold c" C["Danger"], "Segoe UI")
+    privacyText := gui.AddText(
+        "x268 y426 w352 h22 Background" C["PrimarySoft"],
+        "Met toestemming logt DocBot tijdelijk ook"
+    )
+    privacyText.SetFont("s9 c" C["Text"], "Segoe UI")
+    privacyTextContinuation := gui.AddText(
+        "x50 y450 w570 h22 Background" C["PrimarySoft"],
+        "volledige serverresponsen, telefoonnummers en gebruikte hotstringteksten."
+    )
+    privacyTextContinuation.SetFont("s9 c" C["Text"], "Segoe UI")
+
+    ProblemReportConsentCheck := gui.AddCheckbox(
+        "x50 y510 w400 h24 Background" C["PrimarySoft"],
+        "Ik geef toestemming om gevoelige inhoud tijdelijk te loggen."
+    )
+    ProblemReportConsentCheck.OnEvent(
+        "Click",
+        UpdateProblemReportStartButton.Bind(gui)
+    )
+
+    startButton := gui.AddButton(
+        "x462 y506 w166 h34 Disabled vProblemReportStartButton",
+        "Logging starten"
+    )
+    startButton.OnEvent("Click", StartExtendedProblemLogging)
+
+    cancelButton := gui.AddButton(
+        "x508 y574 w120 h34",
+        "Annuleren"
+    )
+    cancelButton.OnEvent("Click", HideProblemReportWindow)
+
+    for card in [directCard, extendedCard]
+        RoundControl(card, 12)
+}
+
+UpdateProblemReportStartButton(gui, *) {
+    global ProblemReportConsentCheck
+
+    try startButton := gui["ProblemReportStartButton"]
+    catch
+        return
+
+    startButton.Enabled := IsObject(ProblemReportConsentCheck)
+        && ProblemReportConsentCheck.Value = 1
+}
+
+BuildProblemReportProgressState(gui) {
+    global C, ProblemReportDescriptionEdit, ProblemReportSession
+
+    isActive := ProblemReportSession["ExtendedActive"]
+    title := gui.AddText(
+        "x28 y22 w624 h38 Background" C["Window"],
+        "Probleem melden"
+    )
+    title.SetFont("s22 bold c" C["Text"], "Segoe UI")
+
+    bannerColor := isActive ? "EAF7EC" : "FFF4E5"
+    bannerTextColor := isActive ? C["Success"] : "9A6700"
+    banner := gui.AddText(
+        "x28 y76 w624 h94 Background" bannerColor,
+        ""
+    )
+    statusTitle := gui.AddText(
+        "x52 y92 w570 h24 Background" bannerColor,
+        isActive
+            ? "●  Uitgebreide logging is actief"
+            : "●  Uitgebreide logging is gestopt"
+    )
+    statusTitle.SetFont(
+        "s12 bold c" bannerTextColor,
+        "Segoe UI"
+    )
+    statusText := gui.AddText(
+        "x52 y122 w570 h36 Background" bannerColor,
+        isActive
+            ? "Voer nu het probleem opnieuw uit. Kom daarna terug naar dit "
+                "scherm om het probleemrapport af te ronden."
+            : "De verzamelde logging is bewaard. Je kunt het probleemrapport "
+                "nu afronden."
+    )
+    statusText.SetFont("s9 c" C["Text"], "Segoe UI")
+
+    helper := gui.AddText(
+        "x28 y184 w624 h42 Background" C["Window"],
+        isActive
+            ? "Je mag dit venster tussendoor sluiten. Open daarna opnieuw "
+                "“Probleem melden...” om verder te gaan."
+            : "Controleer je beschrijving en klik op Probleemrapport afronden."
+    )
+    helper.SetFont("s9 c" C["Muted"], "Segoe UI")
+
+    startedAt := ProblemReportSession["StartedAt"] != ""
+        ? FormatTime(ProblemReportSession["StartedAt"], "HH:mm")
+        : "-"
+    sessionInfo := gui.AddText(
+        "x28 y232 w624 h48 Center 0x200 BackgroundFFFFFF",
+        "Logging gestart: " startedAt
+        "    ·    Status: "
+        . (isActive ? "Wacht op reproductie" : "Gereed om af te ronden")
+    )
+    sessionInfo.SetFont("s10 c" C["Text"], "Segoe UI")
+
+    gui.AddText(
+        "x28 y298 w624 h20 Background" C["Window"],
+        "Korte beschrijving (optioneel)"
+    )
+    ProblemReportDescriptionEdit := gui.AddEdit(
+        "x28 y322 w624 h92 Multi VScroll",
+        ProblemReportSession["Description"]
+    )
+
+    stepsCard := gui.AddText(
+        "x28 y432 w624 h84 BackgroundFFFFFF",
+        ""
+    )
+    stepsTitle := gui.AddText(
+        "x48 y444 w150 h22 BackgroundFFFFFF",
+        "Wat nu?"
+    )
+    stepsTitle.SetFont("s11 bold c" C["Text"], "Segoe UI")
+    stepsText := gui.AddText(
+        "x48 y470 w570 h36 BackgroundFFFFFF",
+        isActive
+            ? "1. Laat het probleem opnieuw optreden.   2. Kom terug naar dit "
+                "scherm.   3. Rond het probleemrapport af."
+            : "De logging is gestopt. Rond het rapport af of begin opnieuw."
+    )
+    stepsText.SetFont("s9 c" C["Text"], "Segoe UI")
+
+    leftButton := gui.AddButton(
+        "x28 y548 w150 h38",
+        isActive ? "Logging stoppen" : "Opnieuw beginnen"
+    )
+    if isActive
+        leftButton.OnEvent("Click", StopExtendedProblemLoggingFromUi)
+    else
+        leftButton.OnEvent("Click", ResetProblemReportForNewSession)
+
+    closeButton := gui.AddButton(
+        "x190 y548 w130 h38",
+        "Venster sluiten"
+    )
+    closeButton.OnEvent("Click", HideProblemReportWindow)
+
+    finishButton := gui.AddButton(
+        "x414 y548 w238 h38 Default",
+        "Probleemrapport afronden"
+    )
+    finishButton.OnEvent(
+        "Click",
+        FinalizeProblemReport.Bind(true)
+    )
+
+    for card in [banner, sessionInfo, stepsCard]
+        RoundControl(card, 12)
+}
+
+CaptureProblemReportDescription() {
+    global ProblemReportDescriptionEdit, ProblemReportSession
+
+    if IsObject(ProblemReportDescriptionEdit) {
+        try {
+            ProblemReportSession["Description"] :=
+                ProblemReportDescriptionEdit.Value
+        } catch {
+        }
     }
 }
 
-; Zet sourcePath in een nieuw zip-archief via de Shell-namespace, zonder
-; externe afhankelijkheden (Msxml2/COM en Explorer zijn altijd aanwezig).
-Compress(sourcePath, zipPath) {
-    if FileExist(zipPath)
-        FileDelete(zipPath)
+HideProblemReportWindow(guiObj := 0, *) {
+    global ProblemReportGui
 
-    ; Minimale lege ZIP-structuur (End Of Central Directory record), zodat
-    ; de Shell-namespace het bestand als zip-archief herkent.
-    header := Buffer(22, 0)
-    NumPut("UChar", 0x50, header, 0)
-    NumPut("UChar", 0x4B, header, 1)
-    NumPut("UChar", 0x05, header, 2)
-    NumPut("UChar", 0x06, header, 3)
+    CaptureProblemReportDescription()
+    if IsObject(ProblemReportGui)
+        try ProblemReportGui.Hide()
+    return true
+}
 
-    file := FileOpen(zipPath, "w")
-    file.RawWrite(header)
-    file.Close()
+StartExtendedProblemLogging(*) {
+    global AppVersion, ProblemReportConsentCheck, ProblemReportSession
 
-    shell := ComObject("Shell.Application")
-    zipFolder := shell.NameSpace(zipPath)
-    zipFolder.CopyHere(sourcePath)
-
-    ; Wachten tot de Shell het bestand daadwerkelijk heeft toegevoegd.
-    Loop 50 {
-        if zipFolder.Items().Count > 0
-            break
-        Sleep(200)
+    if !IsObject(ProblemReportConsentCheck)
+        || ProblemReportConsentCheck.Value != 1 {
+        MsgBox(
+            "Geef eerst toestemming om uitgebreide logging in te schakelen.",
+            "DocBot - Probleem melden",
+            "Iconi"
+        )
+        return
     }
+
+    CaptureProblemReportDescription()
+
+    logDir := EnvGet("LocalAppData") "\DocBot"
+    try {
+        if !DirExist(logDir)
+            DirCreate(logDir)
+
+        logPath := (
+            logDir "\problem-report-"
+            . FormatTime(A_Now, "yyyyMMdd-HHmmss")
+            . ".log"
+        )
+        if FileExist(logPath)
+            FileDelete(logPath)
+
+        ProblemReportSession["ExtendedLogPath"] := logPath
+        ProblemReportSession["StartedAt"] := A_Now
+        ProblemReportSession["ExtendedActive"] := true
+        ProblemReportSession["Phase"] := "active"
+
+        FileAppend(
+            "DocBot uitgebreid diagnose-log`r`n"
+            "Versie: " AppVersion "`r`n"
+            "Gestart: " FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") "`r`n"
+            "Toestemming: expliciet gegeven voor ongeschoonde uitgebreide logging`r`n"
+            "───`r`n",
+            logPath,
+            "UTF-8"
+        )
+        ExtendedDebugLog(
+            "i",
+            "Probleemrapport",
+            "Uitgebreide logging gestart na expliciete toestemming."
+        )
+        ReloadRuntimeHotstrings(false)
+    } catch as logError {
+        if IsSet(logPath) && FileExist(logPath)
+            try FileDelete(logPath)
+
+        ProblemReportSession["ExtendedActive"] := false
+        ProblemReportSession["Phase"] := "start"
+        ProblemReportSession["ExtendedLogPath"] := ""
+        MsgBox(
+            "Uitgebreide logging kon niet worden gestart.`n`n"
+            logError.Message,
+            "DocBot - Probleem melden",
+            "Icon!"
+        )
+        return
+    }
+
+    BuildTrayMenu()
+    BuildProblemReportWindow()
+}
+
+StopExtendedProblemLogging(
+    showMessage := true,
+    rebuildWindow := true
+) {
+    global ProblemReportSession
+
+    if !ProblemReportSession["ExtendedActive"] {
+        ; Herstel ook een eventueel verouderd venster. Dit kan gebeuren als
+        ; de mail- of Outlook-fallback afbreekt nadat de sessie al is gestopt.
+        if rebuildWindow
+            BuildProblemReportWindow()
+        return
+    }
+
+    ExtendedDebugLog(
+        "i",
+        "Probleemrapport",
+        "Uitgebreide logging gestopt."
+    )
+    FlushExtendedDebugLog()
+    ProblemReportSession["ExtendedActive"] := false
+    ProblemReportSession["Phase"] := "captured"
+    ReloadRuntimeHotstrings(false)
+    BuildTrayMenu()
+
+    if showMessage
+        ShowNotification(
+            "Uitgebreide logging is gestopt. Het rapport kan nu worden afgerond.",
+            4500,
+            "info"
+        )
+
+    if rebuildWindow
+        BuildProblemReportWindow()
+}
+
+StopExtendedProblemLoggingFromUi(*) {
+    StopExtendedProblemLogging(true, true)
+}
+
+ResetProblemReportForNewSession(*) {
+    global ProblemReportSession
+
+    CaptureProblemReportDescription()
+    DeleteProblemReportExtendedLog()
+    ProblemReportSession["Phase"] := "start"
+    ProblemReportSession["ExtendedActive"] := false
+    ProblemReportSession["StartedAt"] := ""
+    ProblemReportSession["ExtendedLogPath"] := ""
+    BuildTrayMenu()
+    BuildProblemReportWindow()
+}
+
+ShutdownProblemReportLogging() {
+    global ProblemReportSession
+
+    if ProblemReportSession["ExtendedActive"] {
+        ExtendedDebugLog(
+            "i",
+            "Probleemrapport",
+            "Uitgebreide logging gestopt bij afsluiten van DocBot."
+        )
+        FlushExtendedDebugLog()
+    }
+
+    ProblemReportSession["ExtendedActive"] := false
+    DeleteProblemReportExtendedLog()
+}
+
+FinalizeProblemReport(includeExtended, *) {
+    global ProblemReportSession
+
+    if ProblemReportSession["Finalizing"]
+        return
+    ProblemReportSession["Finalizing"] := true
+
+    try {
+        CaptureProblemReportDescription()
+
+        ; Werk het venster meteen bij. Outlook en de handmatige mailfallback zijn
+        ; externe vervolgstappen en mogen nooit een oude status "logging actief"
+        ; in DocBot achterlaten wanneer een van die stappen niet beschikbaar is.
+        if includeExtended && ProblemReportSession["ExtendedActive"]
+            StopExtendedProblemLogging(false, true)
+
+        FlushDebugLog()
+        FlushExtendedDebugLog()
+
+        package := BuildProblemReportPackage(includeExtended)
+        if package = ""
+            return
+
+        if OpenProblemReportEmail(
+            package,
+            ProblemReportSession["Description"],
+            includeExtended
+        )
+            ResetProblemReportAfterCompletion()
+    } finally {
+        ProblemReportSession["Finalizing"] := false
+    }
+}
+
+; Bouwt de losse rapportbestanden op (geen ZIP): dat maakt de bijlage
+; onafhankelijk van de Explorer-shellextensie "Compressed (zipped) Folders",
+; die op sommige beheerde werkplekken door group policy/EDR wordt beperkt en
+; daardoor eerder onbetrouwbaar bleek. Retourneert een Map met "Dir" (de
+; tijdelijke map) en "Files" (de aangemaakte bestandspaden), of "" bij een
+; fout.
+BuildProblemReportPackage(includeExtended) {
+    global AppVersion, ProblemReportSession
+
+    stamp := FormatTime(A_Now, "yyyyMMdd_HHmmss")
+        . "_" Format("{:03}", A_MSec)
+    reportDir := A_Temp "\DocBot_diagnose_" stamp
+    files := []
+
+    try {
+        if DirExist(reportDir)
+            DirDelete(reportDir, true)
+        DirCreate(reportDir)
+
+        description := (
+            Trim(ProblemReportSession["Description"]) != ""
+                ? ProblemReportSession["Description"]
+                : "<geen beschrijving>"
+        )
+
+        reportText := Format(
+            "DocBot-probleemrapport`r`n"
+            . "Versie: {1}`r`n"
+            . "Aangemaakt: {2}`r`n"
+            . "Uitgebreide logging gebruikt: {3}`r`n`r`n"
+            . "Beschrijving van de gebruiker:`r`n"
+            . "{4}",
+            AppVersion,
+            FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss"),
+            includeExtended ? "ja" : "nee",
+            description
+        )
+
+        reportPath := reportDir "\probleemrapport.txt"
+        FileAppend(reportText, reportPath, "UTF-8")
+        files.Push(reportPath)
+
+        standardPath := GetStandardDebugLogPath()
+        if FileExist(standardPath) {
+            standardCopyPath := reportDir "\standaardlog.txt"
+            FileCopy(standardPath, standardCopyPath, true)
+            files.Push(standardCopyPath)
+        }
+
+        extendedPath := ProblemReportSession["ExtendedLogPath"]
+        if includeExtended
+            && extendedPath != ""
+            && FileExist(extendedPath) {
+            extendedCopyPath := reportDir "\uitgebreid-log.txt"
+            FileCopy(extendedPath, extendedCopyPath, true)
+            files.Push(extendedCopyPath)
+        }
+
+        ; De losse bestanden blijven in %TEMP% staan: Outlook heeft ze nodig
+        ; als bijlage, en bij de handmatige fallback moet de gebruiker ze zelf
+        ; nog kunnen toevoegen.
+        return Map("Dir", reportDir, "Files", files)
+    } catch as packageError {
+        MsgBox(
+            "Het probleemrapport kon niet worden gemaakt.`n`n"
+            packageError.Message,
+            "DocBot - Probleem melden",
+            "Icon!"
+        )
+        if DirExist(reportDir)
+            try Run('explorer.exe "' reportDir '"')
+        return ""
+    }
+}
+
+OpenProblemReportEmail(package, description, usedExtended) {
+    global AppVersion
+
+    reportDir := package["Dir"]
+    files := package["Files"]
+
+    subject := "DocBot probleem - versie " AppVersion
+    bodyDescription := (
+        Trim(description) != ""
+            ? description
+            : "<geen beschrijving>"
+    )
+    body := Format(
+        "Hoi Nico,`r`n`r`n"
+        . "Ik wil het volgende probleem met {1} melden:`r`n`r`n"
+        . "{2}`r`n`r`n"
+        . "Diagnosepakket bijgevoegd. Uitgebreide logging gebruikt: {3}.`r`n`r`n"
+        . "Met vriendelijke groet",
+        A_ScriptName,
+        bodyDescription,
+        usedExtended ? "ja" : "nee"
+    )
+
+    try {
+        outlook := GetOutlookApplication()
+        if !IsObject(outlook)
+            throw Error("Classic Outlook kon niet worden gestart.")
+
+        mail := 0
+        deadline := A_TickCount + 15000
+        while A_TickCount < deadline {
+            try {
+                mail := outlook.CreateItem(0)
+                if IsObject(mail)
+                    break
+            } catch {
+                Sleep(500)
+            }
+        }
+
+        if !IsObject(mail)
+            throw Error("Outlook was gestart, maar nog niet gereed voor een bericht.")
+
+        fullName := ""
+        try fullName := Trim(outlook.Session.CurrentUser.Name)
+        if fullName != ""
+            body .= ",`r`n" fullName
+        else
+            body .= "."
+
+        mail.To := "n.feenstra@meandermc.nl"
+        mail.Subject := subject
+        mail.Body := body
+        for attachmentPath in files
+            mail.Attachments.Add(attachmentPath)
+        mail.Display()
+        try {
+            inspector := mail.GetInspector
+            inspector.Activate()
+        } catch {
+        }
+
+        DebugLog(
+            "✓",
+            "Probleemrapport",
+            "Conceptmail met diagnosepakket geopend."
+        )
+        return true
+    } catch as outlookError {
+        DebugLog(
+            "!",
+            "Probleemrapport Outlook",
+            "Conceptmail kon niet worden geopend: " outlookError.Message
+        )
+        return OpenProblemReportFallback(
+            reportDir,
+            subject,
+            body,
+            outlookError.Message
+        )
+    }
+}
+
+GetOutlookApplication() {
+    try return ComObjActive("Outlook.Application")
+    catch {
+    }
+
+    try outlook := ComObject("Outlook.Application")
+    catch
+        return 0
+
+    deadline := A_TickCount + 15000
+    while A_TickCount < deadline {
+        try {
+            session := outlook.Session
+            if IsObject(session)
+                return outlook
+        } catch {
+            Sleep(500)
+        }
+    }
+
+    return outlook
+}
+
+OpenProblemReportFallback(
+    reportDir,
+    subject,
+    body,
+    outlookError
+) {
+    fallbackBody := (
+        SubStr(body, 1, 1500)
+        . "`r`n`r`nVoeg de bestanden uit deze map handmatig toe:`r`n"
+        . reportDir
+    )
+    mailto := (
+        "mailto:n.feenstra@meandermc.nl?subject="
+        . UriEncode(subject)
+        . "&body="
+        . UriEncode(fallbackBody)
+    )
+
+    mailOpened := false
+    try {
+        Run(mailto)
+        mailOpened := true
+    } catch {
+    }
+
+    try Run('explorer.exe "' reportDir '"')
+
+    MsgBox(
+        "Classic Outlook kon het conceptbericht niet automatisch openen."
+        . "`n`nDe rapportmap is in Verkenner geopend."
+        . (mailOpened
+            ? " Er is daarnaast een nieuw e-mailbericht zonder bijlage geopend."
+            : "")
+        . "`nVoeg de bestanden handmatig toe en verstuur het bericht."
+        . "`n`nTechnische melding: "
+        . SanitizeLogText(outlookError),
+        "DocBot - Probleem melden",
+        "Icon!"
+    )
+
+    return mailOpened || DirExist(reportDir)
+}
+
+UriEncode(text) {
+    static safeCharacters := (
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        . "abcdefghijklmnopqrstuvwxyz"
+        . "0123456789-_.~"
+    )
+
+    byteCount := StrPut(text, "UTF-8")
+    bytes := Buffer(byteCount, 0)
+    StrPut(text, bytes, "UTF-8")
+
+    result := ""
+    Loop byteCount - 1 {
+        value := NumGet(bytes, A_Index - 1, "UChar")
+        character := Chr(value)
+        result .= InStr(safeCharacters, character, true)
+            ? character
+            : "%" Format("{:02X}", value)
+    }
+    return result
+}
+
+DeleteProblemReportExtendedLog() {
+    global ProblemReportSession
+
+    extendedPath := ProblemReportSession["ExtendedLogPath"]
+    if extendedPath != "" && FileExist(extendedPath)
+        try FileDelete(extendedPath)
+}
+
+ResetProblemReportAfterCompletion() {
+    global ProblemReportGui, ProblemReportDescriptionEdit
+    global ProblemReportConsentCheck, ProblemReportSession
+
+    DeleteProblemReportExtendedLog()
+
+    ProblemReportSession := Map(
+        "Phase", "start",
+        "ExtendedActive", false,
+        "StartedAt", "",
+        "Description", "",
+        "ExtendedLogPath", "",
+        "Finalizing", false
+    )
+
+    if IsObject(ProblemReportGui)
+        try ProblemReportGui.Destroy()
+
+    ProblemReportGui := 0
+    ProblemReportDescriptionEdit := 0
+    ProblemReportConsentCheck := 0
+    BuildTrayMenu()
+
+    ShowNotification(
+        "Het probleemrapport is voorbereid.",
+        4000,
+        "info"
+    )
 }
 
 ClipBoardPoller() {
@@ -2418,16 +3542,39 @@ ClipBoardPoller() {
 
     externalTel := NormalizePhoneNumberExternal(A_ClipBoard)
     if externalTel != "" {
-        State["IPT"]["ClipBoardNumber"] := externalTel
+        SetClipBoardNumber(externalTel)
         HandleClipboardNumberDetected()
         return
     }
 
     internalTel := NormalizePhoneNumberInternal(A_ClipBoard)
     if internalTel != "" {
-        State["IPT"]["ClipBoardNumber"] := internalTel
+        SetClipBoardNumber(internalTel)
         HandleInternalClipboardNumberDetected()
     }
+}
+
+; Centrale set/clear van het klembordnummer in de IPT-status, met een
+; geschoonde logregel (nooit het nummer zelf) zodat in het debugvenster
+; zichtbaar is wanneer de status gevuld of geleegd wordt. Zie
+; docs/DATA_PROTECTION.md §3.1: het nummer mag na overdracht, afronding of
+; annulering van de actuele actie niet langer dan nodig in de centrale
+; status blijven staan.
+SetClipBoardNumber(number) {
+    global State
+
+    State["IPT"]["ClipBoardNumber"] := number
+    DebugLog("i", "Klembordnummer", "Nieuw nummer herkend en in status gezet.")
+}
+
+ClearClipBoardNumber(reden) {
+    global State
+
+    if State["IPT"]["ClipBoardNumber"] = ""
+        return
+
+    State["IPT"]["ClipBoardNumber"] := ""
+    DebugLog("i", "Klembordnummer", "Status geleegd (" . reden . ").")
 }
 
 ; Ruime validatie/normalisatie: accepteert zowel een kaal 4-cijferig intern
@@ -2479,32 +3626,54 @@ NormalizePhoneNumberInternal(input) {
 HandleClipboardNumberDetected() {
     global State
 
-    if !State["AutoCall"]
-        return
+    ; Elke klemborddetectie maakt eerst schoon wat een vorige detectie nog
+    ; openstaand liet — ongeacht welke actie hierna volgt (nieuwe dialoog,
+    ; direct bellen of niets doen). Zo kan een intern nummer dat direct wordt
+    ; gebeld nooit een nog niet afgehandeld venster van een eerder extern
+    ; nummer laten "achterblijven". Handmatige acties in de DocBot-interface
+    ; (snelkies, rechtermuisknop) gaan hier niet doorheen en laten een
+    ; openstaand venster bewust met rust.
+    CloseExistingPhoneActionDialog()
 
-    if State["DirectCall"] {
-        IPT_callNumber(State["IPT"]["ClipBoardNumber"])
-        return
+    action := State["CallAction"]
+    switch action {
+        case 0:
+            ClearClipBoardNumber("geen belactie geconfigureerd")
+        case 1:
+            ShowCallConfirmationDialog()
+        case 2:
+            IPT_callNumber(State["IPT"]["ClipBoardNumber"])
+            ClearClipBoardNumber("direct gebeld")
+        case 3:
+            ShowCallOrSmsChoiceDialog()
     }
-
-    ShowCallConfirmationDialog()
 }
 
-; Interne (4-cijferige) klembordnummers hebben een aanzienlijk hogere kans
-; op een fout-positief (patiëntnummer, kamer, jaartal, postcodefragment)
-; dan een volledig extern nummer. Bevestiging is hier daarom nooit
-; optioneel, ongeacht de DirectCall-instelling.
+; Een intern 4-cijferig nummer volgt dezelfde Belactie, behalve bij de
+; keuze bellen/sms: SMS is alleen beschikbaar voor externe nummers en
+; daarom wordt een intern nummer in stand 3 direct gebeld.
 HandleInternalClipboardNumberDetected() {
     global State
 
-    if !State["AutoCall"]
-        return
+    CloseExistingPhoneActionDialog()
 
-    ShowCallConfirmationDialog()
+    action := State["CallAction"]
+    switch action {
+        case 0:
+            ClearClipBoardNumber("geen belactie geconfigureerd")
+        case 1:
+            ShowCallConfirmationDialog()
+        case 2, 3:
+            IPT_callNumber(State["IPT"]["ClipBoardNumber"])
+            ClearClipBoardNumber("direct gebeld")
+    }
 }
 
+; CloseExistingPhoneActionDialog() is al aangeroepen door de aanroepende
+; Handle...ClipboardNumberDetected()-functie, de enige plek vanwaar deze
+; functie wordt aangeroepen.
 ShowCallConfirmationDialog() {
-    global MainGui, C, State
+    global MainGui, C, State, PhoneActionDialogState
 
     number := State["IPT"]["ClipBoardNumber"]
 
@@ -2520,21 +3689,612 @@ ShowCallConfirmationDialog() {
     numberValue := dlg.AddText("x28 y83 w304 h42 Center Background" C["Card"], number)
     numberValue.SetFont("s28 bold c" C["Text"], "Segoe UI")
 
-    cancelBtn := dlg.AddText("x28 y156 w140 h40 Center 0x100 0x200 Background" C["Button"], "Annuleren")
-    cancelBtn.SetFont("s10 c" C["Text"], "Segoe UI")
+    ; Echte Button-controls delen dezelfde custom-draw en toetsenbordbediening
+    ; met de keuze Annuleren / SMS / Bellen.
+    cancelBtn := dlg.AddButton("x28 y156 w140 h40 Center", "Annuleren")
+    callBtn := dlg.AddButton("x192 y156 w140 h40 Center Default", "Bellen")
+    cancelBtn._iconGlyph := Chr(0xE711)
+    callBtn._iconGlyph := Chr(0xE717)
 
-    callBtn := dlg.AddText("x192 y156 w140 h40 Center 0x100 0x200 Background" C["Primary"], Chr(0xE717) "  Bellen")
-    callBtn.SetFont("s10 bold cFFFFFF", "Segoe UI")
+    ; Registreer Bellen al vóór de eerste paint als blauwe selectie.
+    for buttonIndex, button in [cancelBtn, callBtn] {
+        selected := buttonIndex = 2
+        background := selected ? C["Primary"] : C["Button"]
+        textColor := selected ? "FFFFFF" : C["Text"]
 
-    cancelBtn.OnEvent("Click", (*) => dlg.Destroy())
-    callBtn.OnEvent("Click", (*) => (IPT_callNumber(number), dlg.Destroy()))
+        button.SetFont("s10 " (selected ? "bold " : "") "c" textColor, "Segoe UI")
+        button.SetColor(
+            "0x" background,
+            "0x" textColor,
+            0,
+            "0x" background,
+            10
+        )
+    }
 
-    dlg.OnEvent("Escape", (*) => dlg.Destroy())
+    cancelBtn.OnEvent("Click", ClosePhoneActionDialog.Bind(dlg))
+    callBtn.OnEvent("Click", ExecutePhoneActionCallChoice.Bind(dlg, number))
+
+    dlg.OnEvent("Close", ClosePhoneActionDialog.Bind(dlg))
+    dlg.OnEvent("Escape", ClosePhoneActionDialog.Bind(dlg))
+
+    PhoneActionDialogState := Map(
+        "Dialog", dlg,
+        "DialogHwnd", dlg.Hwnd,
+        "Buttons", [cancelBtn, callBtn],
+        "Selected", 2
+    )
+
     dlg.Show("w360 h224 Center")
 
+    SetPhoneActionDialogSelection(2)
+    RedrawPhoneActionDialogButtons()
+    DllCall("SetFocus", "ptr", callBtn.Hwnd, "ptr")
+
     RoundControl(numberShell, 16)
-    RoundControl(cancelBtn, 20)
-    RoundControl(callBtn, 20)
+}
+
+; CloseExistingPhoneActionDialog() is al aangeroepen door de aanroepende
+; Handle...ClipboardNumberDetected()-functie, de enige plek vanwaar deze
+; functie wordt aangeroepen.
+ShowCallOrSmsChoiceDialog() {
+    global MainGui, C, State, PhoneActionDialogState
+
+    number := State["IPT"]["ClipBoardNumber"]
+
+    dlg := Gui("+Owner" MainGui.Hwnd " -MaximizeBox -MinimizeBox", "DocBot - Belactie")
+    dlg.BackColor := C["Window"]
+    dlg.SetFont("s10 c" C["Text"], "Segoe UI")
+
+    title := dlg.AddText("x28 y24 w444 h30 Center Background" C["Window"], "Wat wil je doen?")
+    title.SetFont("s18 bold c" C["Text"], "Segoe UI")
+
+    numberShell := dlg.AddText("x28 y72 w444 h64 Background" C["Card"], "")
+    numberValue := dlg.AddText("x28 y83 w444 h42 Center Background" C["Card"], number)
+    numberValue.SetFont("s28 bold c" C["Text"], "Segoe UI")
+
+    ; Echte Button-controls zijn focusbaar en reageren op Enter. Het pictogram
+    ; wordt apart in Segoe MDL2 Assets getekend, zodat er geen puntje ontstaat.
+    cancelBtn := dlg.AddButton("x28 y156 w132 h40 Center", "Annuleren")
+    smsBtn := dlg.AddButton("x184 y156 w132 h40 Center", "SMS")
+    callBtn := dlg.AddButton("x340 y156 w132 h40 Center Default", "Bellen")
+    cancelBtn._iconGlyph := Chr(0xE711)
+    smsBtn._iconGlyph := Chr(0xE8BD)
+    callBtn._iconGlyph := Chr(0xE717)
+
+    ; Registreer de initiële selectie meteen in de custom-draw kleuren.
+    ; Als alle knoppen eerst grijs worden aangemaakt en de selectie pas na
+    ; Show() wijzigt, verwerkt Windows die wijziging soms pas bij de eerste
+    ; hover. Bellen moet daarom al bij de allereerste paint blauw zijn.
+    for buttonIndex, button in [cancelBtn, smsBtn, callBtn] {
+        selected := buttonIndex = 3
+        background := selected ? C["Primary"] : C["Button"]
+        textColor := selected ? "FFFFFF" : C["Text"]
+
+        button.SetFont("s10 " (selected ? "bold " : "") "c" textColor, "Segoe UI")
+        button.SetColor(
+            "0x" background,
+            "0x" textColor,
+            0,
+            "0x" background,
+            10
+        )
+    }
+
+    cancelBtn.OnEvent("Click", ClosePhoneActionDialog.Bind(dlg))
+    smsBtn.OnEvent("Click", StartSmsCallAction.Bind(dlg, number))
+    callBtn.OnEvent("Click", ExecutePhoneActionCallChoice.Bind(dlg, number))
+
+    dlg.OnEvent("Close", ClosePhoneActionDialog.Bind(dlg))
+    dlg.OnEvent("Escape", ClosePhoneActionDialog.Bind(dlg))
+
+    PhoneActionDialogState := Map(
+        "Dialog", dlg,
+        "DialogHwnd", dlg.Hwnd,
+        "Buttons", [cancelBtn, smsBtn, callBtn],
+        "Selected", 3
+    )
+
+    dlg.Show("w500 h224 Center")
+
+    ; SetColor vóór Show() is niet voldoende: Windows toont dan eerst kort de
+    ; native knoprand en stuurt pas bij hover een betrouwbare custom-draw.
+    ; Pas de selectie daarom toe op het zichtbare venster en forceer WM_PAINT.
+    SetPhoneActionDialogSelection(3)
+    RedrawPhoneActionDialogButtons()
+    DllCall("SetFocus", "ptr", callBtn.Hwnd, "ptr")
+
+    RoundControl(numberShell, 16)
+}
+
+RedrawPhoneActionDialogButtons() {
+    global PhoneActionDialogState
+
+    if !IsObject(PhoneActionDialogState)
+        return
+
+    for _, button in PhoneActionDialogState["Buttons"] {
+        if !DllCall("IsWindowVisible", "ptr", button.Hwnd, "int")
+            continue
+
+        DllCall(
+            "SetWindowPos",
+            "ptr", button.Hwnd,
+            "ptr", 0,  ; HWND_TOP
+            "int", 0, "int", 0, "int", 0, "int", 0,
+            "uint", 0x1 | 0x2 | 0x10  ; NOSIZE | NOMOVE | NOACTIVATE
+        )
+        DllCall(
+            "RedrawWindow",
+            "ptr", button.Hwnd,
+            "ptr", 0,
+            "ptr", 0,
+            "uint", 0x1 | 0x4 | 0x100 | 0x400
+        )
+    }
+}
+
+SetPhoneActionDialogSelection(index) {
+    global PhoneActionDialogState, C
+
+    if !IsObject(PhoneActionDialogState)
+        return
+
+    buttons := PhoneActionDialogState["Buttons"]
+    if index < 1
+        index := buttons.Length
+    else if index > buttons.Length
+        index := 1
+
+    PhoneActionDialogState["Selected"] := index
+
+    for buttonIndex, button in buttons {
+        selected := buttonIndex = index
+        background := selected ? C["Primary"] : C["Button"]
+        textColor := selected ? "FFFFFF" : C["Text"]
+
+        button.BackColor := "0x" background
+        button.TextColor := "0x" textColor
+        button.SetFont("s10 " (selected ? "bold " : "") "c" textColor, "Segoe UI")
+        button.Redraw()
+    }
+
+    DllCall("SetFocus", "ptr", buttons[index].Hwnd, "ptr")
+}
+
+PhoneActionDialogKeyDown(wParam, lParam, message, hwnd) {
+    global PhoneActionDialogState
+
+    if !IsObject(PhoneActionDialogState)
+        return
+    if !WinActive("ahk_id " PhoneActionDialogState["DialogHwnd"])
+        return
+
+    switch wParam {
+        case 0x25:  ; VK_LEFT
+            SetPhoneActionDialogSelection(PhoneActionDialogState["Selected"] - 1)
+            return 1
+        case 0x27:  ; VK_RIGHT
+            SetPhoneActionDialogSelection(PhoneActionDialogState["Selected"] + 1)
+            return 1
+        case 0x0D:  ; VK_RETURN
+            button := PhoneActionDialogState["Buttons"][PhoneActionDialogState["Selected"]]
+            DllCall(
+                "PostMessageW",
+                "ptr", button.Hwnd,
+                "uint", 0x00F5,  ; BM_CLICK
+                "ptr", 0,
+                "ptr", 0
+            )
+            return 1
+    }
+}
+
+; Zorgt dat er nooit meer dan één telefoonactie-dialoog tegelijk open kan
+; staan: een klemborddetectie tijdens een nog niet afgehandeld venster
+; vervangt dat venster in plaats van eronder te blijven liggen. Zonder dit
+; kon een oud, nooit weggeklikt venster later weer tevoorschijn komen zodra
+; het nieuwere erbovenop werd afgehandeld — de gebruiker moest dan telkens
+; controleren of het zichtbare nummer wel het net gekopieerde nummer was.
+CloseExistingPhoneActionDialog() {
+    global PhoneActionDialogState
+
+    if !IsObject(PhoneActionDialogState)
+        return
+
+    existing := PhoneActionDialogState["Dialog"]
+    PhoneActionDialogState := 0
+    try existing.Destroy()
+
+    ShowNotification(
+        "Nieuw nummer herkend — vorig (nog niet bevestigd) belvenster is gesloten.",
+        4000,
+        "info"
+    )
+}
+
+ClosePhoneActionDialog(dialog, *) {
+    global PhoneActionDialogState
+
+    if IsObject(PhoneActionDialogState)
+        && PhoneActionDialogState["DialogHwnd"] = dialog.Hwnd {
+        PhoneActionDialogState := 0
+        ClearClipBoardNumber("belvenster afgerond of geannuleerd")
+    }
+
+    try dialog.Destroy()
+}
+
+ExecutePhoneActionCallChoice(dialog, number, *) {
+    ClosePhoneActionDialog(dialog)
+    IPT_callNumber(number)
+}
+
+StartSmsCallAction(dialog, number, *) {
+    ClosePhoneActionDialog(dialog)
+    DebugLog("→", "SMS actie", "SMS-route gestart.")
+
+    smsNumber := NormalizeSmsPhoneNumber(number)
+    if smsNumber = "" {
+        ShowNotification(
+            "SMS versturen is alleen mogelijk naar een Nederlands 06-nummer.",
+            4500,
+            "warning"
+        )
+        ExtendedDebugLog(
+            "✕",
+            "SMS actie geweigerd",
+            "Het herkende externe nummer is geen geldig Nederlands 06-nummer."
+        )
+        return
+    }
+
+    smsConfig := GetSelectedSmsCallAction()
+    if !IsObject(smsConfig) {
+        ShowNotification(
+            "Er is geen geldige SMS-pagina geselecteerd. Controleer Instellingen.",
+            4500,
+            "warning"
+        )
+        ExtendedDebugLog("✕", "SMS actie geweigerd", "Geen geselecteerde SmsCallAction gevonden.")
+        return
+    }
+
+    try {
+        ; Succes is direct zichtbaar doordat Edge met het ingevulde veld op de
+        ; voorgrond staat. Toon alleen nog een melding als de actie mislukt.
+        if !RunSmsCallAction(smsConfig, smsNumber) {
+            DebugLog(
+                "✕",
+                "SMS actie",
+                "SMS-route vond geen bruikbare pagina of invoerveld."
+            )
+            ShowNotification(
+                "De SMS-pagina of het telefoonveld kon niet worden gevonden.",
+                5000,
+                "error"
+            )
+        } else {
+            DebugLog("✓", "SMS actie", "SMS-route afgerond.")
+        }
+    } catch as smsError {
+        DebugLog("✕", "SMS actie", "SMS-route is mislukt.")
+        ExtendedDebugLog("✕", "SMS actie", smsError.Message)
+        ShowNotification(
+            "De SMS-actie is mislukt. Controleer het debuglog voor details.",
+            5000,
+            "error"
+        )
+    }
+}
+
+RunSmsCallAction(smsConfig, number) {
+    previousTitleMatchMode := A_TitleMatchMode
+    previousDetectHiddenWindows := A_DetectHiddenWindows
+    previousDetectHiddenText := A_DetectHiddenText
+
+    ; WindowTitle mag als deel van de volledige Edge-titel voorkomen. Deze
+    ; instellingen worden na de actie hersteld om andere DocBot-routes niet
+    ; onbedoeld te beïnvloeden.
+    SetTitleMatchMode(2)
+    DetectHiddenWindows(true)
+    DetectHiddenText(true)
+
+    ExtendedDebugLog(
+        "→",
+        "SMS actie",
+        "Start voor '" smsConfig["Title"] "' met nummer "
+            MaskSmsPhoneNumber(number) ". Eerst WinActivate(WindowTitle), daarna UIA."
+    )
+
+    try {
+        edge := ActivateSmsEdgeWindowByTitle(smsConfig["WindowTitle"])
+
+        if !IsObject(edge)
+            edge := ActivateSmsEdgeTabByTitle(smsConfig["WindowTitle"])
+
+        if !IsObject(edge)
+            edge := OpenSmsPage(smsConfig["Url"], smsConfig["WindowTitle"])
+
+        if !IsObject(edge) {
+            ExtendedDebugLog(
+                "✕",
+                "SMS vensterselectie",
+                "WinActivate, UIA-tabselectie en URL-fallback vonden geen bruikbare Edge-tab."
+            )
+            return false
+        }
+
+        if FillSmsPhoneFieldWithUIA(edge, smsConfig["FieldId"], number) {
+            ExtendedDebugLog(
+                "✓",
+                "SMS veldinvulling",
+                "AutomationId '" smsConfig["FieldId"] "' via UI Automation ingevuld."
+            )
+            return true
+        }
+
+        ExtendedDebugLog(
+            "→",
+            "SMS veldinvulling",
+            "UIA Edit-element niet gevonden; JavaScriptfallback wordt uitgevoerd."
+        )
+        return FillSmsDomFieldWithJavaScript(
+            edge,
+            smsConfig["FieldId"],
+            number
+        )
+    } finally {
+        SetTitleMatchMode(previousTitleMatchMode)
+        DetectHiddenWindows(previousDetectHiddenWindows)
+        DetectHiddenText(previousDetectHiddenText)
+    }
+}
+
+ActivateSmsEdgeWindowByTitle(targetTitle) {
+    startedAt := A_TickCount
+
+    try WinActivate(targetTitle)
+    catch as activateError {
+        ExtendedDebugLog(
+            "←",
+            "SMS WinActivate",
+            "Geen titelmatch na " (A_TickCount - startedAt) " ms: "
+                activateError.Message
+        )
+        return 0
+    }
+
+    hwnd := WinWaitActive(targetTitle, , 1)
+    if !hwnd {
+        ExtendedDebugLog(
+            "←",
+            "SMS WinActivate",
+            "Titelmatch werd niet binnen 1 seconde actief."
+        )
+        return 0
+    }
+
+    try {
+        edge := UIA_Browser(hwnd)
+        ExtendedDebugLog(
+            "✓",
+            "SMS WinActivate",
+            "Edge-venster actief en UIA_Browser gekoppeld in "
+                (A_TickCount - startedAt) " ms."
+        )
+        return edge
+    } catch as browserError {
+        ExtendedDebugLog(
+            "✕",
+            "SMS WinActivate",
+            "Venster actief, maar UIA_Browser koppelen mislukte: "
+                browserError.Message
+        )
+        return 0
+    }
+}
+
+GetUsableEdgeBrowserWindows() {
+    windows := []
+
+    for hwnd in WinGetList("ahk_exe msedge.exe ahk_class Chrome_WidgetWin_1") {
+        if !DllCall("IsWindowVisible", "Ptr", hwnd, "Int")
+            continue
+
+        try title := Trim(WinGetTitle("ahk_id " hwnd))
+        catch
+            continue
+
+        if title = ""
+            continue
+
+        windows.Push(hwnd)
+    }
+
+    return windows
+}
+
+ActivateSmsEdgeTabByTitle(targetTitle) {
+    startedAt := A_TickCount
+    edgeWindows := GetUsableEdgeBrowserWindows()
+
+    ExtendedDebugLog(
+        "→",
+        "SMS UIA-tabselectie",
+        edgeWindows.Length " bruikbare Edge-browservenster(s) gevonden; "
+            "TabExist wordt per venster uitgevoerd."
+    )
+
+    for index, hwnd in edgeWindows {
+        try {
+            if WinGetMinMax("ahk_id " hwnd) = -1
+                WinRestore("ahk_id " hwnd)
+
+            edge := UIA_Browser(hwnd)
+            tab := edge.TabExist(targetTitle, 2, false)
+            if !tab
+                continue
+
+            edge.SelectTab(tab)
+            WinActivate("ahk_id " hwnd)
+            if WinWaitActive("ahk_id " hwnd, , 2) {
+                ExtendedDebugLog(
+                    "✓",
+                    "SMS UIA-tabselectie",
+                    "Tab gevonden in Edge-browservenster " index
+                        " en geactiveerd in " (A_TickCount - startedAt) " ms."
+                )
+                return edge
+            }
+        } catch as windowError {
+            ExtendedDebugLog(
+                "←",
+                "SMS UIA-tabselectie",
+                "Edge-browservenster " index " overgeslagen: "
+                    windowError.Message
+            )
+        }
+    }
+
+    ExtendedDebugLog(
+        "←",
+        "SMS UIA-tabselectie",
+        "Geen passende tab gevonden in " edgeWindows.Length
+            " bruikbare Edge-browservenster(s), duur "
+            (A_TickCount - startedAt) " ms."
+    )
+    return 0
+}
+
+OpenSmsPage(url, targetTitle) {
+    ExtendedDebugLog(
+        "→",
+        "SMS URL-fallback",
+        "Geen bestaande tab gevonden; de lokaal geconfigureerde pagina wordt in Edge geopend."
+    )
+
+    try Run('msedge.exe "' url '"')
+    catch as runError {
+        ExtendedDebugLog("✕", "SMS URL-fallback", "Edge starten mislukte: " runError.Message)
+        return 0
+    }
+
+    ; Bewust uitsluitend WindowTitle gebruiken. De POC heeft aangetoond dat
+    ; een samengestelde query met ahk_exe in deze werkomgeving niet betrouwbaar is.
+    hwnd := WinWaitActive(targetTitle, , 10)
+    if !hwnd {
+        ExtendedDebugLog(
+            "✕",
+            "SMS URL-fallback",
+            "De geconfigureerde WindowTitle werd niet binnen 10 seconden actief."
+        )
+        return 0
+    }
+
+    try {
+        edge := UIA_Browser(hwnd)
+        ExtendedDebugLog("✓", "SMS URL-fallback", "Nieuwe Edge-tab actief en UIA_Browser gekoppeld.")
+        return edge
+    } catch as browserError {
+        ExtendedDebugLog(
+            "✕",
+            "SMS URL-fallback",
+            "UIA_Browser koppelen aan de nieuwe tab mislukte: " browserError.Message
+        )
+        return 0
+    }
+}
+
+FillSmsPhoneFieldWithUIA(edge, fieldId, value, timeoutMs := 5000) {
+    deadline := A_TickCount + timeoutMs
+    attempts := 0
+    lastError := ""
+
+    while A_TickCount < deadline {
+        attempts += 1
+        try {
+            document := edge.GetCurrentDocumentElement()
+            field := document.FindElement({
+                Type: "Edit",
+                AutomationId: fieldId
+            })
+
+            field.Value := value
+            field.SetFocus()
+            ExtendedDebugLog(
+                "✓",
+                "SMS UIA-veldinvulling",
+                "Veld gevonden en ingevuld na " attempts " poging(en)."
+            )
+            return true
+        } catch as fieldError {
+            lastError := fieldError.Message
+            Sleep(250)
+        }
+    }
+
+    ExtendedDebugLog(
+        "←",
+        "SMS UIA-veldinvulling",
+        "Veld niet gevonden na " attempts " poging(en) en " timeoutMs
+            " ms. Laatste fout: " lastError
+    )
+    return false
+}
+
+FillSmsDomFieldWithJavaScript(edge, fieldId, value) {
+    escapedFieldId := EscapeSmsJavaScriptString(fieldId)
+    escapedValue := EscapeSmsJavaScriptString(value)
+
+    js := "(()=>{"
+        . "const e=document.getElementById('" escapedFieldId "');"
+        . "if(!e){throw new Error('DocBot: SMS-veld niet gevonden');}"
+        . "const s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;"
+        . "s.call(e,'" escapedValue "');"
+        . "e.dispatchEvent(new Event('input',{bubbles:true}));"
+        . "e.dispatchEvent(new Event('change',{bubbles:true}));"
+        . "e.focus();"
+        . "return true;"
+        . "})()"
+
+    try {
+        edge.JSExecute(js)
+        ExtendedDebugLog(
+            "✓",
+            "SMS JavaScriptfallback",
+            "Veld '" fieldId "' ingevuld; input- en change-events verstuurd."
+        )
+        return true
+    } catch as jsError {
+        ExtendedDebugLog("✕", "SMS JavaScriptfallback", jsError.Message)
+        return false
+    }
+}
+
+NormalizeSmsPhoneNumber(input) {
+    digits := RegExReplace(Trim(input), "\D")
+
+    if RegExMatch(digits, "^316\d{8}$")
+        digits := "0" SubStr(digits, 3)
+    else if RegExMatch(digits, "^00316\d{8}$")
+        digits := "0" SubStr(digits, 5)
+
+    return RegExMatch(digits, "^06\d{8}$") ? digits : ""
+}
+
+MaskSmsPhoneNumber(number) {
+    return StrLen(number) >= 4
+        ? SubStr(number, 1, 2) "******" SubStr(number, -2)
+        : "<afgeschermd>"
+}
+
+EscapeSmsJavaScriptString(value) {
+    value := StrReplace(value, "\", "\\")
+    value := StrReplace(value, "'", "\'")
+    value := StrReplace(value, Chr(13), "\r")
+    value := StrReplace(value, Chr(10), "\n")
+    return value
 }
 
 ; =============================================================================
@@ -3463,7 +5223,7 @@ DeleteSelectedHotstring(*) {
 ; =============================================================================
 
 ReloadRuntimeHotstrings(showErrors := false) {
-    global RuntimeHotstrings, State
+    global RuntimeHotstrings, State, ProblemReportSession
 
     UnregisterRuntimeHotstrings()
 
@@ -3489,15 +5249,23 @@ ReloadRuntimeHotstrings(showErrors := false) {
         try {
             mode := GetHotstringInsertionMode(item)
             if mode = "direct-text" {
-                callback := SendHotstringText.Bind(replacement)
+                callback := SendHotstringText.Bind(trigger, replacement)
                 Hotstring(hotstringSpec, callback, true)
                 RuntimeHotstrings[hotstringSpec] := callback
             } else if mode = "dynamic-text" {
-                callback := SendDynamicHotstringText.Bind(replacement)
+                callback := SendDynamicHotstringText.Bind(trigger, replacement)
                 Hotstring(hotstringSpec, callback, true)
                 RuntimeHotstrings[hotstringSpec] := callback
             } else if mode = "dynamic-keys" {
-                callback := SendDynamicHotstringKeys.Bind(replacement)
+                callback := SendDynamicHotstringKeys.Bind(trigger, replacement)
+                Hotstring(hotstringSpec, callback, true)
+                RuntimeHotstrings[hotstringSpec] := callback
+            } else if mode = "keys" && ProblemReportSession["ExtendedActive"] {
+                callback := SendDiagnosticHotstringKeys.Bind(trigger, replacement)
+                Hotstring(hotstringSpec, callback, true)
+                RuntimeHotstrings[hotstringSpec] := callback
+            } else if mode = "normal" && ProblemReportSession["ExtendedActive"] {
+                callback := SendDiagnosticHotstringText.Bind(trigger, replacement)
                 Hotstring(hotstringSpec, callback, true)
                 RuntimeHotstrings[hotstringSpec] := callback
             } else {
@@ -3582,14 +5350,16 @@ IsLongOrMultilineHotstring(replacement) {
         || StrLen(replacement) >= DirectTextReplacementThreshold
 }
 
-SendHotstringText(replacement, *) {
+SendHotstringText(trigger, replacement, *) {
+    LogExtendedHotstringExecution(trigger, replacement, "tekst")
     Telemetry_RecordLongHotstring()
     RefreshUsageStatistics()
     SendPlainHotstringText(replacement)
 }
 
-SendDynamicHotstringText(replacement, *) {
+SendDynamicHotstringText(trigger, replacement, *) {
     expanded := ExpandDynamicHotstringCodes(replacement)
+    LogExtendedHotstringExecution(trigger, expanded, "dynamische tekst")
 
     if IsLongOrMultilineHotstring(expanded) {
         Telemetry_RecordLongHotstring()
@@ -3599,8 +5369,30 @@ SendDynamicHotstringText(replacement, *) {
     SendPlainHotstringText(expanded)
 }
 
-SendDynamicHotstringKeys(replacement, *) {
-    Send(ExpandDynamicHotstringCodes(replacement))
+SendDynamicHotstringKeys(trigger, replacement, *) {
+    expanded := ExpandDynamicHotstringCodes(replacement)
+    LogExtendedHotstringExecution(trigger, expanded, "dynamische toetsen")
+    Send(expanded)
+}
+
+SendDiagnosticHotstringText(trigger, replacement, *) {
+    LogExtendedHotstringExecution(trigger, replacement, "korte tekst")
+    SendPlainHotstringText(replacement)
+}
+
+SendDiagnosticHotstringKeys(trigger, replacement, *) {
+    LogExtendedHotstringExecution(trigger, replacement, "toetsen")
+    Send(replacement)
+}
+
+LogExtendedHotstringExecution(trigger, replacement, insertionMode) {
+    ExtendedDebugLog(
+        "→",
+        "Hotstring uitgevoerd",
+        "Modus: " insertionMode
+            . "`r`nAfkorting: " trigger
+            . "`r`nVervangtekst:`r`n" replacement
+    )
 }
 
 SendPlainHotstringText(replacement) {
@@ -5447,6 +7239,7 @@ ValidateLocalConfiguration() {
     }
 
     Telemetry_ValidateConfiguration(LocalConfig)
+    ValidateSmsCallActionsConfiguration(LocalConfig)
 
     if !(LocalConfig["DefaultSpeedDials"] is Array)
         throw Error("DefaultSpeedDials moet een Array zijn.")
@@ -5469,6 +7262,105 @@ ValidateLocalConfiguration() {
         if !item.Has("Replacement") || item["Replacement"] = ""
             throw Error("DefaultHotstrings item " index " mist Replacement.")
     }
+}
+
+ValidateSmsCallActionsConfiguration(config) {
+    if !config.Has("SmsCallAction")
+        return
+
+    source := config["SmsCallAction"]
+    if source is Map {
+        ValidateSmsCallActionItem(source, 1)
+        return
+    }
+
+    if !(source is Array)
+        throw Error("SmsCallAction moet een Map of een Array met Maps zijn.")
+
+    titles := Map()
+    for index, item in source {
+        ValidateSmsCallActionItem(item, index)
+        normalizedTitle := StrLower(Trim(item["Title"]))
+        if titles.Has(normalizedTitle)
+            throw Error("SmsCallAction bevat de dubbele Title '" item["Title"] "'.")
+        titles[normalizedTitle] := true
+    }
+}
+
+ValidateSmsCallActionItem(item, index) {
+    if !(item is Map)
+        throw Error("SmsCallAction item " index " moet een Map zijn.")
+
+    for _, key in ["Title", "Url", "FieldId", "WindowTitle"] {
+        if !item.Has(key) || Trim(item[key]) = ""
+            throw Error("SmsCallAction item " index " mist een ingevulde waarde voor '" key "'.")
+    }
+}
+
+GetConfiguredSmsCallActions() {
+    global LocalConfig
+
+    actions := []
+    if !IsSet(LocalConfig) || !(LocalConfig is Map) || !LocalConfig.Has("SmsCallAction")
+        return actions
+
+    source := LocalConfig["SmsCallAction"]
+    if source is Map {
+        actions.Push(source)
+        return actions
+    }
+
+    if source is Array {
+        for _, item in source
+            actions.Push(item)
+    }
+    return actions
+}
+
+GetSmsCallActionTitles() {
+    global SmsCallActions
+
+    titles := []
+    for _, action in SmsCallActions
+        titles.Push(action["Title"])
+    return titles
+}
+
+HasConfiguredSmsCallActions() {
+    global SmsCallActions
+    return SmsCallActions.Length > 0
+}
+
+FindSmsCallActionIndexByTitle(title) {
+    global SmsCallActions
+
+    wanted := StrLower(Trim(title))
+    for index, action in SmsCallActions {
+        if StrLower(Trim(action["Title"])) = wanted
+            return index
+    }
+    return 0
+}
+
+ResolveSmsCallActionTitle(title) {
+    global SmsCallActions
+
+    index := FindSmsCallActionIndexByTitle(title)
+    if index > 0
+        return SmsCallActions[index]["Title"]
+    return SmsCallActions.Length ? SmsCallActions[1]["Title"] : ""
+}
+
+GetSelectedSmsCallAction() {
+    global State, SmsCallActions
+
+    index := FindSmsCallActionIndexByTitle(State["SmsCallActionTitle"])
+    return index > 0 ? SmsCallActions[index] : 0
+}
+
+NormalizeCallAction(value, fallback := 1) {
+    value := ParseCallActionSetting(value, fallback)
+    return value = 3 && !HasConfiguredSmsCallActions() ? fallback : value
 }
 
 GetUserDataProfile(appVersion) {
@@ -5570,6 +7462,39 @@ InitializeUserStorage() {
     }
 }
 
+
+MarkUserStorageAlwaysAvailable(directory) {
+    if !DirExist(directory)
+        return false
+
+    try {
+        exitCode := RunWait(
+            A_ComSpec ' /d /c attrib -U +P "' directory '"',
+            ,
+            "Hide"
+        )
+        if exitCode = 0
+            return true
+
+        DebugLog(
+            "!",
+            "OneDrive-map lokaal houden",
+            "attrib -U +P gaf exitcode " exitCode ": " directory
+        )
+    } catch as pinError {
+        DebugLog(
+            "!",
+            "OneDrive-map lokaal houden",
+            directory "`n" pinError.Message
+        )
+    }
+
+    ; Niet fataal: gewone lokale mappen en organisatiebeleid mogen de start
+    ; van DocBot niet blokkeren. De echte schrijfacties houden hun eigen
+    ; gerichte foutafhandeling.
+    return false
+}
+
 RebaseCopiedHotstringPath(sourceDir) {
     global ConfigFile, UserDataDir
 
@@ -5634,12 +7559,34 @@ LoadAppSettings() {
             "File",
             State["HotstringFile"]
         )
-        State["AutoCall"] := ParseBooleanSetting(
-            IniRead(ConfigFile, "Features", "AutoCall", State["AutoCall"])
+        storedCallAction := Trim(
+            IniRead(ConfigFile, "Features", "CallAction", "")
         )
-        State["DirectCall"] := ParseBooleanSetting(
-            IniRead(ConfigFile, "Features", "DirectCall", State["DirectCall"])
+        if storedCallAction != "" {
+            State["CallAction"] := ParseCallActionSetting(
+                storedCallAction,
+                State["CallAction"]
+            )
+        } else {
+            legacyAutoCall := ParseBooleanSetting(
+                IniRead(ConfigFile, "Features", "AutoCall", 1)
+            )
+            legacyDirectCall := ParseBooleanSetting(
+                IniRead(ConfigFile, "Features", "DirectCall", 0)
+            )
+            State["CallAction"] := !legacyAutoCall
+                ? 0
+                : (legacyDirectCall ? 2 : 1)
+        }
+        State["SmsCallActionTitle"] := ResolveSmsCallActionTitle(
+            IniRead(
+                ConfigFile,
+                "Features",
+                "SmsCallActionTitle",
+                State["SmsCallActionTitle"]
+            )
         )
+        State["CallAction"] := NormalizeCallAction(State["CallAction"])
         State["TextReplacement"] := ParseBooleanSetting(
             IniRead(
                 ConfigFile,
@@ -5657,8 +7604,10 @@ SaveAppSettings() {
     try {
         IniWrite(State["AutoSave"] ? 1 : 0, ConfigFile, "Hotstrings", "AutoSave")
         IniWrite(State["HotstringFile"], ConfigFile, "Hotstrings", "File")
-        IniWrite(State["AutoCall"] ? 1 : 0, ConfigFile, "Features", "AutoCall")
-        IniWrite(State["DirectCall"] ? 1 : 0, ConfigFile, "Features", "DirectCall")
+        IniWrite(State["CallAction"], ConfigFile, "Features", "CallAction")
+        IniWrite(State["SmsCallActionTitle"], ConfigFile, "Features", "SmsCallActionTitle")
+        try IniDelete(ConfigFile, "Features", "AutoCall")
+        try IniDelete(ConfigFile, "Features", "DirectCall")
         IniWrite(
             State["TextReplacement"] ? 1 : 0,
             ConfigFile,
@@ -5681,11 +7630,22 @@ ParseBooleanSetting(value) {
     return value = "1" || value = "true" || value = "yes" || value = "aan"
 }
 
-SaveSettings(autoSaveCheck, filePathEdit, *) {
+ParseCallActionSetting(value, fallback := 1) {
+    value := Trim(value "")
+    if !RegExMatch(value, "^[0-3]$")
+        return fallback
+
+    return Number(value)
+}
+
+SaveSettings(autoSaveCheck, filePathEdit, smsActionDropDown, *) {
     global State
 
     State["AutoSave"] := autoSaveCheck.Value = 1
     State["HotstringFile"] := Trim(filePathEdit.Value)
+    State["SmsCallActionTitle"] := HasConfiguredSmsCallActions()
+        ? ResolveSmsCallActionTitle(smsActionDropDown.Text)
+        : ""
 
     if State["HotstringFile"] = "" {
         MsgBox("Kies eerst een JSON-bestand.", "DocBot", "Icon!")
@@ -5726,7 +7686,9 @@ HandleAppExit(*) {
     SaveAppSettings()
     AutoSaveHotstrings()
 
-    ; Gebufferde logregels alsnog wegschrijven, anders gaan ze verloren.
+    DebugLog("i", "DocBot afgesloten", "Normale afsluiting.")
+    ShutdownProblemReportLogging()
+    ; Gebufferde standaardregels alsnog wegschrijven.
     FlushDebugLog()
 
     ; HBITMAP-handles van GDI+-cards en toggles zijn eigendom van DocBot.
@@ -5741,6 +7703,7 @@ HandleAppExit(*) {
 
 BuildTrayMenu() {
     global State, IsDevMode, SpeedDialEntries, TraySpeedDialMaxEntries
+    global ProblemReportSession
 
     A_TrayMenu.Delete()
 
@@ -5761,14 +7724,23 @@ BuildTrayMenu() {
     ; (ToggleMainWindow via TrayIconMessage), wat geen probleem is.
     A_TrayMenu.Default := "DocBot"
 
-    A_TrayMenu.Add("AutoCall", ToggleTraySetting.Bind("AutoCall"))
-    A_TrayMenu.Add("DirectCall", ToggleTraySetting.Bind("DirectCall"))
+    callActionMenu := Menu()
+    callActionLabels := [
+        "Niets doen",
+        "Bellen na bevestiging",
+        "Direct bellen"
+    ]
+    if HasConfiguredSmsCallActions()
+        callActionLabels.Push("Bellen of sms kiezen")
+
+    State["CallAction"] := NormalizeCallAction(State["CallAction"])
+    for value, label in callActionLabels
+        callActionMenu.Add(label, SetTrayCallAction.Bind(value - 1))
+    callActionMenu.Check(callActionLabels[State["CallAction"] + 1])
+
+    A_TrayMenu.Add("Belactie", callActionMenu)
     A_TrayMenu.Add("Tekstvervanging", ToggleTraySetting.Bind("TextReplacement"))
 
-    if State["AutoCall"]
-        A_TrayMenu.Check("AutoCall")
-    if State["DirectCall"]
-        A_TrayMenu.Check("DirectCall")
     if State["TextReplacement"]
         A_TrayMenu.Check("Tekstvervanging")
 
@@ -5798,7 +7770,10 @@ BuildTrayMenu() {
     A_TrayMenu.Add()
     if IsDevMode
         A_TrayMenu.Add("Debug-venster tonen", ShowDebugWindow)
-    A_TrayMenu.Add("Probleem melden...", SendDiagnostics)
+    problemReportLabel := ProblemReportSession["ExtendedActive"]
+        ? "Probleem melden... (logging actief)"
+        : "Probleem melden..."
+    A_TrayMenu.Add(problemReportLabel, ShowProblemReportWindow)
 
     A_TrayMenu.Add()
     A_TrayMenu.Add("Herladen", (*) => Reload())
@@ -5815,16 +7790,24 @@ CallSpeedDialEntry(nummer, *) {
     IPT_callNumber(nummer)
 }
 
+SetTrayCallAction(value, *) {
+    global State, CallActionSelector
+
+    State["CallAction"] := NormalizeCallAction(value)
+    if IsObject(CallActionSelector)
+        CallActionSelector.Value := value
+
+    SaveAppSettings()
+    RefreshSidebarStatuses()
+    BuildTrayMenu()
+}
+
 ToggleTraySetting(key, *) {
-    global State, AutoCallCheck, DirectCallCheck, TextReplacementCheck
+    global State, TextReplacementCheck
 
     State[key] := !State[key]
 
-    if key = "AutoCall"
-        AutoCallCheck.Value := State[key]
-    else if key = "DirectCall"
-        DirectCallCheck.Value := State[key]
-    else if key = "TextReplacement" {
+    if key = "TextReplacement" {
         TextReplacementCheck.Value := State[key]
         ReloadRuntimeHotstrings(true)
     }

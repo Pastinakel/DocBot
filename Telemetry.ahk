@@ -10,6 +10,12 @@ global TelemetryConfig := Map(
     "HeartbeatIntervalMs", 900000
 )
 global TelemetryInstallationId := ""
+global TelemetryPendingInstallationId := ""
+global TelemetryInstallationIdPersistenceAttempts := 0
+global TelemetryInstallationIdQuickRetryMs := 60000
+global TelemetryInstallationIdQuickRetryCount := 5
+global TelemetryInstallationIdSlowRetryMs := 3600000
+global TelemetryIsRunning := false
 global TelemetryStartedAt := ""
 global TelemetryRequest := 0
 global TelemetryPhoneActions := 0
@@ -66,6 +72,8 @@ Telemetry_Initialize(configFile, appVersion, statusProvider) {
     global TelemetryConfig, TelemetryInstallationId, TelemetryStartedAt
     global TelemetryConfigFile, TelemetryAppVersion, TelemetryStatusProvider
     global TelemetryPhoneActions, TelemetryLongHotstringActions
+    global TelemetryPendingInstallationId
+    global TelemetryInstallationIdPersistenceAttempts, TelemetryIsRunning
 
     TelemetryConfigFile := configFile
     TelemetryAppVersion := appVersion
@@ -74,24 +82,120 @@ Telemetry_Initialize(configFile, appVersion, statusProvider) {
 
     TelemetryPhoneActions := Telemetry_ReadCounter("PhoneActions")
     TelemetryLongHotstringActions := Telemetry_ReadCounter("LongHotstringActions")
+    TelemetryInstallationId := ""
+    TelemetryPendingInstallationId := ""
+    TelemetryInstallationIdPersistenceAttempts := 0
+    TelemetryIsRunning := false
 
     if !TelemetryConfig["Enabled"]
         return
 
-    TelemetryInstallationId := Trim(
-        IniRead(TelemetryConfigFile, "Telemetry", "InstallationId", "")
-    )
-    if TelemetryInstallationId = "" {
-        TelemetryInstallationId := Telemetry_CreateInstallationId()
+    ; Bewaar de echte starttijd, ook als OneDrive het installatie-ID pas later
+    ; beschikbaar maakt.
+    TelemetryStartedAt := Telemetry_UtcTimestamp()
+    Telemetry_TryEnsureInstallationId()
+}
+
+Telemetry_TryEnsureInstallationId(*) {
+    global TelemetryConfig, TelemetryConfigFile
+    global TelemetryInstallationId, TelemetryPendingInstallationId
+    global TelemetryInstallationIdPersistenceAttempts
+    global TelemetryInstallationIdQuickRetryMs
+    global TelemetryInstallationIdQuickRetryCount
+    global TelemetryInstallationIdSlowRetryMs
+
+    if !TelemetryConfig["Enabled"] || TelemetryInstallationId != ""
+        return
+
+    ; Lees vóór iedere schrijfpoging opnieuw. Een andere DocBot-instantie kan
+    ; het ID inmiddels al hebben opgeslagen; die bestaande waarde is leidend.
+    try {
+        storedInstallationId := Trim(
+            IniRead(TelemetryConfigFile, "Telemetry", "InstallationId", "")
+        )
+    } catch as readError {
+        storedInstallationId := ""
+        Telemetry_LogError(
+            "Installatie-ID kon niet worden gelezen uit "
+            . TelemetryConfigFile
+            . ": "
+            . readError.Message
+        )
+    }
+
+    if storedInstallationId != "" {
+        TelemetryInstallationId := storedInstallationId
+        TelemetryPendingInstallationId := ""
+        TelemetryInstallationIdPersistenceAttempts := 0
+        SetTimer Telemetry_TryEnsureInstallationId, 0
+        Telemetry_Start()
+        return
+    }
+
+    if TelemetryPendingInstallationId = "" {
+        try TelemetryPendingInstallationId := Telemetry_CreateInstallationId()
+        catch as createError {
+            Telemetry_LogError(createError.Message)
+            Telemetry_ScheduleInstallationIdRetry()
+            return
+        }
+    }
+
+    try {
         IniWrite(
-            TelemetryInstallationId,
+            TelemetryPendingInstallationId,
             TelemetryConfigFile,
             "Telemetry",
             "InstallationId"
         )
-    }
 
-    TelemetryStartedAt := Telemetry_UtcTimestamp()
+        ; Controleer dat precies hetzelfde ID ook teruggelezen kan worden
+        ; voordat telemetrie het als permanente identiteit gebruikt.
+        persistedInstallationId := Trim(
+            IniRead(TelemetryConfigFile, "Telemetry", "InstallationId", "")
+        )
+        if persistedInstallationId != TelemetryPendingInstallationId
+            throw Error("Het opgeslagen installatie-ID kon niet worden bevestigd.")
+
+        TelemetryInstallationId := persistedInstallationId
+        TelemetryPendingInstallationId := ""
+        TelemetryInstallationIdPersistenceAttempts := 0
+        SetTimer Telemetry_TryEnsureInstallationId, 0
+        Telemetry_Start()
+    } catch as installationIdError {
+        Telemetry_LogError(
+            "Installatie-ID kon niet worden opgeslagen in "
+            . TelemetryConfigFile
+            . ": "
+            . installationIdError.Message
+        )
+        Telemetry_ScheduleInstallationIdRetry()
+    }
+}
+
+Telemetry_ScheduleInstallationIdRetry() {
+    global TelemetryInstallationIdPersistenceAttempts
+    global TelemetryInstallationIdQuickRetryMs
+    global TelemetryInstallationIdQuickRetryCount
+    global TelemetryInstallationIdSlowRetryMs
+
+    TelemetryInstallationIdPersistenceAttempts += 1
+    delay := TelemetryInstallationIdPersistenceAttempts < TelemetryInstallationIdQuickRetryCount
+        ? TelemetryInstallationIdQuickRetryMs
+        : TelemetryInstallationIdSlowRetryMs
+
+    SetTimer Telemetry_TryEnsureInstallationId, -delay
+}
+
+Telemetry_Start() {
+    global TelemetryConfig, TelemetryInstallationId, TelemetryIsRunning
+
+    if TelemetryIsRunning
+        return
+    if !TelemetryConfig["Enabled"] || TelemetryInstallationId = ""
+        return
+
+    TelemetryIsRunning := true
 
     ; Geef de telefoniepoller eerst tijd om het gekoppelde nummer te vinden.
     ; De aparte callback voorkomt dat deze eenmalige timer de terugkerende
@@ -101,10 +205,12 @@ Telemetry_Initialize(configFile, appVersion, statusProvider) {
 }
 
 Telemetry_Shutdown() {
-    global TelemetryRequest
+    global TelemetryRequest, TelemetryIsRunning
 
+    SetTimer Telemetry_TryEnsureInstallationId, 0
     SetTimer Telemetry_SendStartupHeartbeat, 0
     SetTimer Telemetry_SendHeartbeat, 0
+    TelemetryIsRunning := false
     if IsObject(TelemetryRequest) {
         try TelemetryRequest.abort()
     }

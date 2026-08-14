@@ -6,11 +6,24 @@
 
 global LocalConfig := Map(
     "Telephony", Map(
-        "BaseUrl", "http://VUL-HIER-DE-LOKALE-SERVER-IN/",
+        "BaseUrl", "https://VUL-HIER-DE-LOKALE-SERVER-IN/",
         "AllocateEndpoint", "VUL-HIER-HET-REGISTRATIE-ENDPOINT-IN",
         "EventEndpoint", "VUL-HIER-HET-EVENT-ENDPOINT-IN",
         "DialEndpoint", "VUL-HIER-HET-BEL-ENDPOINT-IN"
     ),
+
+    ; Configuratie voor de eerste CallAction/SMS-proof-of-concept.
+    ; De echte interne URL blijft uitsluitend in DocBot.local.ahk.
+    ; Voeg voor iedere extra SMS-pagina een nieuw Map-item toe aan deze Array,
+    ; gescheiden door een komma. Title is de zichtbare naam in Instellingen.
+    "SmsCallAction", [
+        Map(
+            "Title", "SMS Opnameplein",
+            "Url", "https://VUL-HIER-DE-SMS-PAGINA-IN/",
+            "FieldId", "number",
+            "WindowTitle", "SMS opnameplein Funatic"
+        )
+    ],
 
     ; Optionele heartbeat naar Power Automate. De webhook-URL is een geheim
     ; en hoort uitsluitend in het niet-gevolgde DocBot.local.ahk.
