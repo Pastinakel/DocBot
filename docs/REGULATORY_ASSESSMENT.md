@@ -4,13 +4,13 @@ _Status: voorlopige repositoryanalyse, geen juridisch advies of formeel conformi
 
 _Beoordelingsdatum: 2026-08-14._
 
-_Onderzochte basis: branch `release/2.2-finalize` (bestemd voor `main`),
-`AppVersion = 2.2` (stabiele release). Deze update volgt op de vorige
-beoordeling (commit `76fe6a0`, `2.2-rc.3`) en verwerkt de sindsdien in PR #23
-doorgevoerde functionele wijziging aan het telefonie-bevestigingsvenster en
-de klembordstatus (zie §5.4 en §7). De overige wijzigingen sinds
-`2.2-rc.3` (o.a. een klikbare GitHub-link op het Over-scherm) zijn
-regulatoir niet relevant._
+_Onderzochte basis: `main`, tag `v2.2` (commit `a156dfe`), `AppVersion = 2.2`
+(stabiele release). Deze update volgt op de vorige beoordeling (commit
+`76fe6a0`, `2.2-rc.3`) en verwerkt de sindsdien in PR #23 doorgevoerde
+functionele wijziging aan het telefonie-bevestigingsvenster en de
+klembordstatus (zie §5.4 en §7). De overige wijzigingen sinds `2.2-rc.3`
+(o.a. een klikbare GitHub-link op het Over-scherm) zijn regulatoir niet
+relevant._
 
 ## 1. Doel en status
 
@@ -108,7 +108,7 @@ In de repository is geen intended purpose aangetroffen voor:
 
 De intended-purposeverklaring legt gebruikers, omgeving, invoer, uitvoer,
 autonome technische acties, beperkingen, gebruikersverantwoordelijkheid en
-uitgesloten medische toepassingen vast. Zij geldt voor `2.2-rc.3` en
+uitgesloten medische toepassingen vast. Zij geldt voor `2.2` en
 opvolgende versies totdat een herbeoordeling tot een gewijzigde verklaring
 leidt. De regulatoire kwalificatie blijft voorlopig: zij is gebaseerd op
 documentatie én implementatie en is geen extern juridisch of gecertificeerd

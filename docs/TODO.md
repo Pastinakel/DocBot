@@ -1,16 +1,20 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-10. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-14. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
-- **P0** — blocks the current 2.2 release path or risks a broken build.
-- **P1** — should be completed before/around 2.2 release or immediately afterwards.
+- **P0** — blocks the current release path or risks a broken build.
+- **P1** — should be completed before/around the current release or immediately afterwards.
 - **P2** — valuable engineering improvement; not a reason to destabilize the current release.
 
 ---
 
-## P0 — Full 2.2 RC3 acceptance test
+## P0 — Full 2.2 RC3 acceptance test (completed — DocBot 2.2 released)
+
+DocBot 2.2 shipped: `main` is tagged `v2.2` (merge commit `a156dfe`, PR #27).
+This checklist is kept as a record of what the RC3 acceptance test covered;
+all items below were confirmed before the release.
 
 At minimum, validate the following on the managed Windows environment and, where required, on the internal hospital network.
 
@@ -102,20 +106,23 @@ At minimum, validate the following on the managed Windows environment and, where
 
 ---
 
-## P1 — Finalize stable 2.2 release
-
-Only after the current RC3 is explicitly accepted.
+## P1 — Finalize stable 2.2 release (done)
 
 - [x] On the release branch, set `AppVersion` from the final `2.2-rc.N` to stable `2.2` in the definitive release commit.
 - [x] Change README status from release candidate/development wording to stable 2.2 wording.
 - [x] Finalize `### 2.2` in the README Changelog; it remains the only release-history source.
 - [x] Verify the README `Telemetrie` section exactly matches the shipped payload and intervals.
 - [x] Verify license/documentation references identify the current project license and bundled third-party licenses correctly.
-- [ ] Merge the release PR into `main` with **Create a merge commit**.
-- [ ] Create annotated tag `v2.2` on the stable release commit.
-- [ ] Push/verify the tag on `origin`.
-- [ ] Bring release-only fixes back to `develop` via PR/merge commit.
-- [ ] Start the next development version on `develop` according to the normal version scheme.
+- [x] Merge the release PR into `main` with **Create a merge commit** (PR #27, merge commit `a156dfe`).
+- [x] Create annotated tag `v2.2` on the stable release commit.
+- [x] Push/verify the tag on `origin`.
+- [x] Bring release-only fixes back to `develop` via PR/merge commit (PR #28).
+- [x] Start the next development version on `develop` according to the normal version scheme (`AppVersion = 2.3-dev.1`, direct commit on `develop`).
+
+The temporary release branches (`release/2.2-rc`, `release/2.2-finalize`,
+`docs/rc3-acceptance-checklist`, `chore/bring-back-2.2-to-develop`) have all
+been deleted after merging; their content lives on in `main`/`develop`
+history and tag `v2.2`.
 
 ---
 
@@ -215,19 +222,19 @@ Stable has priority: a stable numeric `AppVersion` uses `DocBot` regardless of w
 - [ ] Update `docs/PROJECT_CONTEXT.md` and `docs/ARCHITECTURE.md` to the new invariant/data-flow.
 - [ ] Add/supersede the corresponding storage-profile decision in `docs/DECISIONS.md` rather than silently erasing the old rationale.
 - [ ] Revisit this TODO and any acceptance-test wording that still assumes suffix-only profile selection.
-- [ ] Do not change the branch-version scheme (`2.2-dev.N`, `2.2-<branch>.N`, `2.2-rc.N`, stable `2.2`).
+- [ ] Do not change the branch-version scheme (`2.3-dev.N`, `2.3-<branch>.N`, `2.3-rc.N`, stable `2.3`).
 - [ ] Do not treat package-cache behavior under `%LocalAppData%` as part of this change unless explicitly approved; this task concerns Documents/config/user-data profile selection.
 - [ ] Telemetry payload, fields and interval should remain unchanged; only its `settings.ini` location follows the selected user profile. Update telemetry documentation only if the implementation changes telemetric behavior beyond that.
 
 ### Required test matrix
 
-- [ ] Stable `2.2`, compiled -> `Documents\DocBot`.
-- [ ] Stable `2.2`, noncompiled -> `Documents\DocBot`.
-- [ ] `2.2-dev.N`, compiled -> `Documents\DocBot-test`.
-- [ ] `2.2-rc.N`, compiled -> `Documents\DocBot-test`.
-- [ ] Feature/fix prerelease such as `2.2-example.1`, compiled -> `Documents\DocBot-test`.
-- [ ] `2.2-dev.N`, noncompiled -> `Documents\DocBot-dev`.
-- [ ] `2.2-rc.N`, noncompiled -> `Documents\DocBot-dev`.
+- [ ] Stable `2.3`, compiled -> `Documents\DocBot`.
+- [ ] Stable `2.3`, noncompiled -> `Documents\DocBot`.
+- [ ] `2.3-dev.N`, compiled -> `Documents\DocBot-test`.
+- [ ] `2.3-rc.N`, compiled -> `Documents\DocBot-test`.
+- [ ] Feature/fix prerelease such as `2.3-example.1`, compiled -> `Documents\DocBot-test`.
+- [ ] `2.3-dev.N`, noncompiled -> `Documents\DocBot-dev`.
+- [ ] `2.3-rc.N`, noncompiled -> `Documents\DocBot-dev`.
 - [ ] Feature/fix prerelease, noncompiled -> `Documents\DocBot-dev`.
 - [ ] Existing `DocBot-test` and `DocBot-dev` directories are never repopulated/overwritten merely because selection rules changed.
 - [ ] Stored hotstring/settings/package/speeddial paths still migrate or resolve correctly in the selected profile.
@@ -269,10 +276,9 @@ on the job as a hard backstop.
 
 ### Remaining work
 
-- [ ] The workflow currently exists only on `release/2.2-rc`, not on
-  `develop` or `main`. Add it to `develop` too (via a normal feature/fix
-  branch and PR) so it protects all new work, not only the current release
-  line, and will reach `main` through the normal release merge.
+- [x] The workflow now exists on both `main` (reached via the 2.2 release
+  merge) and `develop` (brought back in the same step), so it protects all
+  new work, not only the release line it started on.
 - [ ] Decide whether the `pull_request` trigger should stay unscoped (any
   base branch) or be limited to `develop`/`release/*`.
 - [ ] Reconsider relying on `workflow_dispatch` once the workflow exists on
