@@ -106,11 +106,11 @@ At minimum, validate the following on the managed Windows environment and, where
 
 Only after the current RC3 is explicitly accepted.
 
-- [ ] On the release branch, set `AppVersion` from the final `2.2-rc.N` to stable `2.2` in the definitive release commit.
-- [ ] Change README status from release candidate/development wording to stable 2.2 wording.
-- [ ] Finalize `### 2.2` in the README Changelog; it remains the only release-history source.
-- [ ] Verify the README `Telemetrie` section exactly matches the shipped payload and intervals.
-- [ ] Verify license/documentation references identify the current project license and bundled third-party licenses correctly.
+- [x] On the release branch, set `AppVersion` from the final `2.2-rc.N` to stable `2.2` in the definitive release commit.
+- [x] Change README status from release candidate/development wording to stable 2.2 wording.
+- [x] Finalize `### 2.2` in the README Changelog; it remains the only release-history source.
+- [x] Verify the README `Telemetrie` section exactly matches the shipped payload and intervals.
+- [x] Verify license/documentation references identify the current project license and bundled third-party licenses correctly.
 - [ ] Merge the release PR into `main` with **Create a merge commit**.
 - [ ] Create annotated tag `v2.2` on the stable release commit.
 - [ ] Push/verify the tag on `origin`.

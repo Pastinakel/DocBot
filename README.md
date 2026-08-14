@@ -17,14 +17,11 @@ ook toegepast. De software heeft geen beoogd medisch doel: zij verricht geen
 medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft
 geen diagnose-, behandel-, doserings- of monitoringsadvies.
 
-Deze README beschrijft releasecandidate 2.2 (`2.2-rc.6`) op de
-`release/2.2-rc`-branch. Versie 2.1 is de huidige stabiele productieversie op
-`main`; op deze releasebranch worden uitsluitend bugfixes, documentatie en
-releasevoorbereidingen toegevoegd.
+Deze README beschrijft de stabiele release 2.2 op `main`.
 
 Bestanden
 ---------
-- `DocBot.ahk` — releasecandidate 2.2 met de huidige GUI,
+- `DocBot.ahk` — stabiele release 2.2 met de huidige GUI,
   telefoniefunctionaliteit, hotstrings, snelkiesnummers en pakketbeheer.
 - `packages/` — versieerbare ingebouwde hotstringpakketten plus manifest.
 - `ThirdParty/ColorButton/` — custom-draw ondersteuning voor de moderne
@@ -401,7 +398,7 @@ risicoanalyse.
 Changelog
 ---------
 
-### 2.2 — Releasecandidate
+### 2.2 — Huidige stabiele release
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
 - Nieuwe gebruikersflow **Probleem melden...** via zowel het systeemvakmenu
   als een knop die de bestaande Help-footer vervangt. Beide openen dezelfde
@@ -465,7 +462,7 @@ Changelog
   (`https://github.com/Pastinakel/DocBot`) linksonder op het Over-scherm,
   op dezelfde hoogte als de knop "Probleem melden..." op de Help-pagina.
 
-### 2.1 — Huidige stabiele release
+### 2.1 — Vorige stabiele release
 - Nieuwe Help-pagina met vier uitklapbare, scrollbare instructiekaarten voor
   telefoonregistratie, bellen vanuit een EPD, snelkiesnummers en hotstrings.
 - Optionele Power Automate-heartbeat voor centraal inzicht in actieve
