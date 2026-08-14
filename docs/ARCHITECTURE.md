@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-08-08. Repository facts refer to the 2.2 development line unless noted otherwise._
+_Last updated: 2026-08-14. Repository facts refer to stable DocBot 2.2 (`main`, tag `v2.2`) and the start of the 2.3 development line unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -304,6 +304,34 @@ IPT_callNumber()
 
 The event loop is chained rather than a fixed periodic timer to avoid overlapping long polls.
 
+Clipboard-triggered dialing is a separate entry path into the same call gate:
+
+```text
+ClipBoardPoller()
+  -> detect a clipboard sequence-number change
+  -> normalize (external Dutch number / internal four-digit number)
+  -> no match: ignore
+  -> match: SetClipBoardNumber() then
+       HandleClipboardNumberDetected() / HandleInternalClipboardNumberDetected()
+
+Handle...ClipboardNumberDetected()
+  -> CloseExistingPhoneActionDialog() first, unconditionally
+       (closes a still-open dialog from a previous, unhandled detection;
+       shows a short notification when it actually closes one)
+  -> per CallAction: do nothing / show confirmation dialog /
+       call directly via IPT_callNumber() / show call-or-SMS choice dialog
+  -> ClearClipBoardNumber() once the action is handed off, completed, or
+       cancelled (call placed, SMS started, dialog cancelled/closed, or no
+       action configured)
+```
+
+At most one call-action dialog (confirmation, or the cancel/SMS/call choice)
+may be open at a time; a newer clipboard detection always resolves — by
+closing — whatever an older detection left open, regardless of which action
+the new detection then takes. Manual dial paths (speed dial, right-click,
+linking call) call `IPT_callNumber()` directly and do not go through this
+close step, so they intentionally leave an open dialog untouched.
+
 ### 11.3 Number normalization
 
 Number normalization is centralized. Internal four-digit numbers intentionally use a distinct policy path because four arbitrary digits have a higher false-positive probability than a full telephone number.
@@ -385,24 +413,57 @@ The normal application maintains a bounded/buffered background debug log and flu
 
 The developer-only debug UI is gated by Windows account in current code.
 
-### 15.2 Extended problem-reporting branch
+### 15.2 Integrated problem reporting and extended logging
 
-The unmerged `feature/extended-logging` introduces a larger reporting session architecture with explicit consent, more detailed session logging, ZIP packaging, and Outlook draft automation/fallback.
+The current DocBot 2.2 code contains the `Probleem melden...`
+flow. Help and the tray menu open the same reporting GUI and session state.
+`ProblemReportSession` is held in memory and tracks the phase, consented logging
+state, start time, user description, temporary log path, and finalization lock.
 
-Because this feature is not yet merged and recently contained syntax errors, agents should inspect the branch rather than treating this document as an implementation specification for every function name.
+The data flow is:
 
-Architectural requirements that should survive are:
+```text
+direct report
+  -> optional user description + redacted standard log
+  -> temporary report directory with loose files (no ZIP)
+  -> Outlook draft (files attached individually) or explicit manual fallback
 
-- consent gate before unredacted detailed logging;
-- central redaction/sanitization for standard logs;
-- raw copies of existing diagnostic events plus actually executed hotstring
-  triggers/replacements and detailed SMS/UIA traces only during that session;
-- telemetry secrets remain redacted and local configuration files are never
-  included in the package;
-- detailed session ends on process exit/restart;
-- reopening the report UI can reuse the current reporting session;
-- attachment creation is deterministic and understandable to support staff;
-- mail automation failure must degrade to a manual path.
+explicit consent
+  -> temporary extended log under %LocalAppData%\DocBot
+  -> raw copies of diagnostic events (telemetry webhook remains redacted)
+  -> executed hotstring trigger/replacement + detailed SMS/UIA events
+  -> stop logging and flush buffers before packaging
+  -> description + standard log + extended log as loose files in %TEMP%
+  -> Outlook draft (files attached individually) or explicit manual fallback
+```
+
+Architectural boundaries:
+
+- the standard log remains centrally sanitized at all times;
+- unredacted detailed logging cannot start without the explicit checkbox;
+- runtime hotstrings are re-registered on session start/stop so modes that
+  normally use native replacement can be observed only during consent;
+- closing the GUI preserves the in-memory reporting session, while process
+  exit/restart stops it and deletes the temporary extended log;
+- local configuration is never added to the report package;
+- report files are attached to Outlook individually rather than zipped —
+  building the ZIP through the Explorer shell namespace proved unreliable
+  (or entirely unavailable) on some group-policy/EDR-hardened workplaces,
+  causing report finalization itself to fail (see `DECISIONS.md` D-041);
+- finalization stops extended logging before Outlook or fallback work, so an
+  external mail failure cannot leave the UI claiming that logging is active;
+- successful completion resets the session and removes its detailed log;
+  the temporary report directory remains for the mail/manual-send workflow;
+- Outlook automation failure degrades to `mailto:` where possible, Explorer
+  opening the report directory, and visible manual attachment instructions.
+
+The project owner completed the dedicated compiled-Windows validation of the
+RC2 flow on 2026-08-09, including ZIP behavior, Outlook/fallback cases,
+session state, and sensitive-data boundaries — predating the switch to loose
+attachments in D-041. The broader full-RC3 acceptance test, covering the
+loose-attachment behavior together with the rest of the application, was
+subsequently completed and accepted before the 2.2 release (see
+`docs/TODO.md`).
 
 ## 16. Update/restart architecture
 
@@ -458,7 +519,23 @@ There is no comprehensive automated test suite today. Validation has historicall
 - real internal-network testing for telephony;
 - compiled-executable testing for release candidates.
 
-This leaves a known gap: AutoHotkey syntax errors can escape non-Windows editing workflows. A syntax/compile smoke test should be considered a high-value future improvement.
+Since PR #19, one automated gate exists: `.github/workflows/ahk-syntax-check.yml`
+runs `AutoHotkey64.exe /Validate` on a `windows-latest` GitHub Actions
+runner against `DocBot.ahk` on pull requests that touch `.ahk` files, using
+`DocBot.local.example.ahk` as safe CI configuration. It catches genuine AHK
+v2 parse/syntax errors — including the multiline-concatenation class of
+regression described in D-033 — before manual Windows testing. It does not
+check runtime logic, telephony/SMS/UIA behavior, or GUI rendering; those
+still require the manual and internal-network validation above. The check
+reached `main` as part of the 2.2 release (via `release/2.2-rc`) and is
+being brought back to `develop` in the same step (see `docs/TODO.md`).
+
+A GUI-subsystem executable such as AutoHotkey can show a blocking error
+dialog on some parse failures even when told to write errors to stdout, so
+the workflow does not simply `Wait` on the process; it enforces its own
+`WaitForExit` timeout and force-kills a stuck process rather than trusting
+AutoHotkey to exit on its own. This is a reusable pattern for any future
+CI step that shells out to a Windows GUI executable.
 
 For changes touching internal telephony, SMS/UIA, managed-Windows rendering, build/deployment, or OneDrive behavior, static inspection is not enough.
 

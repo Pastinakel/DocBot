@@ -34,12 +34,22 @@ lees vóór uitvoering de documenten die voor de taak relevant zijn:
 
 1. Lees `docs/PROJECT_CONTEXT.md` voor productcontext, requirements, bekende
    bugs en de actuele ontwikkel- en releasestatus.
-2. Lees `docs/ARCHITECTURE.md` voordat je architectuur, opslag, dataflows,
+2. Lees `docs/INTENDED_PURPOSE.md` vóór wijzigingen aan het beoogde gebruik,
+   gebruikers, gebruiksomgeving, invoer, uitvoer, autonome acties, beperkingen
+   of uitgesloten medische toepassingen.
+3. Lees `docs/DATA_PROTECTION.md` vóór wijzigingen aan persoonsgegevens,
+   gegevensstromen, ontvangers, bewaartermijnen, autorisaties,
+   transportbeveiliging of DPIA-relevante functionaliteit.
+4. Lees `docs/ARCHITECTURE.md` voordat je architectuur, opslag, dataflows,
    componentgrenzen of integraties wijzigt.
-3. Lees `docs/DECISIONS.md` voordat je een bestaande ontwerpkeuze vervangt,
+5. Lees `docs/DECISIONS.md` voordat je een bestaande ontwerpkeuze vervangt,
    terugdraait of opnieuw bespreekt.
-4. Lees `docs/TODO.md` bij werk aan openstaande taken, releaseplanning of
+6. Lees `docs/TODO.md` bij werk aan openstaande taken, releaseplanning of
    bekende vervolgacties.
+7. Lees `docs/REGULATORY_ASSESSMENT.md` vóór wijzigingen aan de intended
+   purpose, patiëntgegevens, klinische pakketinhoud, beslislogica, autonome
+   acties, logging/telemetrie of integraties die de MDR-kwalificatie,
+   patiëntveiligheid of NEN 7510-scope kunnen beïnvloeden.
 
 Behandel deze documenten als duurzame projectcontext, maar controleer vóór
 implementatie altijd of statusgegevens nog overeenkomen met de actuele code,
@@ -107,13 +117,13 @@ Deze bestanden staan niet in de repository:
 DocBot gebruikt bewust drie gescheiden mappen onder `A_MyDocuments`. De
 versiestring bepaalt het profiel:
 
-- een versie met uitsluitend cijfers en punten, bijvoorbeeld `2.1`, gebruikt
+- een versie met uitsluitend cijfers en punten, bijvoorbeeld `2.2`, gebruikt
   `DocBot` (main/stable);
 - `-dev` of `-rc` direct achter het numerieke versienummer, bijvoorbeeld
-  `2.1-dev.15` of `2.1-rc.1`, gebruikt `DocBot-test` (centrale
+  `2.3-dev.15` of `2.3-rc.1`, gebruikt `DocBot-test` (centrale
   ontwikkel-, test- en releasecandidateversies);
 - iedere andere prerelease met letters, bijvoorbeeld
-  `2.1-multiline.1` of `2.1-bugs-pakketview.2`, gebruikt `DocBot-dev`
+  `2.3-multiline.1` of `2.3-bugs-pakketview.2`, gebruikt `DocBot-dev`
   (feature- en fixbranches).
 
 Als `DocBot-test` nog niet bestaat, wordt die eenmalig vanuit `DocBot`
@@ -171,11 +181,11 @@ Wijzig develop en main nooit rechtstreeks. Maak altijd een pull request vanuit e
 Gebruik in de huidige ontwikkelcyclus deze versies:
 
 ```text
-main:              2.1
-develop:           2.2-dev.N
-features/fixes:    2.2-<korte-branchnaam>.N
-release candidate: 2.2-rc.N
-release:           2.2
+main:              2.2
+develop:           2.3-dev.N
+features/fixes:    2.3-<korte-branchnaam>.N
+release candidate: 2.3-rc.N
+release:           2.3
 ```
 
 Dezelfde structuur geldt voor latere releases: `main` bevat altijd de laatst
@@ -185,13 +195,13 @@ branchspecifieke prerelease-naam met een eigen lokale teller; een releasebranch
 gebruikt `-rc.N`; bij de stabiele release vervalt de prerelease-suffix.
 
 Maak een releasecandidate vanaf een actuele `develop` op een branch zoals
-`release/2.2-rc.1`. Voeg daar uitsluitend bugfixes, documentatie en
+`release/2.3-rc.1`. Voeg daar uitsluitend bugfixes, documentatie en
 releasevoorbereidingen aan toe. Nieuwe functionaliteit wacht op de volgende
 ontwikkelcyclus. Iedere commit op de releasebranch die `DocBot.ahk` wijzigt,
 verhoogt `rc.N` met één.
 
-Voorbeelden zijn `2.2-dev.7`, `2.2-ronde-kaarten.3`,
-`2.2-import.5` en `2.2-rc.1`. Houd branchspecifieke prerelease-namen
+Voorbeelden zijn `2.3-dev.7`, `2.3-ronde-kaarten.3`,
+`2.3-import.5` en `2.3-rc.1`. Houd branchspecifieke prerelease-namen
 geschikt voor SemVer: uitsluitend ASCII-letters, cijfers en koppeltekens.
 
 Iedere commit die `DocBot.ahk` wijzigt, moet in dezelfde commit ook
@@ -216,8 +226,8 @@ releasetag.
 ## Releases, versiegeschiedenis en tags
 
 De releasebranch wordt via een pull request naar `main` gemerged. Zet
-`AppVersion` pas voor de definitieve releasecommit van `2.2-rc.N` naar
-de stabiele versie `2.2`.
+`AppVersion` pas voor de definitieve releasecommit van `2.3-rc.N` naar
+de stabiele versie `2.3`.
 
 Bij een stabiele release moet in dezelfde commit-cyclus:
 
@@ -227,7 +237,7 @@ Bij een stabiele release moet in dezelfde commit-cyclus:
 2. Een annotated tag met `v`-prefix worden aangemaakt op de stabiele
    versiecommit, bijvoorbeeld:
    ```bash
-   git tag -a v2.1 -m "2.1"
+   git tag -a v2.2 -m "2.2"
    ```
 3. De tag worden gepusht:
    ```bash
@@ -240,6 +250,22 @@ Ontwikkel-, feature-, fix- en RC-versies krijgen geen stabiele releasetag.
 Meld het expliciet als een tag niet naar `origin` kan worden gepusht. Een
 tag telt pas als gereed wanneer die op `origin` zichtbaar is.
 
+### Verantwoording bij versie- en tagwijzigingen
+
+Benoem bij iedere wijziging van `global AppVersion` expliciet, in dezelfde
+boodschap aan de gebruiker, op welk branchtype dit gebeurt (main, develop,
+releasebranch of feature-/fixbranch) en welke tellerregel daarbij hoort — dus
+niet alleen de nieuwe versiestring tonen. Een feature- of fixbranch die via
+een pull request naar een releasebranch gaat, is en blijft een feature-/
+fixbranch voor deze regel, ook als de gebruiker toestemming heeft gegeven om
+"op" of "voor" die releasebranch te werken: dat is geen toestemming om de
+gedeelde `rc.N`- of `dev.N`-teller van de doelbranch te gebruiken.
+
+Behandel het aanmaken en pushen van een tag niet als vanzelfsprekend
+onderdeel van een reeds goedgekeurde taak. Vraag daar apart expliciete
+toestemming voor, ook wanneer de gebruiker net al voor de rest van het werk
+"ga door" heeft gezegd — een tag is, net als een force-push, moeilijker
+terug te draaien dan een gewone commit.
 
 ## Lokale configuratie
 

@@ -1,6 +1,6 @@
 # DocBot — Decisions
 
-_Last updated: 2026-08-08. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
+_Last updated: 2026-08-09. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
 
 ## How to read this file
 
@@ -77,15 +77,20 @@ Only an explicitly requested production hotfix starts from `main`.
 
 **Status:** Accepted
 
-Current 2.2 scheme:
+Current scheme, after the DocBot 2.2 release (tag `v2.2` on `main`):
 
 ```text
-main                 2.1 until final 2.2 release
-develop              2.2-dev.N
-feature/fix          2.2-<short-branch-name>.N
-release candidate    2.2-rc.N
-stable release       2.2
+main                 2.2 (stable)
+develop              2.3-dev.N
+feature/fix          2.3-<short-branch-name>.N
+release candidate    2.3-rc
+stable release       2.3
 ```
+
+The same numeric scheme applied to the 2.2 cycle that just shipped:
+`main` carried `2.1` until the final `2.2` release; `develop` used
+`2.2-dev.N`; feature/fix branches used `2.2-<short-branch-name>.N`; the
+release candidate used `2.2-rc.N`.
 
 Every commit that changes `DocBot.ahk` must update `global AppVersion` in that same commit. A commit that does not change `DocBot.ahk` must not change AppVersion.
 
@@ -476,9 +481,9 @@ New fields or broader collection require explicit project-owner approval.
 
 ## D-031 — Standard logging is limited; detailed logging requires consent
 
-**Status:** Provisional for the extended-logging feature, but the principle is accepted
+**Status:** Accepted; integrated in the 2.2 development and RC2 lines, shipped in stable 2.2
 
-Baseline troubleshooting logging exists continuously, but detailed session logging is intended to be enabled only after explicit user consent in the `Probleem melden...` workflow.
+Baseline troubleshooting logging exists continuously, but detailed session logging can be enabled only after explicit user consent in the `Probleem melden...` workflow.
 
 **Reason**
 
@@ -498,9 +503,9 @@ Diagnostics must be useful without turning normal operation into unrestricted se
 
 ## D-032 — Problem reporting should degrade to a manual mail path
 
-**Status:** Provisional
+**Status:** Accepted; integrated in the 2.2 development and RC2 lines (superseded by D-041 for the ZIP-building half, shipped in stable 2.2)
 
-The extended-logging feature intends to create a ZIP and prepare a Classic Outlook draft. If Outlook automation cannot be used, the user must get a clear manual fallback.
+Problem reporting creates a ZIP and prepares a Classic Outlook draft. If Outlook automation cannot be used, the user receives a manual fallback that selects the ZIP in Explorer, attempts to open a message without attachment, and explains that the ZIP must be attached manually.
 
 **Rejected alternative:** fail the whole report because Outlook automation is unavailable.
 
@@ -576,17 +581,136 @@ Do not conflate "the patch was edited and pushed successfully" with "DocBot was 
 
 ## D-038 — Release 2.2 may include extended logging as an explicit freeze exception
 
-**Status:** Provisional until integrated
+**Status:** Accepted; shipped in stable 2.2
 
 The 2.2 RC branch was created under a feature freeze. The project owner explicitly approved the extended problem-reporting/logging feature as an exception.
 
-**Intended integration**
+**Integration outcome**
 
-1. validate/fix the feature on `feature/extended-logging`;
-2. merge it to `develop` using a merge commit;
-3. bring the updated develop state to the release branch with a merge commit;
-4. increment release candidate to `2.2-rc.2`;
-5. run the complete RC test again;
-6. only after approval, prepare stable `2.2` and tag `v2.2`.
+The feature history was merged into `develop`; the updated development state
+was then merged into `release/2.2-rc` as RC2. The exception is therefore
+integrated. The branch went through RC3 because intended-purpose and related
+user-facing wording changed, then RC4–RC6 for further fixes. The RC was
+explicitly accepted, and stable `2.2` was released and tagged `v2.2` on
+`main`.
 
 Do not use this exception as permission to add unrelated new functionality to the release branch.
+
+---
+
+## D-039 — DocBot is general-purpose productivity software used in healthcare, not MDSW
+
+**Status:** Accepted as a provisional repository-based qualification
+
+DocBot is productivity software intended for employees in a managed business
+environment. It originated from needs in a hospital workplace and is used in
+hospital workflows, where it processes personal data and potential health
+information. Based on the documented intended purpose and implemented
+behavior, it is not presently treated as Medical Device Software under
+Regulation (EU) 2017/745. Its rules support text entry, communication, storage,
+diagnostics, and application management; they do not analyze patient-specific
+medical data to produce a diagnosis, prognosis, treatment recommendation,
+dosage, clinical alarm, or medical-device control.
+
+The approved intended-purpose statement is recorded in
+`docs/INTENDED_PURPOSE.md`. The complete qualification reasoning, evidence,
+limitations, standards relevance, and reassessment triggers are recorded in
+`docs/REGULATORY_ASSESSMENT.md`.
+
+**Consequences**
+
+- NEN 7510 and systematic patient-safety risk management remain relevant even
+  without MDSW qualification.
+- Clinical package content requires controlled ownership and review because an
+  incorrect insertion can affect a patient record.
+- Any patient-specific clinical analysis, recommendation, alarm, or
+  medical-device control requires reassessment before implementation.
+- This decision is not a legal opinion or certified conformity finding and may
+  be superseded by external product claims, deployment facts, or a formal
+  regulatory review.
+
+---
+
+## D-040 — Automated AutoHotkey v2 syntax check as a merge gate
+
+**Status:** Accepted; shipped on `main` as part of 2.2, being brought back to `develop`
+
+D-033 called for an actual AutoHotkey v2 parse/compile check after repeated
+multiline-concatenation regressions escaped source review. `.github/workflows/ahk-syntax-check.yml`
+implements this: on `windows-latest`, it downloads a portable AutoHotkey v2
+release, copies `DocBot.local.example.ahk` to `DocBot.local.ahk` as safe CI
+configuration, and runs `AutoHotkey64.exe /Validate` against `DocBot.ahk`.
+It runs on pull requests touching `.ahk` files and on pushes to `develop`.
+
+**Rejected/superseded alternative:** waiting on `Start-Process -Wait` (or a
+bare `&` invocation) for the AutoHotkey process to exit and trusting
+`$LASTEXITCODE`. In testing, a genuine parse error could make AutoHotkey show
+a blocking error dialog that a headless runner never dismisses, hanging the
+job until GitHub's own job timeout cancelled it — a `cancelled` run, not a
+clear `failure`. `/ErrorStdOut` alone did not prevent this.
+
+**Current implementation:** the process is started without `-Wait`; the
+workflow calls `WaitForExit(60000)` itself, force-kills the process if it
+has not exited within 60 seconds, and reports failure explicitly.
+`timeout-minutes: 5` on the job is an additional backstop.
+
+**Consequences**
+
+- This check validates syntax only. It does not replace manual/Windows
+  functional validation, telephony/network testing, or GUI verification.
+- Any future CI step that shells out to a Windows GUI-subsystem executable
+  should use the same explicit-timeout pattern rather than relying on the
+  process to exit and set `$LASTEXITCODE` cleanly.
+- The workflow was merged into `release/2.2-rc` via PR #19 (merge commit
+  `2ee42b6`) and reached `main` with the 2.2 release. It is being
+  propagated to `develop` in the same step that brings back the other
+  release-only fixes (see `docs/TODO.md`).
+
+---
+
+## D-041 — Attach problem-report files individually instead of building a ZIP
+
+**Status:** Accepted; merged into `release/2.2-rc` via PR #22, shipped in stable 2.2
+
+**Supersedes:** the ZIP-building half of D-032. The manual-fallback rationale
+in D-032 (degrade to a mail path instead of failing the report outright)
+still stands.
+
+A user on a managed hospital workplace consistently hit "Het ZIP-bestand kon
+niet worden opgebouwd" when finalizing a problem report, even after the
+reliability hardening (three consecutive stable size/name checks, retried
+namespace resolution) added for D-032. `CompressDirectoryContents()` builds
+the ZIP entirely through the Explorer shell namespace
+(`Shell.Application`/`NameSpace()` on a `.zip` path, `CopyHere`) — the same
+class of dependency already documented as unreliable on locked-down
+Windows images elsewhere in this project (see the 2.0.0-beta.2 `TrayTip()`
+group-policy entry in the README changelog). Repeated, non-transient
+failure on one machine points at that shell extension being restricted or
+disabled by group policy/EDR hardening rather than a timing race.
+
+Since a problem report only ever contains a few small text files,
+compression itself has no real benefit. `BuildProblemReportPackage()` now
+writes the report files into the temporary directory and returns their
+paths directly; `OpenProblemReportEmail()` attaches each file to the
+Outlook draft individually via `mail.Attachments.Add()`, and the manual
+fallback (`OpenProblemReportFallback()`) opens the report directory in
+Explorer instead of selecting a single ZIP. This removes
+`CompressDirectoryContents()`, `CreateEmptyZipArchive()`,
+`WaitForShellNamespace()` and `ZipArchiveContainsSourceItems()` entirely,
+along with the dependency on the Explorer zip-folder shell extension.
+
+**Rejected alternative:** keep hardening the ZIP path further (e.g. an
+own-written ZIP writer avoiding Explorer entirely). Rejected for now because
+attaching loose files is simpler, removes the failure mode completely, and
+compression provides no meaningful benefit for a few text-file attachments;
+revisit only if a future report package needs to bundle many/larger files.
+
+**Consequences**
+
+- The problem-report attachment mechanism no longer depends on any Explorer
+  shell extension.
+- Users now see multiple attachments instead of one ZIP; acceptable for an
+  internal diagnostic mail.
+- The temporary report directory (not a ZIP file) is the artifact whose
+  lifecycle `docs/TODO.md` P1 "Remove temporary problem-report artifacts"
+  still needs to address.

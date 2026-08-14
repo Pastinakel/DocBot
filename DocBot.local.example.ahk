@@ -6,7 +6,7 @@
 
 global LocalConfig := Map(
     "Telephony", Map(
-        "BaseUrl", "http://VUL-HIER-DE-LOKALE-SERVER-IN/",
+        "BaseUrl", "https://VUL-HIER-DE-LOKALE-SERVER-IN/",
         "AllocateEndpoint", "VUL-HIER-HET-REGISTRATIE-ENDPOINT-IN",
         "EventEndpoint", "VUL-HIER-HET-EVENT-ENDPOINT-IN",
         "DialEndpoint", "VUL-HIER-HET-BEL-ENDPOINT-IN"
@@ -21,7 +21,7 @@ global LocalConfig := Map(
             "Title", "SMS Opnameplein",
             "Url", "https://VUL-HIER-DE-SMS-PAGINA-IN/",
             "FieldId", "number",
-            "WindowTitle", "SMS opnameplein Medify"
+            "WindowTitle", "SMS opnameplein Funatic"
         )
     ],
 

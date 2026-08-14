@@ -1,13 +1,15 @@
 # DocBot — Project Context
 
-_Last updated: 2026-08-08. This document combines the repository state on `develop` with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
+_Last updated: 2026-08-14. This document combines the repository state around the DocBot 2.2 release and the start of the 2.3 development line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
 
 ## 1. Purpose
 
-DocBot is an AutoHotkey v2 application for hospital employees. It is distributed to end users as a compiled Windows executable and combines two core workflows:
+DocBot is an AutoHotkey v2 productivity application for employees in a managed business environment. It is distributed to end users as a compiled Windows executable and combines two core workflows:
 
 1. text replacement through personal and bundled hotstrings;
-2. telephony assistance through the hospital's internal IP-telephony service, including telephone-number detection from the Windows clipboard.
+2. communication assistance by detecting and normalizing telephone numbers from the Windows clipboard and, depending on user settings, passing them to a configured internal telephony service or filling them into a configured SMS web application. DocBot does not send SMS messages itself.
+
+DocBot originated from needs in a hospital workplace and is used there. It has no intended medical purpose: it does not medically analyze patient data, draw clinical conclusions, or provide diagnostic, treatment, dosage, or monitoring advice.
 
 The application also contains speed dial, an in-app Help page, package management, telemetry, diagnostics, SMS assistance through Edge/UI Automation, and a controlled update/restart mechanism.
 
@@ -17,7 +19,7 @@ The project is deliberately optimized for a managed Windows workplace. Several d
 
 Treat the repository as the source of truth when this document and code ever disagree.
 
-Current top-level structure on `develop`:
+Current top-level structure:
 
 - `DocBot.ahk` — the main application. It is large and still intentionally monolithic.
 - `Telemetry.ahk` — optional telemetry module.
@@ -35,17 +37,32 @@ There is currently no conventional `tests/` directory and no `migrations/` direc
 
 ## 3. Branch and release status at handover
 
-Repository state checked on 2026-08-07:
+Repository state checked on 2026-08-14, after the DocBot 2.2 release:
 
-- `main` is the production line and represents stable DocBot 2.1.
-- `develop` is the central 2.2 development line and currently contains `AppVersion = 2.2-dev.5`.
-- `release/2.2-rc.1` exists and contains `AppVersion = 2.2-rc.1`.
-- draft PR #10, `Releasecandidate DocBot 2.2-rc.1`, is open from the release branch to `main`.
-- `feature/extended-logging` still exists and contains `AppVersion = 2.2-extended-logging.2`.
+- `main` is the production line and represents stable **DocBot 2.2**, merged
+  from `release/2.2-rc` via PR #27 (merge commit `a156dfe`) and tagged
+  `v2.2` on that commit.
+- The full RC3 acceptance test (`docs/TODO.md`) was completed and accepted
+  by the project owner before this merge; the release-finalization steps
+  (AppVersion, README, regulatory/data-protection documentation, tag) are
+  recorded as done in `docs/TODO.md`.
+- `release/2.2-rc` and `release/2.2-finalize` are the historical release
+  branches for 2.2; no further work is expected on them.
+- `develop` is being brought back in line with the released `main` (merging
+  the release-only fixes, per `docs/DECISIONS.md` D-005) and will start the
+  next development line as `AppVersion = 2.3-dev.1`.
+- `feature/extended-logging` is no longer the branch to test or integrate;
+  its work shipped as part of 2.2.
+- The `.github/workflows/ahk-syntax-check.yml` CI syntax-only gate (see
+  D-040 and `docs/ARCHITECTURE.md` §19) reached `main` as part of the 2.2
+  release and is being brought back to `develop` in the same step as the
+  rest of the release-only fixes.
 
-The release candidate was already created when the project owner explicitly approved one late exception to the feature freeze: the new problem-reporting / consent-based extended-logging feature may still enter 2.2. After that feature is merged into `develop`, it is intended to be merged into the release branch and the RC version must become `2.2-rc.2`, followed by a complete new RC test.
-
-Do not treat `feature/extended-logging` as release-ready merely because its latest commits attempt to fix the reported syntax errors. The recent project conversation contains repeated AutoHotkey v2 syntax failures caused by multiline string concatenation. The latest branch commit is named `Corrigeer multiline concatenaties in probleemrapportage`, but a real AHK v2 parse/compile/run on Windows still needs to confirm the branch before merge.
+Do not infer functional validation from source integration alone for future
+cycles. The 2.2 feature work contained repeated AutoHotkey v2
+multiline-concatenation failures during development, which is why a real
+AHK v2 parse/compile/run and functional test on Windows — not just source
+review — was required before accepting the RC.
 
 ## 4. Product requirements that must survive refactors
 
@@ -101,6 +118,8 @@ Requirements for the SMS path:
 - JavaScript is only a fallback, not the primary implementation.
 - DocBot fills the telephone number but does not send the SMS. Final checking and sending stay with the user.
 - The cancel/SMS/call dialog is keyboard-operable with left/right plus Enter and must paint its initial visual selection correctly.
+- Only one call-action dialog (confirmation, or the cancel/SMS/call choice) may be open at a time. A newer clipboard-detected number always closes a still-open older dialog first — with a short notification — regardless of which action the new number then triggers (a new dialog, an immediate call, or no action). Do not reintroduce stacking dialogs by adding a new outcome path that skips this close step.
+- `State["IPT"]["ClipBoardNumber"]` is cleared immediately once the current action is handed off, completed, or cancelled (call placed, SMS started, dialog cancelled/closed, or no action configured) — not left until the next number is detected or the app exits.
 
 ### 4.5 Help and GUI
 
@@ -169,24 +188,25 @@ Installation-ID durability is important:
 
 ### 4.9 Diagnostics and problem reporting
 
-Baseline diagnostics on `develop` already include a bounded/buffered background log at `%LocalAppData%\DocBot\debug.log`, a developer-only live debug window, and a route for ordinary users to prepare diagnostic data for support.
+Baseline diagnostics include a bounded/buffered background log at `%LocalAppData%\DocBot\debug.log` and a developer-only live debug window. The current 2.2 development and RC lines also contain the user-facing `Probleem melden...` flow through Help and the tray menu.
 
-The unmerged `feature/extended-logging` expands this into a user-facing `Probleem melden...` flow accessible from Help and the tray menu. The intended design from the project discussion is:
+The implementation has two reporting paths:
 
-- extended/detailed logging only after explicit user consent;
-- the reporting session may stay active when its window is closed and reopened;
-- restarting or exiting DocBot ends extended logging;
-- normal background logging remains intentionally limited and centrally redacted;
-- the consented session may contain raw telephony URLs/responses, complete
-  called numbers, actually used hotstring triggers/replacements, and detailed
-  SMS/UIA diagnostics; standard logging remains centrally redacted;
-- the telemetry webhook remains protected and local configuration files are
-  never packaged;
-- diagnostic output is packaged as a ZIP;
-- Classic Outlook may be started and awaited with retries before a draft mail with attachment is opened;
-- if Outlook automation is unavailable, provide a clear manual fallback rather than losing the report.
+- **Direct reporting** packages the optional description and centrally redacted standard log without enabling extended logging.
+- **Reproduce with extended logging** requires an explicit consent checkbox. The in-memory session survives closing/reopening the window, but process exit/restart stops the session and deletes its temporary detailed log.
+- During a consented session, existing diagnostic events are additionally written with original values, except that the telemetry webhook remains redacted. Actually executed hotstring triggers/replacements and detailed SMS/UIA traces are logged only while the session is active.
+- Starting or stopping the session reloads runtime hotstrings so normal and key-command hotstrings can pass through diagnostic callbacks only for the consented interval.
+- Finalization stops extended logging before package/mail handling, flushes both logs, and writes loose files (no ZIP) into a temporary directory under `%TEMP%`: `probleemrapport.txt`, the standard log when available, and the extended log only when requested and present.
+- Classic Outlook is started/awaited when necessary and receives a draft with each report file attached individually. If automation fails, DocBot opens a mail fallback where possible, opens the report directory in Explorer, and gives explicit manual attachment instructions.
+- Local configuration files are not packaged. The temporary extended log is removed on shutdown, on a new session, and after successful report preparation; the temporary report directory remains available for the user/mail workflow.
+- Report files were previously bundled into a ZIP via the Explorer shell namespace ("Compressed (zipped) Folders"). That mechanism proved unreliable/unavailable on some group-policy/EDR-hardened workplaces, causing report finalization itself to fail; see `DECISIONS.md` D-041.
 
-Treat the implementation details as provisional until the feature passes syntax and functional validation.
+The project owner completed the dedicated compiled-Windows validation of the
+problem-reporting flow on RC2 on 2026-08-09, before the switch to loose
+attachments in D-041 — that switch still needs its own compiled-Windows
+validation. RC2 validation closes the specific pre-D-041
+problem-reporting checklist; it does not by itself complete the broader RC3
+acceptance test covering the rest of DocBot.
 
 ## 5. Build and deployment constraints
 
@@ -239,6 +259,29 @@ For any nontrivial AHK edit:
 - search the entire changed block for the same pattern after fixing one syntax error;
 - run a real AHK v2 parse/compile check on Windows when possible;
 - do not declare a branch fixed solely from visual review.
+
+### GUI event callback pitfalls
+
+Adding the GitHub link on the About page (`OpenGithubLink`, `Link`/SysLink
+control) surfaced two runtime-only mistakes that the `/Validate`-based
+syntax check (D-040) cannot catch, because that check never executes the
+auto-execute section:
+
+- A fixed-arity inline callback (e.g. `(ctrl, info) => Run(info)`) passed to
+  `.OnEvent("Click", ...)` failed at registration time with "Invalid
+  callback function". AHK v2 validates a callback's parameter count against
+  the event, and the exact arity an event will call with is not always
+  obvious from the docs. Prefer a named function with a trailing `*` (e.g.
+  `Handler(ctrl, *)`), matching the pattern already used elsewhere in
+  `DocBot.ahk` (`ClosePhoneActionDialog(dialog, *)`).
+- For a `Link` control's `Click` event, `Info` is not reliably the clicked
+  anchor's `href`; in practice it returned the 1-based index of the clicked
+  link segment instead. Do not assume `Info` is a usable URL — if the
+  control only ever has one link, hardcode the target instead of parsing it
+  from `Info`.
+
+Both mistakes were only visible by actually running the compiled script on
+Windows and clicking the control, not from source review or CI.
 
 ### Git/GitHub tooling
 

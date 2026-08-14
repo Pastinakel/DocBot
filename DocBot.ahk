@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2-dev.6"
+global AppVersion := "2.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -591,10 +591,12 @@ BuildMainGui() {
         Map("Overzicht", "overzicht")
     )
     AddHelpAccordionSection(
-        "Hoe bel ik vanuit HiX?",
+        "Hoe bel of sms ik vanuit een applicatie?",
         "Kies bij Belactie op de pagina Overzicht wat DocBot met een herkend nummer moet doen."
-        "`r`n`r`nKlik linksboven in HiX op het pijltje naast het telefoonnummer van de patiënt. "
-        "Klik vervolgens op het getoonde telefoonnummer. DocBot herkent het nummer en voert de gekozen belactie uit."
+        "`r`n`r`nKopieer in de gebruikte applicatie het gewenste telefoonnummer. "
+        "DocBot herkent het nummer en voert de gekozen belactie uit."
+        "`r`n`r`nIn HiX klik je linksboven op het pijltje naast het telefoonnummer van de patiënt "
+        "en vervolgens op het getoonde telefoonnummer."
         "`r`n`r`nJe kunt kiezen voor niets doen, bellen na bevestiging, direct bellen of bij externe nummers kiezen tussen bellen en sms. "
         "Interne nummers worden bij die laatste keuze direct gebeld."
         "`r`n`r`nBij een extern Nederlands 06-nummer opent SMS de onder Instellingen gekozen pagina en vult DocBot het telefoonnummer in."
@@ -655,6 +657,17 @@ BuildMainGui() {
     AddRound(aboutEdit, 10)
     AddPageControl("over", aboutEdit)
 
+    ; Zelfde hoogte als de "Probleem melden..."-knop op de Help-pagina
+    ; (x786 y654 w170 h34), maar gespiegeld naar links, in de al onbenutte
+    ; ruimte onder de kaart. Laat de kaart/aboutEdit hierboven ongemoeid.
+    githubLink := MainGui.AddLink(
+        "x262 y654 w300 h34",
+        'Bekijk DocBot op <a href="https://github.com/Pastinakel/DocBot">GitHub</a>'
+    )
+    githubLink.SetFont("s10 c" C["Text"], "Segoe UI")
+    githubLink.OnEvent("Click", OpenGithubLink)
+    AddPageControl("over", githubLink)
+
     RefreshRegistrationTexts()
     RefreshHotstringList()
     RefreshSpeedDialList()
@@ -662,6 +675,16 @@ BuildMainGui() {
 
     MainGui.OnEvent("Close", MainGui_Close)
     MainGui.OnEvent("Escape", MainGui_Escape)
+}
+
+; Click-event van een Link-control geeft bij deze control geen href terug
+; via Info (dat bleek in de praktijk de 1-gebaseerde index van het
+; aangeklikte linksegment, geen URL). Er staat hier maar één link, dus de
+; URL is vast hardcoded in plaats van uit Info afgeleid. * vangt eventuele
+; parameters op die de event meegeeft, zodat het exacte aantal nooit een
+; "Invalid callback function"-fout kan veroorzaken.
+OpenGithubLink(*) {
+    Run("https://github.com/Pastinakel/DocBot")
 }
 
 ; =============================================================================
@@ -1535,7 +1558,8 @@ BuildAboutText() {
     global AppVersion
 
     text := "DocBot versie " AppVersion "`r`n`r`n"
-    text .= "DocBot is een tool die telefoonnummers kan kiezen via de interne IP-telefonie en teksten kan vervangen via hotstrings, geschreven om het werken met digitale hulpmiddelen in de werkplek van het Meander wat makkelijker te maken.`r`n`r`n"
+    text .= "DocBot is productiviteitssoftware voor medewerkers in een beheerde bedrijfsomgeving. De software vervangt ingestelde afkortingen (hotstrings), herkent en normaliseert telefoonnummers op het Windows-klembord en kan deze doorgeven aan een geconfigureerde interne telefoniedienst of invullen in een geconfigureerde SMS-webapplicatie. DocBot verzendt zelf geen SMS-berichten.`r`n`r`n"
+    text .= "DocBot is ontstaan vanuit behoeften in een ziekenhuisomgeving en wordt daar ook toegepast. De software verricht geen medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft geen diagnose-, behandel-, doserings- of monitoringsadvies.`r`n`r`n"
     text .= "Het is een projectje dat in vrije tijd wordt onderhouden en waar het Meander geen support op levert. Suggesties zijn welkom.`r`n`r`n"
     text .= "DocBot is het resultaat van een langlopende en zeer inspirerende samenwerking vanuit de drive om te innoveren tussen Steven Giesbers, Seyit Seme en onderstaande.`r`n`r`n"
     text .= "Nico Feenstra`r`n`r`n"
@@ -3207,12 +3231,12 @@ FinalizeProblemReport(includeExtended, *) {
         FlushDebugLog()
         FlushExtendedDebugLog()
 
-        zipPath := BuildProblemReportPackage(includeExtended)
-        if zipPath = ""
+        package := BuildProblemReportPackage(includeExtended)
+        if package = ""
             return
 
         if OpenProblemReportEmail(
-            zipPath,
+            package,
             ProblemReportSession["Description"],
             includeExtended
         )
@@ -3222,13 +3246,19 @@ FinalizeProblemReport(includeExtended, *) {
     }
 }
 
+; Bouwt de losse rapportbestanden op (geen ZIP): dat maakt de bijlage
+; onafhankelijk van de Explorer-shellextensie "Compressed (zipped) Folders",
+; die op sommige beheerde werkplekken door group policy/EDR wordt beperkt en
+; daardoor eerder onbetrouwbaar bleek. Retourneert een Map met "Dir" (de
+; tijdelijke map) en "Files" (de aangemaakte bestandspaden), of "" bij een
+; fout.
 BuildProblemReportPackage(includeExtended) {
     global AppVersion, ProblemReportSession
 
     stamp := FormatTime(A_Now, "yyyyMMdd_HHmmss")
         . "_" Format("{:03}", A_MSec)
     reportDir := A_Temp "\DocBot_diagnose_" stamp
-    zipPath := A_Temp "\DocBot_diagnose_" stamp ".zip"
+    files := []
 
     try {
         if DirExist(reportDir)
@@ -3254,37 +3284,30 @@ BuildProblemReportPackage(includeExtended) {
             description
         )
 
-        FileAppend(
-            reportText,
-            reportDir "\probleemrapport.txt",
-            "UTF-8"
-        )
+        reportPath := reportDir "\probleemrapport.txt"
+        FileAppend(reportText, reportPath, "UTF-8")
+        files.Push(reportPath)
 
         standardPath := GetStandardDebugLogPath()
-        if FileExist(standardPath)
-            FileCopy(
-                standardPath,
-                reportDir "\standaardlog.txt",
-                true
-            )
+        if FileExist(standardPath) {
+            standardCopyPath := reportDir "\standaardlog.txt"
+            FileCopy(standardPath, standardCopyPath, true)
+            files.Push(standardCopyPath)
+        }
 
         extendedPath := ProblemReportSession["ExtendedLogPath"]
         if includeExtended
             && extendedPath != ""
-            && FileExist(extendedPath)
-            FileCopy(
-                extendedPath,
-                reportDir "\uitgebreid-log.txt",
-                true
-            )
+            && FileExist(extendedPath) {
+            extendedCopyPath := reportDir "\uitgebreid-log.txt"
+            FileCopy(extendedPath, extendedCopyPath, true)
+            files.Push(extendedCopyPath)
+        }
 
-        if !CompressDirectoryContents(reportDir, zipPath)
-            throw Error("Het ZIP-bestand kon niet worden opgebouwd.")
-
-        ; De ZIP is het enige rapportbestand dat buiten deze functie nodig is.
-        ; Laat de uitgepakte tijdelijke map niet in %TEMP% achter.
-        try DirDelete(reportDir, true)
-        return zipPath
+        ; De losse bestanden blijven in %TEMP% staan: Outlook heeft ze nodig
+        ; als bijlage, en bij de handmatige fallback moet de gebruiker ze zelf
+        ; nog kunnen toevoegen.
+        return Map("Dir", reportDir, "Files", files)
     } catch as packageError {
         MsgBox(
             "Het probleemrapport kon niet worden gemaakt.`n`n"
@@ -3298,110 +3321,11 @@ BuildProblemReportPackage(includeExtended) {
     }
 }
 
-CompressDirectoryContents(sourceDirectory, zipPath) {
-    shell := ComObject("Shell.Application")
-    sourceFolder := shell.NameSpace(sourceDirectory)
-    if !IsObject(sourceFolder)
-        return false
-
-    sourceItems := sourceFolder.Items()
-    expectedCount := sourceItems.Count
-    if expectedCount = 0
-        return false
-
-    ; Explorer herkent een zojuist aangemaakte lege ZIP niet altijd meteen
-    ; als Shell-map. Maak hem zo nodig nogmaals en wacht expliciet totdat de
-    ; namespace beschikbaar is voordat CopyHere wordt gestart.
-    zipFolder := 0
-    Loop 2 {
-        if !CreateEmptyZipArchive(zipPath)
-            continue
-        zipFolder := WaitForShellNamespace(shell, zipPath, 3000)
-        if IsObject(zipFolder)
-            break
-    }
-    if !IsObject(zipFolder)
-        return false
-
-    try zipFolder.CopyHere(sourceItems, 0x4 | 0x10)
-    catch
-        return false
-
-    ; Items().Count kan al kloppen terwijl Explorer nog gegevens schrijft.
-    ; Controleer daarom ook naam en ongecomprimeerde bestandsgrootte en eis
-    ; drie opeenvolgende complete metingen.
-    completeChecks := 0
-    deadline := A_TickCount + 30000
-    while A_TickCount < deadline {
-        if ZipArchiveContainsSourceItems(sourceItems, zipFolder) {
-            completeChecks += 1
-            if completeChecks >= 3
-                return FileExist(zipPath) && FileGetSize(zipPath) > 22
-        } else {
-            completeChecks := 0
-        }
-        Sleep(100)
-    }
-
-    return false
-}
-
-CreateEmptyZipArchive(zipPath) {
-    try {
-        if FileExist(zipPath)
-            FileDelete(zipPath)
-
-        header := Buffer(22, 0)
-        NumPut("UChar", 0x50, header, 0)
-        NumPut("UChar", 0x4B, header, 1)
-        NumPut("UChar", 0x05, header, 2)
-        NumPut("UChar", 0x06, header, 3)
-
-        file := FileOpen(zipPath, "w")
-        file.RawWrite(header)
-        file.Close()
-        return true
-    } catch {
-        return false
-    }
-}
-
-WaitForShellNamespace(shell, path, timeoutMs) {
-    deadline := A_TickCount + timeoutMs
-    while A_TickCount < deadline {
-        try folder := shell.NameSpace(path)
-        catch
-            folder := 0
-
-        if IsObject(folder)
-            return folder
-
-        Sleep(100)
-    }
-    return 0
-}
-
-ZipArchiveContainsSourceItems(sourceItems, zipFolder) {
-    try {
-        if zipFolder.Items().Count < sourceItems.Count
-            return false
-
-        Loop sourceItems.Count {
-            sourceItem := sourceItems.Item(A_Index - 1)
-            archivedItem := zipFolder.ParseName(sourceItem.Name)
-            if !IsObject(archivedItem)
-                return false
-            if archivedItem.Size != sourceItem.Size
-                return false
-        }
-        return true
-    } catch {
-        return false
-    }
-}
-
-OpenProblemReportEmail(zipPath, description, usedExtended) {
+OpenProblemReportEmail(package, description, usedExtended) {
     global AppVersion
+
+    reportDir := package["Dir"]
+    files := package["Files"]
 
     subject := "DocBot probleem - versie " AppVersion
     bodyDescription := (
@@ -3450,7 +3374,8 @@ OpenProblemReportEmail(zipPath, description, usedExtended) {
         mail.To := "n.feenstra@meandermc.nl"
         mail.Subject := subject
         mail.Body := body
-        mail.Attachments.Add(zipPath)
+        for attachmentPath in files
+            mail.Attachments.Add(attachmentPath)
         mail.Display()
         try {
             inspector := mail.GetInspector
@@ -3471,7 +3396,7 @@ OpenProblemReportEmail(zipPath, description, usedExtended) {
             "Conceptmail kon niet worden geopend: " outlookError.Message
         )
         return OpenProblemReportFallback(
-            zipPath,
+            reportDir,
             subject,
             body,
             outlookError.Message
@@ -3503,15 +3428,15 @@ GetOutlookApplication() {
 }
 
 OpenProblemReportFallback(
-    zipPath,
+    reportDir,
     subject,
     body,
     outlookError
 ) {
     fallbackBody := (
         SubStr(body, 1, 1500)
-        . "`r`n`r`nVoeg handmatig dit diagnosepakket toe:`r`n"
-        . zipPath
+        . "`r`n`r`nVoeg de bestanden uit deze map handmatig toe:`r`n"
+        . reportDir
     )
     mailto := (
         "mailto:n.feenstra@meandermc.nl?subject="
@@ -3527,22 +3452,22 @@ OpenProblemReportFallback(
     } catch {
     }
 
-    try Run('explorer.exe /select,"' zipPath '"')
+    try Run('explorer.exe "' reportDir '"')
 
     MsgBox(
         "Classic Outlook kon het conceptbericht niet automatisch openen."
-        . "`n`nHet diagnosepakket is in Verkenner geselecteerd."
+        . "`n`nDe rapportmap is in Verkenner geopend."
         . (mailOpened
             ? " Er is daarnaast een nieuw e-mailbericht zonder bijlage geopend."
             : "")
-        . "`nVoeg het ZIP-bestand handmatig toe en verstuur het bericht."
+        . "`nVoeg de bestanden handmatig toe en verstuur het bericht."
         . "`n`nTechnische melding: "
         . SanitizeLogText(outlookError),
         "DocBot - Probleem melden",
         "Icon!"
     )
 
-    return mailOpened || FileExist(zipPath)
+    return mailOpened || DirExist(reportDir)
 }
 
 UriEncode(text) {
@@ -3617,16 +3542,39 @@ ClipBoardPoller() {
 
     externalTel := NormalizePhoneNumberExternal(A_ClipBoard)
     if externalTel != "" {
-        State["IPT"]["ClipBoardNumber"] := externalTel
+        SetClipBoardNumber(externalTel)
         HandleClipboardNumberDetected()
         return
     }
 
     internalTel := NormalizePhoneNumberInternal(A_ClipBoard)
     if internalTel != "" {
-        State["IPT"]["ClipBoardNumber"] := internalTel
+        SetClipBoardNumber(internalTel)
         HandleInternalClipboardNumberDetected()
     }
+}
+
+; Centrale set/clear van het klembordnummer in de IPT-status, met een
+; geschoonde logregel (nooit het nummer zelf) zodat in het debugvenster
+; zichtbaar is wanneer de status gevuld of geleegd wordt. Zie
+; docs/DATA_PROTECTION.md §3.1: het nummer mag na overdracht, afronding of
+; annulering van de actuele actie niet langer dan nodig in de centrale
+; status blijven staan.
+SetClipBoardNumber(number) {
+    global State
+
+    State["IPT"]["ClipBoardNumber"] := number
+    DebugLog("i", "Klembordnummer", "Nieuw nummer herkend en in status gezet.")
+}
+
+ClearClipBoardNumber(reden) {
+    global State
+
+    if State["IPT"]["ClipBoardNumber"] = ""
+        return
+
+    State["IPT"]["ClipBoardNumber"] := ""
+    DebugLog("i", "Klembordnummer", "Status geleegd (" . reden . ").")
 }
 
 ; Ruime validatie/normalisatie: accepteert zowel een kaal 4-cijferig intern
@@ -3678,14 +3626,24 @@ NormalizePhoneNumberInternal(input) {
 HandleClipboardNumberDetected() {
     global State
 
+    ; Elke klemborddetectie maakt eerst schoon wat een vorige detectie nog
+    ; openstaand liet — ongeacht welke actie hierna volgt (nieuwe dialoog,
+    ; direct bellen of niets doen). Zo kan een intern nummer dat direct wordt
+    ; gebeld nooit een nog niet afgehandeld venster van een eerder extern
+    ; nummer laten "achterblijven". Handmatige acties in de DocBot-interface
+    ; (snelkies, rechtermuisknop) gaan hier niet doorheen en laten een
+    ; openstaand venster bewust met rust.
+    CloseExistingPhoneActionDialog()
+
     action := State["CallAction"]
     switch action {
         case 0:
-            return
+            ClearClipBoardNumber("geen belactie geconfigureerd")
         case 1:
             ShowCallConfirmationDialog()
         case 2:
             IPT_callNumber(State["IPT"]["ClipBoardNumber"])
+            ClearClipBoardNumber("direct gebeld")
         case 3:
             ShowCallOrSmsChoiceDialog()
     }
@@ -3697,17 +3655,23 @@ HandleClipboardNumberDetected() {
 HandleInternalClipboardNumberDetected() {
     global State
 
+    CloseExistingPhoneActionDialog()
+
     action := State["CallAction"]
     switch action {
         case 0:
-            return
+            ClearClipBoardNumber("geen belactie geconfigureerd")
         case 1:
             ShowCallConfirmationDialog()
         case 2, 3:
             IPT_callNumber(State["IPT"]["ClipBoardNumber"])
+            ClearClipBoardNumber("direct gebeld")
     }
 }
 
+; CloseExistingPhoneActionDialog() is al aangeroepen door de aanroepende
+; Handle...ClipboardNumberDetected()-functie, de enige plek vanwaar deze
+; functie wordt aangeroepen.
 ShowCallConfirmationDialog() {
     global MainGui, C, State, PhoneActionDialogState
 
@@ -3770,6 +3734,9 @@ ShowCallConfirmationDialog() {
     RoundControl(numberShell, 16)
 }
 
+; CloseExistingPhoneActionDialog() is al aangeroepen door de aanroepende
+; Handle...ClipboardNumberDetected()-functie, de enige plek vanwaar deze
+; functie wordt aangeroepen.
 ShowCallOrSmsChoiceDialog() {
     global MainGui, C, State, PhoneActionDialogState
 
@@ -3923,12 +3890,36 @@ PhoneActionDialogKeyDown(wParam, lParam, message, hwnd) {
     }
 }
 
+; Zorgt dat er nooit meer dan één telefoonactie-dialoog tegelijk open kan
+; staan: een klemborddetectie tijdens een nog niet afgehandeld venster
+; vervangt dat venster in plaats van eronder te blijven liggen. Zonder dit
+; kon een oud, nooit weggeklikt venster later weer tevoorschijn komen zodra
+; het nieuwere erbovenop werd afgehandeld — de gebruiker moest dan telkens
+; controleren of het zichtbare nummer wel het net gekopieerde nummer was.
+CloseExistingPhoneActionDialog() {
+    global PhoneActionDialogState
+
+    if !IsObject(PhoneActionDialogState)
+        return
+
+    existing := PhoneActionDialogState["Dialog"]
+    PhoneActionDialogState := 0
+    try existing.Destroy()
+
+    ShowNotification(
+        "Nieuw nummer herkend — vorig (nog niet bevestigd) belvenster is gesloten.",
+        4000,
+        "info"
+    )
+}
+
 ClosePhoneActionDialog(dialog, *) {
     global PhoneActionDialogState
 
     if IsObject(PhoneActionDialogState)
         && PhoneActionDialogState["DialogHwnd"] = dialog.Hwnd {
         PhoneActionDialogState := 0
+        ClearClipBoardNumber("belvenster afgerond of geannuleerd")
     }
 
     try dialog.Destroy()

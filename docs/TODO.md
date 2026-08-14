@@ -1,194 +1,189 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-08. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-14. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
-- **P0** — blocks the current 2.2 release path or risks a broken build.
-- **P1** — should be completed before/around 2.2 release or immediately afterwards.
+- **P0** — blocks the current release path or risks a broken build.
+- **P1** — should be completed before/around the current release or immediately afterwards.
 - **P2** — valuable engineering improvement; not a reason to destabilize the current release.
 
 ---
 
-## P0 — Validate and finish `feature/extended-logging`
+## P0 — Full 2.2 RC3 acceptance test (completed — DocBot 2.2 released)
 
-### Current state
-
-- Branch exists: `feature/extended-logging`.
-- Current branch AppVersion at handover: `2.2-extended-logging.2`.
-- The feature is ahead of `develop` and modifies `DocBot.ahk` plus `README.md`.
-- The earlier feature PR #12 was closed and is not the active integration vehicle anymore.
-- Recent commits fixed reported AutoHotkey multiline-concatenation errors, including a latest commit named `Corrigeer multiline concatenaties in probleemrapportage`.
-- The project conversation shows that syntax errors recurred more than once. Therefore the branch must still be treated as **unverified** until a real AHK v2 Windows validation succeeds.
-
-### Required validation
-
-- [ ] Check out the current remote branch and confirm there are no uncommitted local edits before testing.
-- [ ] Confirm `global AppVersion` matches the branch and current commit history.
-- [ ] Run an AutoHotkey v2 parse/compile check on Windows.
-- [ ] Search the entire newly added problem-reporting code for the multiline assignment/concatenation pattern that caused the recent syntax errors; do not fix only the first reported line.
-- [ ] Start the application and open the problem-reporting flow from **Help**.
-- [ ] Open the same flow from the tray menu and confirm both entry points share the same behavior.
-- [ ] Verify the no-consent path does not enable detailed logging.
-- [ ] Verify explicit consent enables detailed logging for the active reporting session only.
-- [ ] Close and reopen the reporting window and confirm the active session state is intentionally preserved.
-- [ ] Exit/restart DocBot and confirm extended logging is disabled/reset.
-- [ ] Confirm ordinary/background logging remains limited and redacted.
-- [ ] During a consented session, confirm full telephony responses and called
-      numbers appear only in the temporary extended log.
-- [ ] During a consented session, confirm the trigger and replacement of an
-      actually executed short, long, multiline, dynamic, and key-command
-      hotstring appear only in the temporary extended log.
-- [ ] Exercise the SMS/UIA path during a consented session and inspect that detailed logging occurs only there.
-- [ ] Create the diagnostic ZIP and inspect its contents for expected files and absence of unnecessary sensitive data.
-- [ ] Test Classic Outlook already running.
-- [ ] Test Classic Outlook not running but available; confirm startup/retry behavior.
-- [ ] Test Outlook automation unavailable; confirm the user receives a usable manual fallback.
-- [ ] Confirm the draft mail contains the intended description/body and ZIP attachment.
-- [ ] Verify no telemetry payload/configuration changed accidentally.
-- [ ] Review README text against the actual extended-logging behavior.
-
-### If another source fix is needed
-
-The current branch counter is `.2` at handover. If a new commit changes `DocBot.ahk`, increment the branch-specific AppVersion in that same commit (expected next value `.3`, unless the branch changed after this document was written).
-
-Do not change AppVersion for a docs-only commit.
-
-### Integration after successful test
-
-- [ ] Create/open a clean PR from `feature/extended-logging` to the current `develop`.
-- [ ] Use a normal merge commit; do not squash or rebase the tested feature history.
-- [ ] During integration, replace the feature prerelease version with a new central `2.2-dev.N` that is higher than the then-current develop value. At handover develop is `2.2-dev.5`, so the next central number would be at least `2.2-dev.6` if no intervening code commits occur.
-- [ ] Re-check README/changelog in the integration commit.
-- [ ] Re-check telemetry documentation only if telemetry code/config/payload actually changed.
-
----
-
-## P0 — Promote the validated feature into the 2.2 release candidate
-
-### Current state
-
-- Release branch: `release/2.2-rc.1`.
-- Draft PR #10 from release branch to `main` is open.
-- The project owner explicitly approved extended logging as an exception to the RC feature freeze.
-
-### Required flow
-
-- [ ] First merge validated extended logging into `develop`.
-- [ ] Bring the updated `develop` state into `release/2.2-rc.1` with a merge commit.
-- [ ] Resolve versioning on the release branch to `2.2-rc.2` in the same commit sequence that changes `DocBot.ahk`.
-- [ ] Do not add unrelated new functionality under cover of the approved exception.
-- [ ] Update the release PR description/status so it no longer describes RC1 as the code under final test.
-- [ ] Run the **full** RC test again; do not rely on the earlier RC1 test because the release code has materially changed.
-
----
-
-## P0 — Full 2.2 RC2 acceptance test
+DocBot 2.2 shipped: `main` is tagged `v2.2` (merge commit `a156dfe`, PR #27).
+This checklist is kept as a record of what the RC3 acceptance test covered;
+all items below were confirmed before the release.
 
 At minimum, validate the following on the managed Windows environment and, where required, on the internal hospital network.
 
 ### Startup / storage
 
-- [ ] Stable/test/dev profile selection is correct for the RC version (`DocBot-test`).
-- [ ] Existing profile data is not overwritten by bootstrap copying.
-- [ ] `attrib -U +P` failure does not block startup.
-- [ ] Missing/temporarily unavailable telemetry storage does not block core app functionality.
-- [ ] Existing telemetry InstallationId is used without a rewrite.
-- [ ] New InstallationId is not used until persistence/readback succeeds.
+- [x] Stable/test/dev profile selection is correct for the RC version (`DocBot-test`).
+- [x] Existing profile data is not overwritten by bootstrap copying.
+- [x] `attrib -U +P` failure does not block startup.
+- [x] Missing/temporarily unavailable telemetry storage does not block core app functionality.
+- [x] Existing telemetry InstallationId is used without a rewrite.
+- [x] New InstallationId is not used until persistence/readback succeeds.
 
 ### Hotstrings
 
-- [ ] Short replacement.
-- [ ] 200+ character replacement.
-- [ ] Multiline replacement.
-- [ ] Replacement containing `{Tab}`/`{Left}` or another supported key command.
-- [ ] `{{datum}}` and `{{tijd}}` expansion.
-- [ ] Existing clipboard contents survive hotstring use unchanged.
-- [ ] Save/edit/delete with AutoSave.
-- [ ] Backup/temp/atomic write path.
-- [ ] Legacy `.txt` import behavior.
+- [x] Short replacement.
+- [x] 200+ character replacement.
+- [x] Multiline replacement.
+- [x] Replacement containing `{Tab}`/`{Left}` or another supported key command.
+- [x] `{{datum}}` and `{{tijd}}` expansion.
+- [x] Existing clipboard contents survive hotstring use unchanged.
+- [x] Save/edit/delete with AutoSave.
+- [x] Backup/temp/atomic write path.
+- [x] Legacy `.txt` import behavior.
 
 ### Packages
 
-- [ ] Package catalogue loads.
-- [ ] Large spelling package opens acceptably.
-- [ ] Enable/disable package and item.
-- [ ] Personal conflict -> `Overruled` by default.
-- [ ] Explicit package priority -> `Voorrang`.
-- [ ] Package/package duplicate -> `Conflict`.
-- [ ] Save package item as personal copy.
-- [ ] Closing package manager during/after load remains safe.
+- [x] Package catalogue loads.
+- [x] Large spelling package opens acceptably.
+- [x] Enable/disable package and item.
+- [x] Personal conflict -> `Overruled` by default.
+- [x] Explicit package priority -> `Voorrang`.
+- [x] Package/package duplicate -> `Conflict`.
+- [x] Save package item as personal copy.
+- [x] Closing package manager during/after load remains safe.
 
 ### Telephony
 
-- [ ] Registration/link-code request.
-- [ ] Successful phone linking.
-- [ ] Refresh cooldown/countdown.
-- [ ] Poll loop continues without overlapping requests.
-- [ ] Poll loop recovers after the known stop/restart scenarios.
-- [ ] Call is blocked when no phone is linked.
-- [ ] Linking call remains allowed.
-- [ ] External Dutch number normalization.
-- [ ] Internal four-digit number path.
-- [ ] Speed dial from main UI and tray menu.
+- [x] Registration/link-code request.
+- [x] Successful phone linking.
+- [x] Refresh cooldown/countdown.
+- [x] Poll loop continues without overlapping requests.
+- [x] Poll loop recovers after the known stop/restart scenarios.
+- [x] Call is blocked when no phone is linked.
+- [x] Linking call remains allowed.
+- [x] External Dutch number normalization.
+- [x] Internal four-digit number path.
+- [x] Speed dial from main UI and tray menu.
 
 ### Call action / SMS
 
-- [ ] All four `Belactie` states behave correctly.
-- [ ] SMS is not offered when no valid local SMS action exists.
-- [ ] SMS is offered only for eligible mobile numbers.
-- [ ] Single SMS action config remains compatible.
-- [ ] Multiple SMS action config and selector work.
-- [ ] Dialog initially paints the selected button correctly.
-- [ ] Left/right selection works.
-- [ ] Enter activates the visually selected button.
-- [ ] Existing Edge foreground tab path.
-- [ ] Existing Edge background tab path through UIA.
-- [ ] Missing tab -> configured URL opens.
-- [ ] Telephone field is filled through UIA.
-- [ ] JavaScript fallback still works if needed.
-- [ ] No obsolete "number filled" success notification is shown.
-- [ ] DocBot does not send the SMS automatically.
+- [x] All four `Belactie` states behave correctly.
+- [x] SMS is not offered when no valid local SMS action exists.
+- [x] SMS is offered only for eligible mobile numbers.
+- [x] Single SMS action config remains compatible.
+- [x] Multiple SMS action config and selector work.
+- [x] Dialog initially paints the selected button correctly.
+- [x] Left/right selection works.
+- [x] Enter activates the visually selected button.
+- [x] Existing Edge foreground tab path.
+- [x] Existing Edge background tab path through UIA.
+- [x] Missing tab -> configured URL opens.
+- [x] Telephone field is filled through UIA.
+- [x] JavaScript fallback still works if needed.
+- [x] No obsolete "number filled" success notification is shown.
+- [x] DocBot does not send the SMS automatically.
 
 ### Help / UI / tray
 
-- [ ] Sidebar navigation.
-- [ ] Help accordions and clickable page links.
-- [ ] Custom notification window appears on managed Windows where TrayTip is unavailable.
-- [ ] Main window/tray state refreshes after telephony changes.
-- [ ] Start active/background/minimized behavior.
+- [x] Sidebar navigation.
+- [x] Help accordions and clickable page links.
+- [x] Custom notification window appears on managed Windows where TrayTip is unavailable.
+- [x] Main window/tray state refreshes after telephony changes.
+- [x] Start active/background/minimized behavior.
 
 ### Diagnostics / problem reporting
 
-- [ ] Baseline debug log remains available.
-- [ ] Developer debug window restriction remains intentional.
-- [ ] Complete the extended-logging checklist in the previous section.
+- [x] Baseline debug log remains available.
+- [x] Developer debug window restriction remains intentional.
+- [x] Integrated problem-reporting and extended-logging validation completed on RC2.
 
 ### Deployment/update
 
-- [ ] Compile final RC executable with the authorized local config.
-- [ ] `Build-EPD_Machine.bat` behavior on intended folder layout.
-- [ ] `signal.txt` shutdown/update flow.
-- [ ] Executable replacement and byte verification.
-- [ ] Restart task preserves active/background/minimized state.
-- [ ] Update signal is removed on both success and failure.
+- [x] Compile final RC executable with the authorized local config.
+- [x] `Build-EPD_Machine.bat` behavior on intended folder layout.
+- [x] `signal.txt` shutdown/update flow.
+- [x] Executable replacement and byte verification.
+- [x] Restart task preserves active/background/minimized state.
+- [x] Update signal is removed on both success and failure.
 
 ---
 
 ## P1 — Finalize stable 2.2 release
 
-Only after RC2 is explicitly accepted.
+- [x] On the release branch, set `AppVersion` from the final `2.2-rc.N` to stable `2.2` in the definitive release commit.
+- [x] Change README status from release candidate/development wording to stable 2.2 wording.
+- [x] Finalize `### 2.2` in the README Changelog; it remains the only release-history source.
+- [x] Verify the README `Telemetrie` section exactly matches the shipped payload and intervals.
+- [x] Verify license/documentation references identify the current project license and bundled third-party licenses correctly.
+- [x] Merge the release PR into `main` with **Create a merge commit** (PR #27, merge commit `a156dfe`).
+- [x] Create annotated tag `v2.2` on the stable release commit.
+- [x] Push/verify the tag on `origin`.
+- [ ] Bring release-only fixes back to `develop` via PR/merge commit (this documentation update is part of that PR).
+- [ ] Start the next development version on `develop` according to the normal version scheme (`AppVersion = 2.3-dev.1`; to be done as a direct follow-up commit on `develop` after this PR merges, matching how `rc.N`/`dev.N` bumps are handled elsewhere).
 
-- [ ] On the release branch, set `AppVersion` from the final `2.2-rc.N` to stable `2.2` in the definitive release commit.
-- [ ] Change README status from release candidate/development wording to stable 2.2 wording.
-- [ ] Finalize `### 2.2` in the README Changelog; it remains the only release-history source.
-- [ ] Verify the README `Telemetrie` section exactly matches the shipped payload and intervals.
-- [ ] Verify license/documentation references identify the current project license and bundled third-party licenses correctly.
-- [ ] Merge the release PR into `main` with **Create a merge commit**.
-- [ ] Create annotated tag `v2.2` on the stable release commit.
-- [ ] Push/verify the tag on `origin`.
-- [ ] Bring release-only fixes back to `develop` via PR/merge commit.
-- [ ] Start the next development version on `develop` according to the normal version scheme.
+---
+
+## P1 — Make HTTPS mandatory for telephony and SMS URLs
+
+An exploratory test on 2026-08-09 showed that changing the local telephony
+`BaseUrl` from `http://` to `https://` still delivered a registration/link
+code and successfully established a test call. Treat this as evidence that the
+HTTPS migration path is viable, not yet as complete acceptance or proof for
+every managed Windows workstation.
+
+### Application and documentation
+
+- [x] Change `DocBot.local.example.ahk` so the telephony `BaseUrl` example uses
+  `https://`.
+- [ ] Extend `ValidateLocalConfiguration()` to reject a telephony `BaseUrl`
+  that does not use HTTPS. Do not add a production certificate-validation
+  bypass or silent HTTP fallback.
+- [ ] Extend `ValidateSmsCallActionItem()` to reject every `SmsCallAction.Url`
+  that does not use HTTPS. Do not open or fill an HTTP SMS page.
+- [ ] Keep registration, event polling, and dialing on the same validated HTTPS
+  base URL unless the server contract is deliberately redesigned.
+- [ ] Document the HTTPS-only production invariant for telephony and SMS in `README.md`,
+  `AGENTS.md`, `CLAUDE.md`, `docs/ARCHITECTURE.md`, and where relevant
+  `docs/REGULATORY_ASSESSMENT.md` and `docs/DECISIONS.md`.
+- [ ] Confirm separately whether the server provides strong client/server
+  authentication; TLS transport encryption alone does not establish client
+  authorization. Record any additional authentication work as an explicit
+  scoped task.
+
+### Infrastructure dependencies
+
+- [ ] Confirm that the production hostname, certificate subject/SAN, full
+  certificate chain, TLS version, and listening port are correct for managed
+  Windows workstations.
+- [ ] Confirm that the issuing root/intermediate CA certificates are deployed
+  through the normal hospital trust-store management and that no client needs
+  to ignore certificate errors.
+- [ ] Confirm that reverse-proxy or server timeouts support the long-polling
+  event endpoint.
+- [ ] Assign ownership and monitoring for certificate renewal/expiry.
+- [ ] After the HTTPS rollout is accepted, disable the unsecured HTTP listener
+  rather than relying on an HTTP-to-HTTPS redirect. Coordinate this with the
+  telephony/server owner; it is not a DocBot-only change.
+
+### Acceptance evidence
+
+- [x] Exploratory HTTPS test: registration/link code received.
+- [x] Exploratory HTTPS test: test call successfully established.
+- [ ] Registration/link-code request succeeds in a compiled test build on a
+  representative managed Windows workstation.
+- [ ] Event polling remains active over time, does not overlap, and recovers
+  after the known stop/restart scenarios through HTTPS.
+- [ ] Linking and a controlled call to a designated test number succeed.
+- [ ] Certificate-name, trust-chain, expiry, and TLS failures are rejected and
+  produce a clear, non-sensitive diagnostic instead of falling back to HTTP.
+- [ ] A telephony or SMS URL using `http://` is rejected during configuration
+  validation with a clear, non-sensitive error.
+- [ ] The final release/preflight checklist records the HTTPS base URL and
+  certificate validation result without recording the confidential hostname,
+  endpoints, telephone numbers, or certificate private material in Git.
+
+This is a real `DocBot.ahk` behavior change. Implement it on a dedicated
+feature/fix branch from the then-current `develop`, update the branch-specific
+`AppVersion` in every commit that changes `DocBot.ahk`, and validate the
+compiled result on Windows and the internal network before integration.
 
 ---
 
@@ -245,23 +240,95 @@ This is a real `DocBot.ahk` behavior change, so implement it on its own feature/
 
 ---
 
-## P1 — Add a reliable AutoHotkey v2 syntax smoke check
+## P1 — Propagate the AutoHotkey v2 syntax smoke check to `develop`
 
-### Why
+### Status
 
-Recent extended-logging development repeatedly produced syntax errors that were discoverable only when the owner ran the code. Source review and generic diff checks are not enough.
+Implemented and validated. `.github/workflows/ahk-syntax-check.yml` runs
+`AutoHotkey64.exe /Validate` on a `windows-latest` GitHub Actions runner
+against `DocBot.ahk` (which pulls in the rest of the first-party source via
+`#Include`), using `DocBot.local.example.ahk` as the safe CI configuration
+so no real local secrets are needed or exposed in logs.
 
-### Goal
+Triggers: pull requests touching `.ahk` files (any base branch), pushes to
+`develop`, and `workflow_dispatch` — the latter only works once the
+workflow file exists on the repository's default branch.
 
-Create a lightweight validation path that can fail a PR before manual testing when `DocBot.ahk` or another first-party `.ahk` file cannot be parsed/compiled as AutoHotkey v2.
+Merged into `release/2.2-rc` via PR #19 (merge commit `2ee42b6`) and
+validated there:
 
-### Constraints
+- a clean `DocBot.ahk` passes;
+- a real parse-time syntax error is reported as a failure within roughly a
+  minute.
 
-- [ ] Validation must actually use AutoHotkey v2 / Ahk2Exe semantics, not a regex pretending to be a parser.
-- [ ] Do not require real internal telephony secrets for a pure syntax check.
-- [ ] Do not expose `DocBot.local.ahk` secrets in CI logs/artifacts.
-- [ ] If CI cannot safely compile the real app because local configuration is required, consider a safe test configuration/template specifically for parse/compile validation.
-- [ ] Keep Windows-specific validation explicit; macOS git tooling alone cannot validate AHK runtime behavior.
+Implementation note: `AutoHotkey64.exe /Validate` can still show a blocking
+error dialog on some parse errors even with `/ErrorStdOut`, which would
+hang a CI runner indefinitely if the step simply waited on the process.
+The workflow therefore starts the process without `-Wait`, calls
+`WaitForExit(60000)` itself, force-kills the process and reports a clear
+failure if it has not exited within 60 seconds, with `timeout-minutes: 5`
+on the job as a hard backstop.
+
+### Remaining work
+
+- [ ] The workflow currently exists only on `release/2.2-rc`, not on
+  `develop` or `main`. Add it to `develop` too (via a normal feature/fix
+  branch and PR) so it protects all new work, not only the current release
+  line, and will reach `main` through the normal release merge.
+- [ ] Decide whether the `pull_request` trigger should stay unscoped (any
+  base branch) or be limited to `develop`/`release/*`.
+- [ ] Reconsider relying on `workflow_dispatch` once the workflow exists on
+  the default branch; it cannot be triggered manually from a non-default
+  branch.
+
+---
+
+## P1 — Limit local standard diagnostics to seven days
+
+Implement automatic cleanup of standard diagnostic log entries older than
+seven days.
+
+- [ ] Remove entries older than seven days from both the active standard log
+  and the rotated `.oud` log without relying only on file modification time.
+- [ ] Preserve the existing redaction and approximately 2 MB size-rotation
+  behavior.
+- [ ] Ensure malformed or legacy log lines and cleanup failures do not block
+  application startup.
+- [ ] Verify on managed Windows that recent entries remain available, expired
+  entries are removed and extended-session logging keeps its separate
+  lifecycle.
+- [ ] Keep `README.md` and `docs/DATA_PROTECTION.md` synchronized with the
+  implemented behavior.
+
+This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
+branch from the then-current `develop` and update the branch-specific
+`AppVersion` in every commit that changes `DocBot.ahk`.
+
+---
+
+## P1 — Remove temporary problem-report artifacts
+
+Complete the lifecycle of the report directory and temporary files created
+during problem reporting. (Report files are attached individually, not as a
+ZIP — see DECISIONS.md.)
+
+- [ ] On cancellation, remove the report directory and temporary extended log
+  created for that report session.
+- [ ] After successful attachment to an Outlook draft, remove the local
+  report directory only after verifying that Outlook has safely taken over
+  the attachments.
+- [ ] For the manual fallback, keep the report directory available until the
+  user has had a usable opportunity to attach the files, then provide an
+  explicit completion/cleanup path and a safe cleanup fallback for abandoned
+  artifacts.
+- [ ] Verify that cancelling at each stage and closing DocBot cannot leave
+  sensitive report artifacts behind indefinitely.
+- [ ] Update `README.md` and `docs/DATA_PROTECTION.md` to the implemented
+  lifecycle.
+
+This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
+branch from the then-current `develop` and update the branch-specific
+`AppVersion` in every commit that changes `DocBot.ahk`.
 
 ---
 
@@ -333,6 +400,58 @@ Do not move migration code during the 2.2 release just for cleanliness.
 
 ---
 
+## P2 — Add a user instruction for safe hotstring content
+
+Create and maintain an end-user instruction for personal hotstrings. The
+instruction must:
+
+- [ ] explain that hotstrings are intended for generic, reusable text;
+- [ ] prohibit patient-identifying and patient-specific content in
+  `hotstrings.json`;
+- [ ] distinguish prohibited patient-specific content from generic clinical
+  formulations that are not linked to an identifiable patient;
+- [ ] explain that a name, telephone number, e-mail address or signature of
+  the employee can be personal data and remains subject to organizational
+  policy;
+- [ ] explain that DocBot cannot technically determine whether free text
+  contains patient-specific information;
+- [ ] identify where the instruction is presented to users and who owns its
+  review and maintenance.
+
+Align the instruction with `docs/DATA_PROTECTION.md` and reassess whether it
+must also appear in the README, in-product help or organizational onboarding
+before release.
+
+---
+
+## P2 — Reassess the telemetry username after the startup phase
+
+The Windows username currently supports targeted troubleshooting during the
+startup phase, for example when telephony is not activated or when a local
+installation identity behaves unexpectedly because OneDrive was not yet
+synchronized. Telemetry was designed for data minimization from the start:
+the payload already carries a pseudonymous, randomly generated installation
+ID rather than relying on directly identifying data, and the username is a
+deliberately temporary addition on top of that ID, not a substitute for a
+missing pseudonymous identifier.
+
+- [ ] Define who decides when the startup phase has ended and record an
+  objective review date or exit criterion.
+- [ ] Reassess whether targeted support still requires the Windows username.
+- [ ] If it is no longer necessary, remove the username from the payload.
+  The installation ID already present in the payload continues to serve as
+  the less-identifying mechanism for the remaining telemetry purposes; no
+  new pseudonymization mechanism needs to be designed.
+- [ ] Do not reuse the username for performance, attendance or individual
+  work-behavior monitoring.
+- [ ] Update the README telemetrie notice and `docs/DATA_PROTECTION.md` in the
+  same change as any payload modification.
+
+Changing the payload requires explicit approval from the project owner. A
+change to `DocBot.ahk` must follow the branch-specific `AppVersion` rule.
+
+---
+
 ## P2 — Consider gradual modularization after 2.2
 
 `DocBot.ahk` is large. Modularization could eventually improve maintainability, but it is **not** a safe last-minute release task.
@@ -377,6 +496,8 @@ These problems are important historical context but are not open TODOs unless th
 - **Shared telephony XHR reference:** replaced by independent request objects.
 - **Fixed-interval long polling:** replaced by chained polling after response completion.
 - **Clipboard-based hotstring expansion:** deliberately removed/prohibited.
+- **Extended-logging integration status in durable docs:** synchronized with the integrated `develop`/RC2 source; obsolete feature-branch promotion tasks were removed while broader release-candidate acceptance remains open.
+- **Integrated problem reporting on RC2:** the dedicated compiled-Windows validation checklist was completed by the project owner on 2026-08-09, including consent/privacy boundaries, session behavior, diagnostic content, ZIP creation, and Outlook/manual fallback paths.
 
 ---
 

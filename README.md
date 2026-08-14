@@ -3,20 +3,25 @@ DocBot
 
 Overzicht
 ---------
-DocBot is een AutoHotkey v2-hulpmiddel voor medewerkers met twee hoofdfuncties:
-(a) tekstvervanging via hotstrings, en (b) bellen via de interne IP-telefonie
-van het ziekenhuis, inclusief automatische detectie van telefoonnummers op
-het klembord. Alles draait via één GUI met sidebar-navigatie en een
-tray-icoon.
+DocBot is productiviteitssoftware voor medewerkers in een beheerde
+bedrijfsomgeving. De software ondersteunt tekstinvoer door ingestelde
+afkortingen (hotstrings) te vervangen en ondersteunt communicatie door
+telefoonnummers op het Windows-klembord technisch te herkennen en te
+normaliseren. Afhankelijk van de gebruikersinstelling kan DocBot een herkend
+nummer doorgeven aan een geconfigureerde interne telefoniedienst of invullen
+in een geconfigureerde SMS-webapplicatie. DocBot verzendt zelf geen
+SMS-berichten. Alles draait via één GUI met sidebar-navigatie en een tray-icoon.
 
-Deze README beschrijft de ontwikkeling van DocBot 2.2 op de
-`develop`-branch. Versie 2.1 is de huidige stabiele productieversie op
-`main`; nieuwe functionaliteit wordt eerst via afzonderlijke
-featurebranches en het testprofiel beproefd.
+DocBot is ontstaan vanuit behoeften in een ziekenhuisomgeving en wordt daar
+ook toegepast. De software heeft geen beoogd medisch doel: zij verricht geen
+medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft
+geen diagnose-, behandel-, doserings- of monitoringsadvies.
+
+Deze README beschrijft de stabiele release 2.2 op `main`.
 
 Bestanden
 ---------
-- `DocBot.ahk` — ontwikkelversie 2.2 met de huidige GUI,
+- `DocBot.ahk` — stabiele release 2.2 met de huidige GUI,
   telefoniefunctionaliteit, hotstrings, snelkiesnummers en pakketbeheer.
 - `packages/` — versieerbare ingebouwde hotstringpakketten plus manifest.
 - `ThirdParty/ColorButton/` — custom-draw ondersteuning voor de moderne
@@ -29,6 +34,17 @@ Bestanden
 - `LICENSE` — PolyForm Noncommercial-licentie van DocBot 2.2 en later.
 - `AGENTS.md` en `CLAUDE.md` — project- en werkinstructies voor
   AI-assistenten.
+- `docs/REGULATORY_ASSESSMENT.md` — voorlopige, versiegebonden beoordeling van
+  DocBot als productiviteitssoftware die in zorgprocessen wordt toegepast en
+  als mogelijke Medical Device Software, inclusief de relevantie van
+  NEN 7510, IEC 62304, ISO 14971 en ISO 13485.
+- `docs/INTENDED_PURPOSE.md` — goedgekeurde verklaring van het beoogde gebruik,
+  de gebruikers, omgeving, invoer, uitvoer, autonome acties, beperkingen en
+  uitgesloten medische toepassingen.
+- `docs/DATA_PROTECTION.md` — technische beschrijving van persoonsgegevens-
+  en gegevensstromen, met openstaande organisatorische invulpunten voor
+  rollen, grondslagen, ontvangers, bewaartermijnen, autorisaties,
+  transportbeveiliging en de DPIA-screening.
 
 Er is geen apart bestand voor debug-logging in de repo: dat logbestand wordt
 tijdens het draaien van het script aangemaakt op de gebruikerscomputer (zie
@@ -158,7 +174,8 @@ De statuskolom gebruikt steeds dezelfde betekenis:
 Help in DocBot
 ---------------
 DocBot bevat een aparte Help-pagina met vier uitklapbare onderwerpen:
-telefoon koppelen, bellen vanuit HiX, bellen via snelkiesnummers en
+telefoon koppelen, bellen en SMS'jes versturen vanuit applicaties 
+die telefoonnummers bevatten, bellen via snelkiesnummers en
 hotstrings gebruiken. De instructies verwijzen expliciet naar de juiste
 pagina's, knoppen en opties in DocBot; die interface-elementen zijn in de
 uitleg vetgedrukt. Verwijzingen naar Overzicht, Telefonie en Hotstrings zijn
@@ -182,6 +199,13 @@ Functionaliteit — Telefonie
     Enter bevestigt de blauwe keuze. Interne nummers worden in deze stand
     direct gebeld. Deze optie is alleen beschikbaar wanneer lokaal ten minste
     één SMS-actie is geconfigureerd.
+- Komt er via het klembord een nieuw nummer binnen terwijl er nog een niet
+  afgehandeld belvenster open staat (bevestiging, of de keuze
+  bellen/sms), dan sluit DocBot dat oude venster automatisch — met een
+  korte melding — en toont het venster voor het nieuwste nummer. Er staat
+  zo nooit meer dan één klembord-belvenster tegelijk open, ook niet
+  wanneer het nieuwe nummer een intern nummer is dat zonder eigen venster
+  direct wordt gebeld.
 - Onder **Instellingen > SMS actie** kiest de gebruiker welke lokaal
   geconfigureerde SMS-pagina wordt gebruikt. De dropdown toont de
   gebruikersvriendelijke `Title`; de technische `WindowTitle` wordt
@@ -217,9 +241,9 @@ Functionaliteit — Telefonie
   `snelkiesnummers.json` wordt vanuit de gebruikers- of programmamap
   veilig overgenomen; de bestaande atomaire opslag en `.bak`-back-up
   blijven daarbij van toepassing.
-- Deze functionaliteit werkt uitsluitend binnen het ziekenhuisnetwerk, omdat
-  er verbinding wordt gemaakt met een interne telefonieserver die van
-  buitenaf niet bereikbaar is.
+- In de huidige ziekenhuisconfiguratie werkt deze functionaliteit uitsluitend
+  binnen het ziekenhuisnetwerk, omdat de geconfigureerde interne
+  telefonieserver van buitenaf niet bereikbaar is.
 
 Technische achtergrond — IP-telefonie API
 -------------------------------------------
@@ -255,6 +279,28 @@ Als telemetrie lokaal is ingeschakeld, stuurt DocBot een statusbericht naar
 een Power Automate Teams-webhook. De webhook-URL staat uitsluitend in het
 niet door Git gevolgde `DocBot.local.ahk`. De eerste heartbeat wordt tien
 seconden na het starten verzonden en daarna iedere vijftien minuten.
+
+Het doel is inzicht krijgen in het gebruik en de omvang van DocBot, zodat
+systeembeheer de te verwachten belasting van de gebruikte telefonie- en
+SMS-servers kan ramen en de benodigde capaciteit kan plannen. DocBot meet
+hierbij geen verzonden SMS-berichten; een verwachting voor de SMS-server wordt
+alleen afgeleid uit de omvang en activiteit van de installaties. De centrale
+telemetrie is toegankelijk voor de leden van het RPA ontwikkel- en beheerteam.
+Logregistraties ouder dan één jaar worden uit de centrale bestemming
+verwijderd.
+
+De telemetrie is vanaf het ontwerp opgezet met dataminimalisatie: de payload
+gebruikt een willekeurig, pseudoniem installatie-ID in plaats van
+rechtstreeks herleidbare gegevens. Tijdens de huidige opstartfase wordt de
+Windows-gebruikersnaam daarnaast, als bewust tijdelijke aanvulling op dat
+installatie-ID, gebruikt om een technisch signaal aan de getroffen gebruiker
+te kunnen koppelen en gericht hulp te bieden. Voorbeelden zijn een
+niet-geactiveerde telefoniefunctie en het onderzoek naar een eerder
+wisselend installatie-ID wanneer DocBot startte voordat OneDrive was
+gesynchroniseerd. De gebruikersnaam is niet bedoeld voor beoordeling van
+prestaties, aanwezigheid of individueel werkgedrag. Na de opstartfase wordt
+opnieuw beoordeeld of dit veld nog nodig is; het installatie-ID blijft dan
+als het al aanwezige, minder identificerende kenmerk in de payload staan.
 
 Bij het starten leest DocBot eerst het bestaande installatie-ID uit
 `settings.ini`. Als dat ID beschikbaar is, wordt niets teruggeschreven en kan
@@ -316,25 +362,44 @@ zijn. Afsluiten of herstarten van DocBot stopt de uitgebreide logging
 automatisch en verwijdert het tijdelijke uitgebreide logbestand.
 
 Bij **Probleemrapport afronden** stopt DocBot eerst de uitgebreide logging en
-maakt daarna een ZIP-bestand met alleen het probleemrapport, de beperkte
-standaardlog en — wanneer daarvoor toestemming was gegeven — het tijdelijke
-uitgebreide log. `settings.ini`, `hotstrings.json`, lokale configuratie en
-telemetrie-ID worden nooit als bestand toegevoegd. Gebruikte hotstringinhoud
-kan na toestemming wel in het uitgebreide log staan, zoals hierboven vermeld.
+zet daarna het probleemrapport, de beperkte standaardlog en — wanneer daarvoor
+toestemming was gegeven — het tijdelijke uitgebreide log klaar als losse
+bestanden (geen ZIP). `settings.ini`, `hotstrings.json`, lokale configuratie
+en telemetrie-ID worden nooit als bestand toegevoegd. Gebruikte
+hotstringinhoud kan na toestemming wel in het uitgebreide log staan, zoals
+hierboven vermeld.
 
 DocBot opent vervolgens een conceptbericht in Classic Outlook met het
-diagnosepakket als bijlage. Als Outlook nog niet actief is, start DocBot
-Outlook en wacht het totdat de MAPI-sessie gereed is. De gebruiker controleert
-het bericht en klikt zelf op **Verzenden**. Wanneer Classic Outlook niet
-beschikbaar is, opent DocBot een nieuw e-mailbericht zonder bijlage en toont
-het het ZIP-bestand in Verkenner, zodat de gebruiker dit handmatig kan
-toevoegen. Het ontwikkelaarsdebugvenster blijft alleen zichtbaar voor het
-daarvoor ingerichte Windows-account.
+diagnosepakket als losse bijlagen. Als Outlook nog niet actief is, start
+DocBot Outlook en wacht het totdat de MAPI-sessie gereed is. De gebruiker
+controleert het bericht en klikt zelf op **Verzenden**. Wanneer Classic
+Outlook niet beschikbaar is, opent DocBot een nieuw e-mailbericht zonder
+bijlage en toont de rapportmap in Verkenner, zodat de gebruiker de bestanden
+handmatig kan toevoegen. Het ontwikkelaarsdebugvenster blijft alleen
+zichtbaar voor het daarvoor ingerichte Windows-account.
+
+Regelgeving, informatiebeveiliging en patiëntveiligheid
+-------------------------------------------------------
+De actuele repositoryanalyse van de intended purpose, gegevensverwerking,
+autonome acties, mogelijke kwalificatie als Medical Device Software en de
+relevantie van NEN 7510, IEC 62304, ISO 14971 en ISO 13485 staat in
+`docs/REGULATORY_ASSESSMENT.md`. De huidige beoordeling is dat DocBot
+productiviteitssoftware is die in de huidige ziekenhuisomgeving
+persoonsgegevens en potentieel gezondheidsinformatie verwerkt, maar op basis
+van de intended purpose en huidige functie waarschijnlijk geen eigen medisch
+doel heeft onder de MDR.
+
+Deze beoordeling is voorlopig en geen juridisch of gecertificeerd
+conformiteitsoordeel. Nieuwe patiëntspecifieke analyse, klinische aanbeveling,
+alarmering, medicatie- of behandelbeslissing of aansturing van een medisch
+hulpmiddel vereist vóór implementatie een nieuwe kwalificatie- en
+risicoanalyse.
 
 Changelog
 ---------
 
-### 2.2 — In ontwikkeling
+### 2.2 — Huidige stabiele release
+- Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
 - Nieuwe gebruikersflow **Probleem melden...** via zowel het systeemvakmenu
   als een knop die de bestaande Help-footer vervangt. Beide openen dezelfde
   rapportsessie met een optionele probleembeschrijving.
@@ -351,13 +416,16 @@ Changelog
   telefoonnummers, klembordinhoud, volledige URL's, ruwe serverresponsen,
   gebruikersnaam en computernaam worden afgeschermd of niet opgenomen.
 - Probleemrapporten starten Classic Outlook zo nodig, wachten tot Outlook
-  gereed is en openen daarna een conceptmail met ZIP-bijlage. Bij een
-  Outlook-fout volgt een zichtbare handmatige fallback.
+  gereed is en openen daarna een conceptmail met de rapportbestanden als
+  losse bijlagen. Bij een Outlook-fout volgt een zichtbare handmatige
+  fallback.
 - Bij stoppen of afronden wordt de status van uitgebreide logging direct in
   het rapportagevenster bijgewerkt, ook wanneer Outlook niet beschikbaar is.
-- ZIP-opbouw wacht voortaan totdat Windows Explorer het archief herkent en
-  alle rapportbestanden met de verwachte grootte heeft overgenomen.
-- Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
+- Rapportbestanden worden los aan de mail gehangen in plaats van in een ZIP.
+  De eerdere ZIP-opbouw via de Explorer-shellextensie "Compressed (zipped)
+  Folders" bleek op sommige door group policy/EDR beheerde werkplekken
+  onbetrouwbaar of volledig onbeschikbaar, waardoor probleemrapportage zelf
+  faalde.
 - De gebruikersmap wordt waar mogelijk met `attrib -U +P` als altijd lokaal
   beschikbaar gemarkeerd, zonder dat een mislukte pinactie de start blokkeert.
 - DocBot voert bij het opstarten geen algemene schrijfbaarheidstest meer uit;
@@ -380,10 +448,23 @@ Changelog
   succesmelding nadat het telefoonnummer zichtbaar is ingevuld. Een
   geforceerde repaint ná het tonen van de dialoog voorkomt dat de knoppen
   aanvankelijk nog met de native Windows-rand verschijnen.
+- Fix: een nog niet afgehandeld belvenster kon door een volgende
+  klemborddetectie onopgemerkt open blijven staan en later met een
+  verouderd nummer terugkomen. DocBot sluit een dergelijk venster nu altijd
+  automatisch (met melding) zodra een nieuw nummer wordt herkend, ook
+  wanneer dat nieuwe nummer — zoals een intern nummer bij Belactie "Bellen
+  of sms kiezen" — zonder eigen dialoog direct wordt gebeld.
+- Het klembordnummer in de centrale telefoniestatus wordt nu direct
+  geleegd na bellen, sms-actie, annuleren of sluiten van het venster, in
+  plaats van te blijven staan tot het volgende nummer of het afsluiten van
+  DocBot.
+- Klikbare link naar de GitHub-pagina van DocBot
+  (`https://github.com/Pastinakel/DocBot`) linksonder op het Over-scherm,
+  op dezelfde hoogte als de knop "Probleem melden..." op de Help-pagina.
 
-### 2.1 — Huidige stabiele release
+### 2.1 — Vorige stabiele release
 - Nieuwe Help-pagina met vier uitklapbare, scrollbare instructiekaarten voor
-  telefoonregistratie, bellen vanuit HiX, snelkiesnummers en hotstrings.
+  telefoonregistratie, bellen vanuit een EPD, snelkiesnummers en hotstrings.
 - Optionele Power Automate-heartbeat voor centraal inzicht in actieve
   installaties en telefonie-/hotstringstatus, zonder computernaam of
   inhoudelijke gebruikersgegevens; configuratie en webhook blijven lokaal.
