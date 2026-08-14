@@ -17,11 +17,14 @@ ook toegepast. De software heeft geen beoogd medisch doel: zij verricht geen
 medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft
 geen diagnose-, behandel-, doserings- of monitoringsadvies.
 
-Deze README beschrijft de stabiele release 2.2 op `main`.
+Deze README beschrijft de ontwikkeling van DocBot 2.3 op de
+`develop`-branch. Versie 2.2 is de huidige stabiele productieversie op
+`main`; nieuwe functionaliteit wordt eerst via afzonderlijke
+featurebranches en het testprofiel beproefd.
 
 Bestanden
 ---------
-- `DocBot.ahk` — stabiele release 2.2 met de huidige GUI,
+- `DocBot.ahk` — ontwikkelversie 2.3 met de huidige GUI,
   telefoniefunctionaliteit, hotstrings, snelkiesnummers en pakketbeheer.
 - `packages/` — versieerbare ingebouwde hotstringpakketten plus manifest.
 - `ThirdParty/ColorButton/` — custom-draw ondersteuning voor de moderne
