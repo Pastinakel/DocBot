@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-14. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-15. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -279,11 +279,16 @@ on the job as a hard backstop.
 - [x] The workflow now exists on both `main` (reached via the 2.2 release
   merge) and `develop` (brought back in the same step), so it protects all
   new work, not only the release line it started on.
-- [ ] Decide whether the `pull_request` trigger should stay unscoped (any
-  base branch) or be limited to `develop`/`release/*`.
-- [ ] Reconsider relying on `workflow_dispatch` once the workflow exists on
-  the default branch; it cannot be triggered manually from a non-default
-  branch.
+- [x] Decided (2026-08-15, see `docs/DECISIONS.md` D-042): the
+  `pull_request` trigger stays unscoped (any base branch) — every `.ahk`
+  change must be syntax-checked, and old branches are not being reworked
+  without consequence.
+- [x] Decided (2026-08-15, see D-042): `workflow_dispatch` stays — it is
+  used to validate a feature/fix branch on GitHub before/without a PR,
+  ahead of local Windows testing.
+
+This TODO item is fully resolved; no further action needed unless the
+decision above is revisited.
 
 ---
 
