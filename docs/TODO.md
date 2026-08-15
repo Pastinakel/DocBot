@@ -133,16 +133,22 @@ every managed Windows workstation.
 
 - [x] Change `DocBot.local.example.ahk` so the telephony `BaseUrl` example uses
   `https://`.
-- [ ] Extend `ValidateLocalConfiguration()` to reject a telephony `BaseUrl`
+- [x] Extend `ValidateLocalConfiguration()` to reject a telephony `BaseUrl`
   that does not use HTTPS. Do not add a production certificate-validation
-  bypass or silent HTTP fallback.
-- [ ] Extend `ValidateSmsCallActionItem()` to reject every `SmsCallAction.Url`
-  that does not use HTTPS. Do not open or fill an HTTP SMS page.
-- [ ] Keep registration, event polling, and dialing on the same validated HTTPS
-  base URL unless the server contract is deliberately redesigned.
-- [ ] Document the HTTPS-only production invariant for telephony and SMS in `README.md`,
+  bypass or silent HTTP fallback. Implemented on `claude/https-only-telephony-sms`
+  (`AppVersion 2.3-https-telefonie.1`); see `docs/DECISIONS.md` D-043.
+- [x] Extend `ValidateSmsCallActionItem()` to reject every `SmsCallAction.Url`
+  that does not use HTTPS. Do not open or fill an HTTP SMS page. Implemented
+  in the same change as above.
+- [x] Keep registration, event polling, and dialing on the same validated HTTPS
+  base URL unless the server contract is deliberately redesigned. Already
+  true architecturally — `IPTConfig["URL"]` is built directly from the
+  validated `BaseUrl`, so no separate per-call change was needed (D-043).
+- [x] Document the HTTPS-only production invariant for telephony and SMS in `README.md`,
   `AGENTS.md`, `CLAUDE.md`, `docs/ARCHITECTURE.md`, and where relevant
-  `docs/REGULATORY_ASSESSMENT.md` and `docs/DECISIONS.md`.
+  `docs/REGULATORY_ASSESSMENT.md` and `docs/DECISIONS.md`. Also updated
+  `docs/DATA_PROTECTION.md` (not originally listed here, but it contained
+  the same now-stale "code does not enforce HTTPS" wording in three places).
 - [ ] Confirm separately whether the server provides strong client/server
   authentication; TLS transport encryption alone does not establish client
   authorization. Record any additional authentication work as an explicit
@@ -175,7 +181,9 @@ every managed Windows workstation.
 - [ ] Certificate-name, trust-chain, expiry, and TLS failures are rejected and
   produce a clear, non-sensitive diagnostic instead of falling back to HTTP.
 - [ ] A telephony or SMS URL using `http://` is rejected during configuration
-  validation with a clear, non-sensitive error.
+  validation with a clear, non-sensitive error. Implemented (D-043); still
+  needs a real compiled-build/Windows confirmation before checking this off,
+  per the project's manual-validation reality (`docs/ARCHITECTURE.md` §19).
 - [ ] The final release/preflight checklist records the HTTPS base URL and
   certificate validation result without recording the confidential hostname,
   endpoints, telephone numbers, or certificate private material in Git.

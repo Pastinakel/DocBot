@@ -150,6 +150,8 @@ Endpoints:
 
 Alle aanroepen zijn POST. De configuratie staat in `IPTConfig`; de live status staat in `State["IPT"]`. Beide staan bovenaan `DocBot.ahk`.
 
+`Telephony.BaseUrl` en elke `SmsCallAction.Url` in `DocBot.local.ahk` moeten met `https://` beginnen. `ValidateLocalConfiguration()` respectievelijk `ValidateSmsCallActionItem()` weigeren een `http://`-waarde al bij het opstarten (zie `docs/DECISIONS.md` D-043); voeg hier geen stille HTTP-fallback of certificaatomzeiling aan toe.
+
 ## AutoHotkey v2 en globale variabelen
 
 AHK v2 voert top-level statements in bestandsvolgorde uit. Functiedefinities worden daarbij overgeslagen, maar een `global X := ...`-initialisatie die pas na een aanroep staat waarin `X` wordt gebruikt, is op dat moment nog niet uitgevoerd.

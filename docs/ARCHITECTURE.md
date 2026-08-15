@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-08-14. Repository facts refer to stable DocBot 2.2 (`main`, tag `v2.2`) and the start of the 2.3 development line unless noted otherwise._
+_Last updated: 2026-08-15. Repository facts refer to stable DocBot 2.2 (`main`, tag `v2.2`) and the start of the 2.3 development line unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -38,7 +38,7 @@ DocBot.local.ahk   (optional include at source level; required to pass validatio
 
 `DocBot.local.example.ahk` is the only safe versioned template.
 
-The application validates local configuration immediately. Missing/invalid required local values produce a blocking configuration error and exit.
+The application validates local configuration immediately. Missing/invalid required local values produce a blocking configuration error and exit. This includes an HTTPS-only check: `ValidateLocalConfiguration()` rejects a non-`https://` `Telephony.BaseUrl`, and `ValidateSmsCallActionItem()` rejects a non-`https://` `SmsCallAction.Url`, using the same `i)^https://` pattern already used for `Telemetry.WebhookUrl` (see `docs/DECISIONS.md` D-043).
 
 ## 3. AutoHotkey v2 startup-order constraint
 
@@ -276,7 +276,11 @@ When a user edits or saves a package item as personal, the application writes a 
 
 - technical configuration: `IPTConfig`;
 - live state: `State["IPT"]`;
-- real URLs/endpoint names: local config only.
+- real URLs/endpoint names: local config only;
+- `IPTConfig["URL"]` is built directly from the validated (HTTPS-only)
+  `Telephony.BaseUrl`, so every request built from `IPTConfig["URL"]`
+  inherits that guarantee without a separate per-call check
+  (`docs/DECISIONS.md` D-043).
 
 ### 11.2 Request lifecycle
 
