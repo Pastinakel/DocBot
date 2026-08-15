@@ -714,3 +714,33 @@ revisit only if a future report package needs to bundle many/larger files.
 - The temporary report directory (not a ZIP file) is the artifact whose
   lifecycle `docs/TODO.md` P1 "Remove temporary problem-report artifacts"
   still needs to address.
+
+---
+
+## D-042 — Keep the AHK syntax check unscoped on `pull_request` and keep `workflow_dispatch`
+
+**Status:** Accepted
+
+D-040/`docs/TODO.md` left two open questions about
+`.github/workflows/ahk-syntax-check.yml`: whether the `pull_request` trigger
+should be limited to `develop`/`release/*`, and whether `workflow_dispatch`
+is still worth keeping now that the workflow lives on `main`.
+
+Project owner decision (2026-08-15):
+
+- **`pull_request` stays unscoped (no `branches:` filter).** Every `.ahk`
+  change must be syntax-checked regardless of target branch; old branches
+  without live consequences are not being reworked, so there is no
+  meaningful case where an unwanted PR triggers a wasted run.
+- **`workflow_dispatch` stays.** It lets a feature/fix branch be validated
+  on GitHub before/without opening a PR, which matters for local
+  Windows-side testing of that branch — the manual trigger is exercised
+  directly, not a leftover from before the workflow reached `main`.
+
+**Consequences**
+
+- No workflow change needed; this closes the two open bullets under
+  "Propagate the AutoHotkey v2 syntax smoke check to `develop`" in
+  `docs/TODO.md`.
+- Revisit only if Actions usage/cost from the unscoped trigger becomes a
+  real problem, or if `workflow_dispatch` turns out to go unused.
