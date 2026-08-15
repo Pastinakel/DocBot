@@ -106,7 +106,7 @@ At minimum, validate the following on the managed Windows environment and, where
 
 ---
 
-## P1 — Finalize stable 2.2 release
+## P1 — Finalize stable 2.2 release (done)
 
 - [x] On the release branch, set `AppVersion` from the final `2.2-rc.N` to stable `2.2` in the definitive release commit.
 - [x] Change README status from release candidate/development wording to stable 2.2 wording.
@@ -116,8 +116,13 @@ At minimum, validate the following on the managed Windows environment and, where
 - [x] Merge the release PR into `main` with **Create a merge commit** (PR #27, merge commit `a156dfe`).
 - [x] Create annotated tag `v2.2` on the stable release commit.
 - [x] Push/verify the tag on `origin`.
-- [ ] Bring release-only fixes back to `develop` via PR/merge commit (this documentation update is part of that PR).
-- [ ] Start the next development version on `develop` according to the normal version scheme (`AppVersion = 2.3-dev.1`; to be done as a direct follow-up commit on `develop` after this PR merges, matching how `rc.N`/`dev.N` bumps are handled elsewhere).
+- [x] Bring release-only fixes back to `develop` via PR/merge commit (PR #28).
+- [x] Start the next development version on `develop` according to the normal version scheme (`AppVersion = 2.3-dev.1`, direct commit on `develop`).
+
+The temporary release branches (`release/2.2-rc`, `release/2.2-finalize`,
+`docs/rc3-acceptance-checklist`, `chore/bring-back-2.2-to-develop`) have all
+been deleted after merging; their content lives on in `main`/`develop`
+history and tag `v2.2`.
 
 ---
 
@@ -217,19 +222,19 @@ Stable has priority: a stable numeric `AppVersion` uses `DocBot` regardless of w
 - [ ] Update `docs/PROJECT_CONTEXT.md` and `docs/ARCHITECTURE.md` to the new invariant/data-flow.
 - [ ] Add/supersede the corresponding storage-profile decision in `docs/DECISIONS.md` rather than silently erasing the old rationale.
 - [ ] Revisit this TODO and any acceptance-test wording that still assumes suffix-only profile selection.
-- [ ] Do not change the branch-version scheme (`2.2-dev.N`, `2.2-<branch>.N`, `2.2-rc.N`, stable `2.2`).
+- [ ] Do not change the branch-version scheme (`2.3-dev.N`, `2.3-<branch>.N`, `2.3-rc.N`, stable `2.3`).
 - [ ] Do not treat package-cache behavior under `%LocalAppData%` as part of this change unless explicitly approved; this task concerns Documents/config/user-data profile selection.
 - [ ] Telemetry payload, fields and interval should remain unchanged; only its `settings.ini` location follows the selected user profile. Update telemetry documentation only if the implementation changes telemetric behavior beyond that.
 
 ### Required test matrix
 
-- [ ] Stable `2.2`, compiled -> `Documents\DocBot`.
-- [ ] Stable `2.2`, noncompiled -> `Documents\DocBot`.
-- [ ] `2.2-dev.N`, compiled -> `Documents\DocBot-test`.
-- [ ] `2.2-rc.N`, compiled -> `Documents\DocBot-test`.
-- [ ] Feature/fix prerelease such as `2.2-example.1`, compiled -> `Documents\DocBot-test`.
-- [ ] `2.2-dev.N`, noncompiled -> `Documents\DocBot-dev`.
-- [ ] `2.2-rc.N`, noncompiled -> `Documents\DocBot-dev`.
+- [ ] Stable `2.3`, compiled -> `Documents\DocBot`.
+- [ ] Stable `2.3`, noncompiled -> `Documents\DocBot`.
+- [ ] `2.3-dev.N`, compiled -> `Documents\DocBot-test`.
+- [ ] `2.3-rc.N`, compiled -> `Documents\DocBot-test`.
+- [ ] Feature/fix prerelease such as `2.3-example.1`, compiled -> `Documents\DocBot-test`.
+- [ ] `2.3-dev.N`, noncompiled -> `Documents\DocBot-dev`.
+- [ ] `2.3-rc.N`, noncompiled -> `Documents\DocBot-dev`.
 - [ ] Feature/fix prerelease, noncompiled -> `Documents\DocBot-dev`.
 - [ ] Existing `DocBot-test` and `DocBot-dev` directories are never repopulated/overwritten merely because selection rules changed.
 - [ ] Stored hotstring/settings/package/speeddial paths still migrate or resolve correctly in the selected profile.
@@ -271,10 +276,9 @@ on the job as a hard backstop.
 
 ### Remaining work
 
-- [ ] The workflow currently exists only on `release/2.2-rc`, not on
-  `develop` or `main`. Add it to `develop` too (via a normal feature/fix
-  branch and PR) so it protects all new work, not only the current release
-  line, and will reach `main` through the normal release merge.
+- [x] The workflow now exists on both `main` (reached via the 2.2 release
+  merge) and `develop` (brought back in the same step), so it protects all
+  new work, not only the release line it started on.
 - [ ] Decide whether the `pull_request` trigger should stay unscoped (any
   base branch) or be limited to `develop`/`release/*`.
 - [ ] Reconsider relying on `workflow_dispatch` once the workflow exists on
