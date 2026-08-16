@@ -346,7 +346,10 @@ opgenomen. De precieze omvang van de standaardlogging blijft bewust beperkt
 tot globale technische gebeurtenissen en foutcategorieën. Bij de eerste start
 van deze versie verwijdert DocBot een eventueel ouder, nog niet centraal
 geschoond debuglog, zodat historische URL's of responsinhoud niet alsnog in
-een nieuw probleemrapport terechtkomen.
+een nieuw probleemrapport terechtkomen. Naast de bestaande omvangrotatie
+(circa 2 MB naar `debug.log.oud`) verwijdert DocBot bij het opstarten en
+daarna dagelijks automatisch alle logregels ouder dan zeven dagen, uit zowel
+het actieve logbestand als `debug.log.oud`.
 
 Voor problemen die opnieuw kunnen worden uitgevoerd kan de gebruiker in het
 probleemrapportagevenster expliciet toestemming geven voor **uitgebreide
@@ -375,11 +378,19 @@ hierboven vermeld.
 DocBot opent vervolgens een conceptbericht in Classic Outlook met het
 diagnosepakket als losse bijlagen. Als Outlook nog niet actief is, start
 DocBot Outlook en wacht het totdat de MAPI-sessie gereed is. De gebruiker
-controleert het bericht en klikt zelf op **Verzenden**. Wanneer Classic
+controleert het bericht en klikt zelf op **Verzenden**. Zodra DocBot heeft
+geverifieerd dat Outlook alle bijlagen heeft overgenomen en het
+conceptvenster staat, verwijdert DocBot de tijdelijke rapportmap automatisch
+— de bestanden staan dan al in het conceptbericht zelf. Wanneer Classic
 Outlook niet beschikbaar is, opent DocBot een nieuw e-mailbericht zonder
 bijlage en toont de rapportmap in Verkenner, zodat de gebruiker de bestanden
-handmatig kan toevoegen. Het ontwikkelaarsdebugvenster blijft alleen
-zichtbaar voor het daarvoor ingerichte Windows-account.
+handmatig kan toevoegen; DocBot laat de map in dat geval bewust staan en
+vraagt expliciet (standaard "Nee") of hij meteen mag worden opgeruimd. Een
+rapportmap die zo blijft staan — bijvoorbeeld omdat de gebruiker nog niet
+klaar is — verwijdert DocBot uiterlijk na zeven dagen automatisch, op
+dezelfde manier als de standaardlogretentie hierboven. Het
+ontwikkelaarsdebugvenster blijft alleen zichtbaar voor het daarvoor
+ingerichte Windows-account.
 
 Regelgeving, informatiebeveiliging en patiëntveiligheid
 -------------------------------------------------------
@@ -400,6 +411,16 @@ risicoanalyse.
 
 Changelog
 ---------
+
+### 2.3 — In ontwikkeling
+- Standaardlogregels ouder dan zeven dagen worden automatisch verwijderd (bij
+  opstart en daarna dagelijks), uit zowel het actieve logbestand als
+  `debug.log.oud`. De bestaande omvangrotatie (circa 2 MB) blijft ongewijzigd
+  (`docs/DECISIONS.md` D-044).
+- De tijdelijke probleemrapportmap in `%TEMP%` blijft niet langer onbeperkt
+  staan: verwijderd na een geverifieerde Outlook-bijlage, expliciet
+  (standaard "Nee") bij de handmatige fallback, en anders uiterlijk na zeven
+  dagen automatisch opgeruimd (D-044).
 
 ### 2.2 — Huidige stabiele release
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.

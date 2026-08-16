@@ -744,3 +744,111 @@ Project owner decision (2026-08-15):
   `docs/TODO.md`.
 - Revisit only if Actions usage/cost from the unscoped trigger becomes a
   real problem, or if `workflow_dispatch` turns out to go unused.
+
+---
+
+## D-044 — Bound standard-log and problem-report-directory residency to seven days
+
+**Status:** Accepted
+
+**Note on numbering:** at the time this was written, PR #31
+(`claude/https-only-telephony-sms`, not yet merged into `develop`) already
+claims `D-043` for an unrelated HTTPS-enforcement decision. Whoever merges
+second should check this file still reads in ascending order and renumber
+if not.
+
+This covers the two related `docs/TODO.md` P1 items "Limit local standard
+diagnostics to seven days" and "Remove temporary problem-report artifacts",
+implemented together on `claude/diagnostics-retention`
+(`AppVersion 2.3-diagnostiek-retentie.1`) because both are about bounding
+how long DocBot lets diagnostic residue sit on disk.
+
+### Standard-log retention
+
+`debug.log` and its rotated `debug.log.oud` previously only shrank via the
+existing ~2 MB size rotation (`FlushDebugLog()`); nothing removed old
+entries by age, so a lightly-used installation could accumulate log lines
+far older than intended. `PruneExpiredDebugLogEntries()` /
+`PruneExpiredDebugLogFile()` now parse each entry by its own leading
+timestamp (the format `BuildDebugLogLine()` already writes) and drop
+entries older than seven days, from both files independently, rewriting
+each file only when something was actually dropped (temp-file-then-`FileMove`
+pattern, matching the existing atomic-write style used elsewhere, e.g.
+`SavePackageSettingsToJson()`). This runs once at startup and then on a
+repeating 24-hour timer (`RunDiagnosticsMaintenance()`), not only at
+startup, because DocBot is a long-running background tool that may not
+restart for a long time — a startup-only check would leave the "seven day"
+promise unenforced for the length of a session.
+
+**Rejected alternative:** pruning by whole-file modification time instead
+of per-entry timestamps. Rejected because the active log mixes old and
+recent entries (it only rotates at ~2 MB, which can take far longer than a
+week to fill on a lightly-used installation) — file-mtime-based deletion
+would either delete recent entries too early (deleting the whole file) or
+never delete anything (a file keeps getting touched as new lines are
+appended). The TODO item explicitly called this out.
+
+An entry whose leading timestamp cannot be parsed (corruption, or a future
+format change) is left in place rather than guessed at — `InitializeDiagnosticLogging()`
+already wipes genuinely old-format files wholesale before this code ever
+runs, so an unparseable entry in an otherwise-current-format file is an
+edge case, not the normal path.
+
+### Problem-report directory lifecycle
+
+`BuildProblemReportPackage()` writes loose report files (no ZIP, per D-041)
+to a temporary `%TEMP%\DocBot_diagnose_<stamp>` directory. Previously
+nothing ever deleted that directory:
+
+- **Outlook success path** (`OpenProblemReportEmail()`): now verifies
+  `mail.Attachments.Count = files.Length` right after adding attachments
+  (throwing into the existing fallback path if Outlook silently dropped
+  one), then deletes the report directory only *after* `mail.Display()`
+  succeeds — at that point the attachment bytes live inside the mail item
+  itself, independent of the temp files. Deleting earlier (e.g.
+  immediately after `Attachments.Add()`) was rejected because a later
+  failure in the same `try` block (e.g. `Display()`) would then reach the
+  `catch` and hand `OpenProblemReportFallback()` a directory that no longer
+  exists.
+- **Manual fallback path** (`OpenProblemReportFallback()`): the directory
+  is deliberately *not* auto-deleted, since the user may still need to
+  attach the files by hand. It now asks explicitly ("is de e-mail
+  verzonden, of heb je de bestanden niet meer nodig?") with **No** as the
+  default button, so dismissing the prompt without answering never deletes
+  anything.
+- **Abandoned-directory sweep** (`PruneAbandonedProblemReportDirs()`): runs
+  in the same daily `RunDiagnosticsMaintenance()` timer as the log pruning
+  above, and deletes any `DocBot_diagnose_*` directory older than seven
+  days — read from the timestamp DocBot itself encodes in the directory
+  name, not filesystem mtime, so a later scan/copy of the folder (e.g. by
+  endpoint security tooling) can't accidentally extend its lifetime. This
+  is the backstop for "user chose No and then forgot", a crash between
+  directory creation and finalization, or DocBot being closed mid-flow —
+  none of those have a clean synchronous "cancel" hook to delete from, so a
+  bounded sweep is what actually satisfies "cannot leave sensitive report
+  artifacts behind indefinitely" from the TODO item.
+- Only directories matching DocBot's own exact naming pattern
+  (`DocBot_diagnose_yyyyMMdd_HHmmss_ms`) are ever touched by the sweep.
+
+**Rejected alternative:** deleting the report directory unconditionally
+right after building it or right after any `OpenProblemReportEmail()`/
+`OpenProblemReportFallback()` return. Rejected because the manual fallback
+explicitly depends on the files still being on disk for the user to attach
+by hand; deleting immediately would break that path entirely.
+
+**Consequences**
+
+- Seven days is now the shared, documented residency ceiling for both the
+  standard log and any problem-report directory; a future change to either
+  number should keep them intentionally in sync or explain why they
+  diverge.
+- The report-directory sweep depends on `BuildProblemReportPackage()`'s
+  exact naming convention (`"DocBot_diagnose_" . FormatTime(A_Now,
+  "yyyyMMdd_HHmmss") . "_" . Format("{:03}", A_MSec)`); changing that
+  format requires updating `PruneAbandonedProblemReportDirs()`'s regex in
+  the same change.
+- None of this touches the extended-log lifecycle
+  (`DeleteProblemReportExtendedLog()` / `ShutdownProblemReportLogging()`),
+  which was already correctly scoped to the session.
+- Not yet validated on managed Windows/a compiled build; see the
+  corresponding `docs/TODO.md` acceptance items.

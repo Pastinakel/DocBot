@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-dev.1"
+global AppVersion := "2.3-diagnostiek-retentie.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2677,6 +2677,88 @@ InitializeDiagnosticLogging() {
     } catch {
         ; Diagnostiek mag de normale start van DocBot nooit blokkeren.
     }
+
+    ; Opschonen mag nooit de rest van de opstart blokkeren en staat daarom
+    ; los van het try-blok hierboven; RunDiagnosticsMaintenance() vangt
+    ; fouten per onderdeel zelf af.
+    RunDiagnosticsMaintenance()
+    SetTimer(RunDiagnosticsMaintenance, 86400000)
+}
+
+; Draait bij opstart en daarna eenmaal per dag: schoont het standaardlog op
+; naar bewaartermijn en ruimt vergeten tijdelijke probleemrapportmappen op.
+; Eén gedeelde timer in plaats van losse timers per onderdeel.
+RunDiagnosticsMaintenance() {
+    PruneExpiredDebugLogEntries()
+    PruneAbandonedProblemReportDirs()
+}
+
+; Verwijdert individuele standaardlogregels ouder dan DebugLogRetentionDays,
+; in zowel het actieve logbestand als het geroteerde .oud-bestand. Werkt per
+; regel (op basis van de tijdstempel vooraan iedere regel), niet op
+; bestandsniveau, zodat een actief bestand met zowel oude als recente regels
+; correct wordt opgeschoond. Draait bij opstart en daarna eenmaal per dag,
+; zodat een langdurig actieve sessie niet wacht op een herstart.
+PruneExpiredDebugLogEntries() {
+    logPath := GetStandardDebugLogPath()
+    try PruneExpiredDebugLogFile(logPath)
+    try PruneExpiredDebugLogFile(logPath ".oud")
+}
+
+PruneExpiredDebugLogFile(path) {
+    static delimiter := "───`r`n"
+    static DebugLogRetentionDays := 7
+
+    if !FileExist(path)
+        return
+
+    try {
+        content := FileRead(path, "UTF-8")
+    } catch {
+        return
+    }
+
+    if Trim(content) = ""
+        return
+
+    delen := StrSplit(content, delimiter)
+    if delen.Length <= 1
+        return  ; alleen het kopblok (of niets herkenbaars): niets te knippen
+
+    cutoff := DateAdd(A_Now, -DebugLogRetentionDays, "Days")
+    nieuweInhoud := delen[1] delimiter  ; het kopblok blijft altijd staan
+    gewijzigd := false
+
+    loop delen.Length - 1 {
+        chunk := delen[A_Index + 1]
+        if Trim(chunk) = ""
+            continue  ; lege staart na de laatste scheidingsregel
+
+        if RegExMatch(chunk, "^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})", &m) {
+            entryStamp := m[1] m[2] m[3] m[4] m[5] m[6]
+            if (entryStamp < cutoff) {
+                gewijzigd := true
+                continue  ; regel is ouder dan de bewaartermijn: laat vervallen
+            }
+        }
+        ; Geen herkenbare tijdstempel (bijv. een beschadigde/legacy regel):
+        ; voor de zekerheid ongewijzigd behouden in plaats van te gokken.
+        nieuweInhoud .= chunk delimiter
+    }
+
+    if !gewijzigd
+        return
+
+    tempPath := path ".tmp"
+    try {
+        if FileExist(tempPath)
+            FileDelete(tempPath)
+        FileAppend(nieuweInhoud, tempPath, "UTF-8")
+        FileMove(tempPath, path, true)
+    } catch {
+        if FileExist(tempPath)
+            try FileDelete(tempPath)
+    }
 }
 
 FlushDebugLog() {
@@ -3376,12 +3458,22 @@ OpenProblemReportEmail(package, description, usedExtended) {
         mail.Body := body
         for attachmentPath in files
             mail.Attachments.Add(attachmentPath)
+        if mail.Attachments.Count != files.Length
+            throw Error("Outlook heeft niet alle bestanden als bijlage overgenomen.")
         mail.Display()
         try {
             inspector := mail.GetInspector
             inspector.Activate()
         } catch {
         }
+
+        ; Outlook heeft de bijlagen nu in het conceptbericht overgenomen (het
+        ; aantal is hierboven geverifieerd) en het venster staat open; de
+        ; tijdelijke rapportmap op schijf is vanaf hier niet meer nodig. Dit
+        ; gebeurt bewust na Display() en niet direct na Attachments.Add(), zodat
+        ; een latere fout in dit blok nog steeds via de catch naar de
+        ; handmatige fallback kan met een intacte rapportmap.
+        try DirDelete(reportDir, true)
 
         DebugLog(
             "✓",
@@ -3467,7 +3559,29 @@ OpenProblemReportFallback(
         "Icon!"
     )
 
-    return mailOpened || DirExist(reportDir)
+    ; De rapportmap blijft bewust staan tot de gebruiker heeft aangegeven
+    ; klaar te zijn: op dit moment kan de e-mail nog onverzonden open staan.
+    ; Bij twijfel (bijvoorbeeld dit venster gewoon wegklikken) is "Nee" de
+    ; standaardknop, zodat er nooit per ongeluk bestanden verdwijnen vóór
+    ; verzending.
+    completed := mailOpened || DirExist(reportDir)
+
+    if DirExist(reportDir) {
+        cleanupChoice := MsgBox(
+            "Is de e-mail met het probleemrapport verzonden, of heb je de "
+            "bestanden niet meer nodig?"
+            . "`n`nJa: ruim de rapportmap nu op."
+            . "`nNee: laat de rapportmap staan (bijvoorbeeld omdat je de "
+            "bijlagen nog moet toevoegen en verzenden). DocBot ruimt een "
+            "vergeten rapportmap later automatisch op.",
+            "DocBot - Probleem melden",
+            "YesNo Icon? Default2"
+        )
+        if cleanupChoice = "Yes"
+            try DirDelete(reportDir, true)
+    }
+
+    return completed
 }
 
 UriEncode(text) {
@@ -3498,6 +3612,33 @@ DeleteProblemReportExtendedLog() {
     extendedPath := ProblemReportSession["ExtendedLogPath"]
     if extendedPath != "" && FileExist(extendedPath)
         try FileDelete(extendedPath)
+}
+
+; Vangnet voor tijdelijke rapportmappen (BuildProblemReportPackage()) die om
+; welke reden dan ook nooit zijn opgeruimd: de handmatige fallback waarbij de
+; gebruiker "Nee" koos of het venster wegklikte, een crash tussen het
+; aanmaken van de map en het afronden van de melding, of het afsluiten van
+; DocBot midden in de flow. Gebruikt de tijdstempel die DocBot zelf in de
+; mapnaam codeert (niet de bestandssysteem-wijzigingstijd), zodat een latere
+; kopieer- of scanactie op de map de bewaartermijn niet per ongeluk verlengt.
+; Alleen mappen die exact aan het eigen naampatroon voldoen worden verwijderd.
+PruneAbandonedProblemReportDirs() {
+    static maxAgeDays := 7
+
+    cutoff := DateAdd(A_Now, -maxAgeDays, "Days")
+
+    try {
+        Loop Files, A_Temp "\DocBot_diagnose_*", "D" {
+            if !RegExMatch(A_LoopFileName, "^DocBot_diagnose_(\d{8})_(\d{6})_\d+$", &m)
+                continue  ; onbekende mapnaam: niet aanraken
+
+            stamp := m[1] m[2]
+            if (stamp < cutoff)
+                try DirDelete(A_LoopFileFullPath, true)
+        }
+    } catch {
+        ; Opschonen mag het reguliere onderhoud nooit blokkeren.
+    }
 }
 
 ResetProblemReportAfterCompletion() {

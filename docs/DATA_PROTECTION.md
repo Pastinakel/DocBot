@@ -70,9 +70,9 @@ OneDrive en organisatorisch werkplekbeheer.
 
 | Locatie | Inhoud | Technische begrenzing/verwijdering |
 | --- | --- | --- |
-| `%LocalAppData%\DocBot\debug.log` | Centraal geredigeerde diagnostiek | Rotatie boven circa 2 MB naar één `.oud`-bestand; tijdsgebonden verwijdering van regels ouder dan zeven dagen is als TODO vastgelegd |
+| `%LocalAppData%\DocBot\debug.log` | Centraal geredigeerde diagnostiek | Rotatie boven circa 2 MB naar één `.oud`-bestand; regels ouder dan zeven dagen worden sinds `docs/DECISIONS.md` D-044 automatisch verwijderd (bij opstart en daarna dagelijks), uit zowel het actieve als het `.oud`-bestand |
 | `%LocalAppData%\DocBot\<tijdelijk uitgebreid log>` | Ongeredigeerde diagnostiek tijdens toegestane sessie | Verwijderd bij afsluiten, nieuwe sessie en na succesvolle rapportvoorbereiding |
-| `%TEMP%\DocBot_diagnose_<tijdstip>\` | Losse bestanden: beschrijving, standaardlog en optioneel uitgebreid log | Blijft na voorbereiding beschikbaar voor e-mail/handmatige verzending |
+| `%TEMP%\DocBot_diagnose_<tijdstip>\` | Losse bestanden: beschrijving, standaardlog en optioneel uitgebreid log | Verwijderd na een geverifieerde Outlook-bijlage; bij de handmatige fallback expliciet gevraagd (standaard "Nee"); een vergeten map wordt sinds D-044 uiterlijk na zeven dagen automatisch opgeruimd |
 | `%LocalAppData%\DocBot[-dev]\packages` | Uitgepakte ingebouwde pakketten | Pakketinhoud, normaal geen gebruikers- of patiëntgegevens |
 
 ## 3. Gegevensstromen
@@ -382,16 +382,18 @@ De standaardlog:
 - schermt URL's en herkenbare telefoon-/interne nummers af;
 - neemt bepaalde gestructureerde inhoud en serverresponses niet op;
 - kapt individuele geschoonde teksten boven 2.000 tekens af;
-- roteert `debug.log` boven circa 2 MB naar `debug.log.oud`.
+- roteert `debug.log` boven circa 2 MB naar `debug.log.oud`;
+- verwijdert regels ouder dan zeven dagen automatisch uit zowel `debug.log`
+  als `debug.log.oud` (`docs/DECISIONS.md` D-044).
 
 De applicatie verwijdert historische logs met een ouder, mogelijk
 ongeredegeerd formaat bij initialisatie.
 
-**Bewaring:** de standaardlog wordt momenteel op bestandsgrootte geroteerd,
-maar nog niet op ouderdom van afzonderlijke logregels opgeschoond. Als
-technische vervolgactie moet DocBot logregels ouder dan zeven dagen
-automatisch verwijderen. Deze gewenste termijn is opgenomen in
-`docs/TODO.md`.
+**Bewaring:** de standaardlog wordt op bestandsgrootte geroteerd (circa
+2 MB) én sinds D-044 op ouderdom opgeschoond: `PruneExpiredDebugLogEntries()`
+verwijdert individuele regels ouder dan zeven dagen, op basis van de
+tijdstempel van de regel zelf. Dit draait bij opstart en daarna dagelijks,
+zodat een langdurig actieve sessie niet op een herstart hoeft te wachten.
 
 **Ontvangers en autorisatie:** de lokale gebruiker kan de standaardlog op de
 eigen werkplek benaderen. Tijdens de huidige opstartfase is de enige
@@ -407,11 +409,12 @@ worden daar automatisch verwijderd. Of verwijderde berichten daarna nog in
 herstelvoorzieningen, archieven of back-ups worden bewaard, volgt het
 Microsoft-/mailboxbeleid van de organisatie.
 
-**OPENSTAAND:** implementeer de automatische lokale verwijdering van logregels
-ouder dan zeven dagen; leg de beveiliging en eventuele aanvullende retentie
-van het organisatorische mailtransport vast; leg vast dat er bij afwezigheid
-geen waarneming is; en beoordeel de ontvangerconfiguratie opnieuw wanneer de
-enige ontwikkelaar van functie wijzigt of uit dienst treedt.
+**OPENSTAAND:** leg de beveiliging en eventuele aanvullende retentie van het
+organisatorische mailtransport vast; leg vast dat er bij afwezigheid geen
+waarneming is; en beoordeel de ontvangerconfiguratie opnieuw wanneer de
+enige ontwikkelaar van functie wijzigt of uit dienst treedt. De automatische
+lokale verwijdering van logregels ouder dan zeven dagen is geïmplementeerd
+(D-044) maar nog niet op een beheerde Windows-werkplek gevalideerd.
 
 ### 3.7 Uitgebreide logging en probleemrapportage
 
@@ -435,18 +438,26 @@ bestanden (geen ZIP):
 
 `settings.ini`, `hotstrings.json`, pakketconfiguratie en lokale
 configuratiebestanden worden niet toegevoegd. Het uitgebreide log wordt
-verwijderd volgens de beschreven sessielogica. De rapportmap blijft
-beschikbaar en de bestanden worden los aan een Classic-Outlook-concept
-gekoppeld, of de map wordt in Verkenner geopend voor handmatige toevoeging.
-De gebruiker verzendt het e-mailbericht zelf. (Eerdere versies bouwden hier
-een ZIP via de Explorer-shellextensie "Compressed (zipped) Folders"; die
-bleek op sommige beheerde werkplekken onbetrouwbaar/onbeschikbaar, zie
-`docs/DECISIONS.md` D-041.)
+verwijderd volgens de beschreven sessielogica. De bestanden worden los aan
+een Classic-Outlook-concept gekoppeld, of de map wordt in Verkenner geopend
+voor handmatige toevoeging. De gebruiker verzendt het e-mailbericht zelf.
+(Eerdere versies bouwden hier een ZIP via de Explorer-shellextensie
+"Compressed (zipped) Folders"; die bleek op sommige beheerde werkplekken
+onbetrouwbaar/onbeschikbaar, zie `docs/DECISIONS.md` D-041.)
+
+Sinds D-044 blijft de rapportmap niet meer onbeperkt staan: bij een geslaagd
+Outlook-concept verwijdert DocBot de map zodra geverifieerd is dat Outlook
+alle bijlagen heeft overgenomen; bij de handmatige fallback vraagt DocBot
+expliciet of de map opgeruimd mag worden (standaard "Nee", zodat er niets
+verdwijnt vóór verzending); en een map die overblijft (bijvoorbeeld omdat de
+gebruiker "Nee" koos, of door een crash tussen aanmaken en afronden) wordt
+uiterlijk na zeven dagen automatisch verwijderd door dezelfde dagelijkse
+opschoonronde als de standaardlog-retentie.
 
 | Onderwerp | Vastgesteld | OPENSTAAND |
 | --- | --- | --- |
 | Supportontvanger | In de huidige opstartfase uitsluitend de enige ontwikkelaar, lokaal/configuratief bepaald | Er is momenteel geen waarneming of vervanger; bij afwezigheid wacht de rapportage op terugkeer van de ontwikkelaar. Bij functiewijziging of uitdiensttreding moet de configuratie opnieuw worden beoordeeld |
-| Rapportmap op werkplek | Blijft in `%TEMP%` staan | TODO: verwijder de rapportmap en overige tijdelijke rapportbestanden automatisch na succesvolle afronding/overdracht van het rapport en bij annulering |
+| Rapportmap op werkplek | Verwijderd na geverifieerde Outlook-bijlage, of na expliciete bevestiging bij de handmatige fallback; anders uiterlijk na zeven dagen automatisch opgeruimd (D-044) | Nog niet gevalideerd op een beheerde Windows-werkplek/compiled build |
 | E-mail | Outlook-concept; verzending door gebruiker; speciale diagnostiekmap verwijdert berichten ouder dan zeven dagen automatisch | Mailtransport en eventuele langere retentie in herstelvoorzieningen, archieven en back-ups |
 | Toegang | Gebruiker en, na verzending, uitsluitend de enige ontwikkelaar via het organisatorische Outlook-account | Geen afzonderlijke continuïteitsmaatregel in de opstartfase; toegang volgt het organisatieaccount en wordt bij functie- of uitdiensttreding door de organisatie ingetrokken |
 | Incidentproces | Datalekken van DocBot vallen onder het algemene incident- en datalekproces van de organisatie en worden door de CISO afgehandeld | Verwijs naar de interne meldroute en procedure |
@@ -603,9 +614,9 @@ eventuele back-up- of securitydienstverleners.
 | SMS-webappgegevens | Buiten repository | OPENSTAAND |
 | Persoonlijke hotstrings | Tot wijziging/verwijdering/profielbeheer; `.bak` kan vorige versie bevatten | OPENSTAAND |
 | Snelkiesnummers en instellingen | Tot wijziging/verwijdering/profielbeheer | OPENSTAAND |
-| Standaardlog | Actief plus één geroteerd bestand; rotatie bij circa 2 MB; automatische verwijdering van regels ouder dan zeven dagen staat als TODO open | Gewenste maximale termijn: zeven dagen |
+| Standaardlog | Actief plus één geroteerd bestand; rotatie bij circa 2 MB; regels ouder dan zeven dagen worden automatisch verwijderd (D-044) | Maximale termijn zeven dagen — geïmplementeerd, nog niet op een beheerde Windows-werkplek gevalideerd |
 | Uitgebreid log | Tijdelijk gedurende rapportsessie; volgens sessielogica verwijderd | Technische regel bevestigen in beheer-/testbewijs |
-| Probleemrapportmap | Blijft nu in `%TEMP%` na voorbereiding | TODO: automatisch verwijderen na succesvolle overdracht/afronding en bij annulering, met een veilige opruimroute voor de handmatige fallback |
+| Probleemrapportmap | Verwijderd na geverifieerde Outlook-bijlage of expliciete bevestiging bij de handmatige fallback; anders uiterlijk na zeven dagen automatisch opgeruimd (D-044) | Geïmplementeerd, nog niet op een beheerde Windows-werkplek/compiled build gevalideerd |
 | Supportmail/ticket | Speciale Outlook-map verwijdert diagnostische berichten ouder dan zeven dagen automatisch | Eventuele aanvullende retentie in herstelvoorzieningen, archieven en back-ups bevestigen |
 | Telemetrie lokaal | Installatie-ID en tellers in `settings.ini` | OPENSTAAND |
 | Telemetrie extern | Power Automate/Teams-omgeving; registraties ouder dan één jaar worden verwijderd | Maximale termijn één jaar; toepassing op exports en back-ups bevestigen |
@@ -654,7 +665,7 @@ uitdiensttreding.
 | Telemetrie | Code vereist een `https://`-webhook | Tenant, TLS-inspectie, ontvangers en retentie vastleggen |
 | Probleemrapport per e-mail | Classic Outlook-concept of handmatige fallback | Mailtransport, classificatie, encryptie en externe ontvangers vastleggen |
 | Documents/OneDrive | Windows-profiel en beheerde opslag | ACL's, tenant, synchronisatie, back-up en versleuteling bevestigen |
-| LocalAppData/%TEMP% | Windows-profiel | Schijfversleuteling, endpointbeheer, verwijdering van de tijdelijke rapportmap bevestigen |
+| LocalAppData/%TEMP% | Windows-profiel; automatische verwijdering van de tijdelijke rapportmap na verzending/bevestiging of uiterlijk na zeven dagen (D-044) | Schijfversleuteling, endpointbeheer; Windows-validatie van de D-044-verwijdering bevestigen |
 
 Aanvullend moeten secure development, kwetsbaarhedenbeheer, incidentrespons,
 sleutel-/secretbeheer en logging van beheerhandelingen worden gekoppeld aan

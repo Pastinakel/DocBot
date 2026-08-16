@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-15. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-16. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -297,16 +297,22 @@ decision above is revisited.
 Implement automatic cleanup of standard diagnostic log entries older than
 seven days.
 
-- [ ] Remove entries older than seven days from both the active standard log
+- [x] Remove entries older than seven days from both the active standard log
   and the rotated `.oud` log without relying only on file modification time.
-- [ ] Preserve the existing redaction and approximately 2 MB size-rotation
-  behavior.
-- [ ] Ensure malformed or legacy log lines and cleanup failures do not block
-  application startup.
+  Implemented on `claude/diagnostics-retention` (`AppVersion
+  2.3-diagnostiek-retentie.1`); see `docs/DECISIONS.md` D-044.
+  `PruneExpiredDebugLogEntries()` parses each entry's own leading timestamp.
+- [x] Preserve the existing redaction and approximately 2 MB size-rotation
+  behavior. Unchanged; the new pruning runs independently of
+  `FlushDebugLog()`'s size rotation.
+- [x] Ensure malformed or legacy log lines and cleanup failures do not block
+  application startup. Unparseable entries are left in place rather than
+  guessed at; all pruning is wrapped in `try` and runs after, not inside,
+  the existing startup log-init `try` block.
 - [ ] Verify on managed Windows that recent entries remain available, expired
   entries are removed and extended-session logging keeps its separate
-  lifecycle.
-- [ ] Keep `README.md` and `docs/DATA_PROTECTION.md` synchronized with the
+  lifecycle. Not yet done — needs a compiled build on Windows.
+- [x] Keep `README.md` and `docs/DATA_PROTECTION.md` synchronized with the
   implemented behavior.
 
 This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
@@ -321,18 +327,31 @@ Complete the lifecycle of the report directory and temporary files created
 during problem reporting. (Report files are attached individually, not as a
 ZIP — see DECISIONS.md.)
 
-- [ ] On cancellation, remove the report directory and temporary extended log
-  created for that report session.
-- [ ] After successful attachment to an Outlook draft, remove the local
+- [x] On cancellation, remove the report directory and temporary extended log
+  created for that report session. The extended log was already handled
+  (`DeleteProblemReportExtendedLog()`/`ShutdownProblemReportLogging()`); the
+  report *directory* only ever gets created as part of finalize (no separate
+  synchronous "cancel after creation" UI point exists), so this is covered
+  by the abandoned-directory sweep below plus the two explicit paths.
+  Implemented on `claude/diagnostics-retention`
+  (`AppVersion 2.3-diagnostiek-retentie.1`); see `docs/DECISIONS.md` D-044.
+- [x] After successful attachment to an Outlook draft, remove the local
   report directory only after verifying that Outlook has safely taken over
-  the attachments.
-- [ ] For the manual fallback, keep the report directory available until the
+  the attachments. `OpenProblemReportEmail()` now checks
+  `mail.Attachments.Count = files.Length` and deletes the directory only
+  after `mail.Display()` succeeds.
+- [x] For the manual fallback, keep the report directory available until the
   user has had a usable opportunity to attach the files, then provide an
   explicit completion/cleanup path and a safe cleanup fallback for abandoned
-  artifacts.
+  artifacts. `OpenProblemReportFallback()` now asks explicitly (default
+  "No"); `PruneAbandonedProblemReportDirs()` sweeps any
+  `DocBot_diagnose_*` directory older than seven days on the same daily
+  timer as the log retention above, using the timestamp DocBot itself
+  encodes in the directory name.
 - [ ] Verify that cancelling at each stage and closing DocBot cannot leave
-  sensitive report artifacts behind indefinitely.
-- [ ] Update `README.md` and `docs/DATA_PROTECTION.md` to the implemented
+  sensitive report artifacts behind indefinitely. Architecturally bounded to
+  seven days now; not yet verified on managed Windows with a compiled build.
+- [x] Update `README.md` and `docs/DATA_PROTECTION.md` to the implemented
   lifecycle.
 
 This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
