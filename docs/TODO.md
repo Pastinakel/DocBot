@@ -159,21 +159,6 @@ every managed Windows workstation.
   authorization. Record any additional authentication work as an explicit
   scoped task.
 
-### Infrastructure dependencies
-
-- [ ] Confirm that the production hostname, certificate subject/SAN, full
-  certificate chain, TLS version, and listening port are correct for managed
-  Windows workstations.
-- [ ] Confirm that the issuing root/intermediate CA certificates are deployed
-  through the normal hospital trust-store management and that no client needs
-  to ignore certificate errors.
-- [ ] Confirm that reverse-proxy or server timeouts support the long-polling
-  event endpoint.
-- [ ] Assign ownership and monitoring for certificate renewal/expiry.
-- [ ] After the HTTPS rollout is accepted, disable the unsecured HTTP listener
-  rather than relying on an HTTP-to-HTTPS redirect. Coordinate this with the
-  telephony/server owner; it is not a DocBot-only change.
-
 ### Acceptance evidence
 
 Confirmed by the project owner on a compiled test build on the managed
