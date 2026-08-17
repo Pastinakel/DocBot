@@ -157,15 +157,18 @@ logging kunnen oorspronkelijke waarden in het tijdelijke log komen.
 | Onderdeel | Vastgesteld uit repository | OPENSTAAND |
 | --- | --- | --- |
 | Ontvanger | Lokaal geconfigureerde interne telefonieserver | Juridische entiteit, beheerder en eventuele verwerker |
-| Transport | Protocol volgt `IPTConfig["URL"]`; voorbeeldconfiguratie gebruikt `https://` | Code dwingt HTTPS nog niet af; productieprotocol, TLS-versie, certificaatcontrole en netwerksegmentatie bevestigen |
+| Transport | Protocol volgt `IPTConfig["URL"]`; `ValidateLocalConfiguration()` weigert sinds `docs/DECISIONS.md` D-043 een niet-HTTPS `Telephony.BaseUrl` bij het opstarten | Productie-TLS-versie, certificaatcontrole en netwerksegmentatie op de beheerde werkplek nog bevestigen |
 | Authenticatie | Geen applicatie-eigen gebruikersauthenticatie zichtbaar; technisch `sid`-veld wordt gebruikt | Serverauthenticatie, autorisatiemodel en misbruikbeveiliging |
 | Serverlogging | Niet zichtbaar in repository | Inhoud, toegang, bewaartermijn en verwijdering |
 | Doorgifte buiten EER | Niet zichtbaar | Bevestigen dat geen doorgifte plaatsvindt, of grondslag/waarborgen vastleggen |
 
-De voorbeeldconfiguratie stuurt nu naar HTTPS. Een openstaande projecttaak
-verlangt daarnaast technische HTTPS-validatie voor telefonie en blokkering van
-HTTP. Totdat dit functioneel is geïmplementeerd en in productie is bevestigd,
-blijft transportbeveiliging een expliciet risico.
+DocBot weigert sinds `docs/DECISIONS.md` D-043 een lokale telefonieconfiguratie
+met een `http://`-`BaseUrl` al bij het opstarten. Dit is applicatieniveau-
+afdwinging; de productie-TLS-configuratie (hostnaam, certificaatketen,
+TLS-versie, poort) en serverauthenticatie op de beheerde Windows-werkplek
+moeten nog afzonderlijk worden bevestigd (zie `docs/TODO.md`). Tot die
+bevestiging blijft transportbeveiliging in productie een openstaand punt,
+ook al kan een niet-HTTPS-configuratie DocBot zelf niet meer laten starten.
 
 ### 3.3 SMS-assistentie via Edge
 
@@ -181,10 +184,10 @@ fallback. DocBot maakt en verzendt zelf geen SMS-bericht.
 **Ontvanger:** de geconfigureerde SMS-webapplicatie en de organisatie of
 leverancier die deze beheert.
 
-**Transport:** de voorbeeldconfiguratie gebruikt een HTTPS-URL. De code
-controleert alleen of `SmsCallAction.Url` is ingevuld en dwingt HTTPS nog niet
-af. Een lokaal geconfigureerde HTTP-pagina kan daardoor worden geopend en door
-DocBot met een telefoonnummer worden gevuld.
+**Transport:** `ValidateSmsCallActionItem()` weigert sinds `docs/DECISIONS.md`
+D-043 elke `SmsCallAction.Url` die niet met `https://` begint al bij het
+opstarten van DocBot. Een lokaal geconfigureerde HTTP-pagina kan daardoor niet
+meer worden geopend of met een telefoonnummer worden gevuld.
 
 **Bewaring door DocBot:** geen afzonderlijke persistente SMS-opslag. Bij
 uitgebreide logging kunnen nummer- of technische foutdetails tijdelijk worden
@@ -248,12 +251,13 @@ Tijdelijke uitgebreide logging en probleemrapportage volgen paragraaf 3.7.
 Bewaring in browser-, server-, verzend-, audit- en back-uplogs is onbekend en
 moet contractueel en technisch worden vastgesteld.
 
-**TLS-eisen:** de voorbeeldconfiguratie gebruikt HTTPS, maar DocBot dwingt dit
-nog niet af. De browser voert bij HTTPS de normale certificaatcontrole uit en
-de DocBot-code bevat geen bewuste omzeiling daarvan. Vereist beleid: uitsluitend
-`https://`, geen HTTP-fallback of genegeerde certificaatfouten, een passende
-TLS-versie en cipherconfiguratie, een geldig certificaat voor de productiehost
-en beheer van certificaatvernieuwing. Deze eisen moeten na implementatie op de
+**TLS-eisen:** DocBot weigert sinds `docs/DECISIONS.md` D-043 een niet-HTTPS
+`SmsCallAction.Url` al bij het opstarten. De browser voert bij HTTPS
+daarnaast de normale certificaatcontrole uit en de DocBot-code bevat geen
+bewuste omzeiling daarvan. Vereist beleid: uitsluitend `https://`, geen
+HTTP-fallback of genegeerde certificaatfouten, een passende TLS-versie en
+cipherconfiguratie, een geldig certificaat voor de productiehost en beheer
+van certificaatvernieuwing. Deze eisen moeten na implementatie op de
 beheerde Windows-werkplek worden getest.
 
 **Doorgifte buiten de EER:** niet uit de repository vast te stellen. De
@@ -649,8 +653,8 @@ uitdiensttreding.
 
 | Stroom | Huidige technische maatregel | Openstaand risico/actie |
 | --- | --- | --- |
-| Telefonie | Interne netwerkdienst; POST; voorbeeldconfiguratie gebruikt HTTPS | HTTPS in configuratie afdwingen, HTTP blokkeren, TLS/certificaat/authenticatie bevestigen |
-| SMS | Voorbeeld-URL is HTTPS; Edge/browsercontext | HTTPS in iedere SMS-configuratie afdwingen, HTTP blokkeren, leverancier en browserbeveiliging vastleggen |
+| Telefonie | Interne netwerkdienst; POST; `ValidateLocalConfiguration()` blokkeert een niet-HTTPS `BaseUrl` bij opstarten (D-043) | Productie-TLS/certificaat/netwerksegmentatie en serverauthenticatie op de beheerde werkplek bevestigen |
+| SMS | `ValidateSmsCallActionItem()` blokkeert een niet-HTTPS `SmsCallAction.Url` bij opstarten (D-043); Edge/browsercontext | Leverancier- en browserbeveiliging (verwerkersovereenkomst, TLS bij de SMS-webapplicatie zelf) vastleggen |
 | Telemetrie | Code vereist een `https://`-webhook | Tenant, TLS-inspectie, ontvangers en retentie vastleggen |
 | Probleemrapport per e-mail | Classic Outlook-concept of handmatige fallback | Mailtransport, classificatie, encryptie en externe ontvangers vastleggen |
 | Documents/OneDrive | Windows-profiel en beheerde opslag | ACL's, tenant, synchronisatie, back-up en versleuteling bevestigen |
@@ -732,7 +736,7 @@ Persoonsgegevens nodig is.
 | Ontvangers- en verwerkersregister invullen | OPENSTAAND | OPENSTAAND | Open |
 | Bewaar- en verwijdertermijnen goedkeuren | OPENSTAAND | OPENSTAAND | Open |
 | Autorisatiematrix opstellen en controleren | OPENSTAAND | OPENSTAAND | Open |
-| Productietransport telefonie en SMS beoordelen en HTTPS afdwingen | OPENSTAAND | OPENSTAAND | Open |
+| Productietransport telefonie en SMS beoordelen (applicatie dwingt HTTPS al af sinds D-043; productie-TLS/certificaat/authenticatie nog bevestigen) | OPENSTAAND | OPENSTAAND | Open |
 | SMS-, Microsoft-, mail- en OneDrive-contractketen vastleggen | OPENSTAAND | OPENSTAAND | Open |
 | DPIA-dekking of afzonderlijke DPIA met FG vaststellen | OPENSTAAND | OPENSTAAND | Open |
 | Uitkomst koppelen aan verwerkingsregister en NEN 7510-risicoanalyse | OPENSTAAND | OPENSTAAND | Open |

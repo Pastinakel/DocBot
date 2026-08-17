@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-dev.1"
+global AppVersion := "2.3-https-telefonie.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -7237,6 +7237,8 @@ ValidateLocalConfiguration() {
         if !telephony.Has(key) || Trim(telephony[key]) = ""
             throw Error("Telephony mist een ingevulde waarde voor '" key "'.")
     }
+    if !RegExMatch(Trim(telephony["BaseUrl"]), "i)^https://")
+        throw Error("Telephony.BaseUrl moet een HTTPS-URL zijn (http:// wordt niet geaccepteerd).")
 
     Telemetry_ValidateConfiguration(LocalConfig)
     ValidateSmsCallActionsConfiguration(LocalConfig)
@@ -7295,6 +7297,8 @@ ValidateSmsCallActionItem(item, index) {
         if !item.Has(key) || Trim(item[key]) = ""
             throw Error("SmsCallAction item " index " mist een ingevulde waarde voor '" key "'.")
     }
+    if !RegExMatch(Trim(item["Url"]), "i)^https://")
+        throw Error("SmsCallAction item " index " ('" item["Title"] "'): Url moet een HTTPS-URL zijn (http:// wordt niet geaccepteerd).")
 }
 
 GetConfiguredSmsCallActions() {

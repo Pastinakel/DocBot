@@ -744,3 +744,63 @@ Project owner decision (2026-08-15):
   `docs/TODO.md`.
 - Revisit only if Actions usage/cost from the unscoped trigger becomes a
   real problem, or if `workflow_dispatch` turns out to go unused.
+
+---
+
+## D-043 — Reject non-HTTPS telephony/SMS configuration at startup
+
+**Status:** Accepted
+
+**Note on numbering:** at the time this was written, PR #30
+(`claude/docs-sync-and-ci-decision`, not yet merged into `develop`) already
+claims `D-042` for an unrelated CI-trigger decision. Whoever merges second
+should check this file still reads in ascending order and renumber if not.
+
+An exploratory test on 2026-08-09 (see `docs/TODO.md`) showed that an
+`https://` telephony `BaseUrl` works end-to-end (registration, linking, a
+test call), but `ValidateLocalConfiguration()` and
+`ValidateSmsCallActionItem()` only checked that `Telephony.BaseUrl` and
+every `SmsCallAction.Url` were non-empty — an `http://` value passed
+validation and would have been used to register, poll, dial, and fill the
+SMS field.
+
+`ValidateLocalConfiguration()` now additionally rejects a `Telephony.BaseUrl`
+that does not match `i)^https://`, and `ValidateSmsCallActionItem()` rejects
+any `SmsCallAction.Url` that does not match the same pattern, both by
+throwing during the existing startup configuration-validation flow (see
+`DocBot.ahk`, blocking `MsgBox` + `ExitApp()` on a validation failure). This
+reuses the exact pattern already established for
+`Telemetry.WebhookUrl` (`Telemetry_ValidateConfiguration()`
+in `Telemetry.ahk`) rather than inventing a second HTTPS-check style.
+
+Because `IPTConfig["URL"]` is built directly from the validated
+`LocalConfig["Telephony"]["BaseUrl"]`, and every telephony call
+(`IPT_register()`, `IPT_poller()`, `IPT_callNumber()`) builds its request URL
+from `IPTConfig["URL"]`, rejecting a non-HTTPS `BaseUrl` at startup is
+sufficient to keep registration, event polling, and dialing on the same
+validated HTTPS base URL — no separate per-call check was needed.
+
+**Rejected alternative:** silently upgrading `http://` to `https://`, or
+falling back to HTTP when HTTPS fails. Both were rejected — the project
+explicitly does not want a silent production HTTP fallback or a
+certificate-validation bypass (see `docs/TODO.md`), and a misconfigured
+local file should fail loudly at startup like every other required
+`LocalConfig` field, not be silently corrected.
+
+**Consequences**
+
+- `DocBot.local.example.ahk` already used `https://` example values for both
+  `Telephony.BaseUrl` and `SmsCallAction.Url`, so the CI syntax-check config
+  and normal local setup are unaffected.
+- An existing local configuration with an `http://` telephony or SMS URL now
+  fails startup with a clear, non-sensitive validation error instead of
+  running against an unencrypted endpoint.
+- This closes the "Application and documentation" checklist items in
+  `docs/TODO.md` P1 "Make HTTPS mandatory for telephony and SMS URLs". The
+  "Infrastructure dependencies" and "Acceptance evidence" items in that same
+  TODO entry (certificate/TLS confirmation on managed Windows, server-side
+  authentication) remain open — this decision covers application-level
+  enforcement only, not production infrastructure validation.
+- Does not address server/client authentication strength; TLS transport
+  encryption alone does not establish client authorization, and that remains
+  a separately tracked open question per `docs/TODO.md`.
