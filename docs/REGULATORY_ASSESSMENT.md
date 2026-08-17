@@ -108,7 +108,7 @@ In de repository is geen intended purpose aangetroffen voor:
 
 De intended-purposeverklaring legt gebruikers, omgeving, invoer, uitvoer,
 autonome technische acties, beperkingen, gebruikersverantwoordelijkheid en
-uitgesloten medische toepassingen vast. Zij geldt voor `2.2-rc.3` en
+uitgesloten medische toepassingen vast. Zij geldt voor `2.2` en
 opvolgende versies totdat een herbeoordeling tot een gewijzigde verklaring
 leidt. De regulatoire kwalificatie blijft voorlopig: zij is gebaseerd op
 documentatie én implementatie en is geen extern juridisch of gecertificeerd
