@@ -531,11 +531,13 @@ conformiteit met een norm of de MDR.
 4. Tekst wordt naar de actieve applicatie gestuurd zonder aantoonbare
    patiënt-, applicatie- of veldcontrole.
 5. Direct bellen kan na klemborddetectie zonder nieuwe bevestiging plaatsvinden.
-6. De voorbeeldconfiguratie gebruikt HTTPS voor telefonie en SMS, maar
-   `ValidateLocalConfiguration()` controleert voor deze URL's alleen of een
-   waarde is ingevuld. Een lokale `http://`-configuratie wordt dus nog niet
-   technisch geweigerd en de feitelijke productiebeveiliging is niet uit de
-   repository vast te stellen.
+6. `ValidateLocalConfiguration()` en `ValidateSmsCallActionItem()` weigeren
+   sinds `docs/DECISIONS.md` D-043 een niet-HTTPS `Telephony.BaseUrl` of
+   `SmsCallAction.Url` al bij het opstarten. Dit is applicatieniveau-
+   afdwinging; de feitelijke productiebeveiliging (TLS-versie, certificaat,
+   netwerksegmentatie, serverauthenticatie op de beheerde Windows-werkplek)
+   is niet uit de repository vast te stellen en blijft een openstaande
+   infrastructuurvraag (zie `docs/TODO.md`).
 7. Lokale INI/JSON/logbestanden hebben geen applicatie-eigen versleuteling of
    zichtbare ACL-inrichting; de feitelijke bescherming berust op Windows,
    OneDrive en organisatorisch werkplekbeheer en moet aantoonbaar worden

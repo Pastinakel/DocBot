@@ -221,6 +221,9 @@ Functionaliteit — Telefonie
   UIA-`AutomationId` uit `FieldId` ingevuld; JavaScript is uitsluitend de
   fallback. SMS wordt alleen aangeboden voor een geldig Nederlands
   06-nummer en DocBot verstuurt het bericht niet zelf.
+- Elke `SmsCallAction.Url` in `DocBot.local.ahk` moet met `https://`
+  beginnen; `ValidateSmsCallActionItem()` weigert een `http://`-waarde al
+  bij het opstarten.
 - Het eigen toestelnummer wordt gekoppeld/geregistreerd bij de interne
   telefonieserver; de Verversen-knop op de Overzicht-pagina vraagt (met een
   ingebouwde afkoeltijd) een nieuw koppelnummer op. Zolang er nog geen
@@ -260,6 +263,9 @@ volgende sessie die niet bij de oorspronkelijke implementatie was).
   niet-gevoelige technische instellingen staan in `IPTConfig`.
 - Alle aanroepen zijn POST met een lege body; parameters gaan in de
   querystring.
+- `Telephony.BaseUrl` in `DocBot.local.ahk` moet met `https://` beginnen;
+  `ValidateLocalConfiguration()` weigert een `http://`-waarde al bij het
+  opstarten (blokkerende foutmelding, geen stille HTTP-fallback).
 - `event-endpoint` is een long-poll: de server houdt de aanvraag open totdat
   er een event is. De client plant pas een nieuwe aanvraag zodra de vorige
   is afgerond (`IPT_poller()` / `IPT_PollResponse()`), niet via een vaste
@@ -413,6 +419,10 @@ Changelog
 ---------
 
 ### 2.3 — In ontwikkeling
+- Telefonie en SMS vereisen nu een HTTPS-URL: `ValidateLocalConfiguration()`
+  weigert een niet-HTTPS `Telephony.BaseUrl` en `ValidateSmsCallActionItem()`
+  weigert een niet-HTTPS `SmsCallAction.Url`, beide al bij het opstarten
+  (`docs/DECISIONS.md` D-043).
 - Standaardlogregels ouder dan zeven dagen worden automatisch verwijderd (bij
   opstart en daarna dagelijks), uit zowel het actieve logbestand als
   `debug.log.oud`. De bestaande omvangrotatie (circa 2 MB) blijft ongewijzigd
