@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-diagnostiek-retentie.1"
+global AppVersion := "2.3-diagnostiek-retentie.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2740,9 +2740,27 @@ PruneExpiredDebugLogFile(path) {
                 gewijzigd := true
                 continue  ; regel is ouder dan de bewaartermijn: laat vervallen
             }
+            nieuweInhoud .= chunk delimiter
+            continue
         }
-        ; Geen herkenbare tijdstempel (bijv. een beschadigde/legacy regel):
-        ; voor de zekerheid ongewijzigd behouden in plaats van te gokken.
+
+        ; Regels van vóór de "v2"-opschoning (tot en met commit 5f72613,
+        ; 2026-08-07) hadden geen datum, alleen "HH:mm:ss.mmm", en werden
+        ; nooit URL-geschoond. Zo'n regel kan hier alleen staan als een
+        ; oudere, niet-geschoonde build ooit naar hetzelfde bestand heeft
+        ; geschreven nadat de v2-kopregel al aanwezig was — de
+        ; formaatcontrole in InitializeDiagnosticLogging() leest bij opstart
+        ; alleen de eerste 256 bytes en ziet dit dus niet. Zo'n regel is per
+        ; definitie (ver) ouder dan de bewaartermijn: onvoorwaardelijk laten
+        ; vervallen in plaats van voor altijd te bewaren.
+        if RegExMatch(chunk, "^\d{2}:\d{2}:\d{2}\.\d{1,3} ") {
+            gewijzigd := true
+            continue
+        }
+
+        ; Overige onherkenbare inhoud (bijv. een afgebroken/beschadigde
+        ; regel): voor de zekerheid ongewijzigd behouden in plaats van te
+        ; gokken.
         nieuweInhoud .= chunk delimiter
     }
 

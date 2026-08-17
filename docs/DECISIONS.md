@@ -852,3 +852,47 @@ by hand; deleting immediately would break that path entirely.
   which was already correctly scoped to the session.
 - Not yet validated on managed Windows/a compiled build; see the
   corresponding `docs/TODO.md` acceptance items.
+
+### Addendum (2026-08-17): pre-"v2" legacy log lines never expired
+
+A real `debug.log` from a compiled test build (`AppVersion
+2.3-https-telefonie.1` / `2.3-diagnostiek-retentie.1`) surfaced entries with
+no date, only `HH:mm:ss.mmm`, containing unredacted internal URLs (e.g.
+`http://<internal-host>/AllocNumber.xml?sid=...`). These predate commit
+`5f72613` (2026-08-07), which introduced `BuildDebugLogLine()`'s dated
+format, `SanitizeLogText()`'s URL redaction, and the "DocBot standaardlog v2"
+header/migration-wipe check in `InitializeDiagnosticLogging()` together in
+one change — DocBot 2.1's initial release (`c2b7407`, 2026-07-27) shipped
+only the old, undated, unredacted format.
+
+Root cause: `debug.log` is not channel-specific — `GetStandardDebugLogPath()`
+always returns `%LocalAppData%\DocBot\debug.log` regardless of
+stable/test/dev profile, so every build ever run on a given machine shares
+one file. `InitializeDiagnosticLogging()`'s format check only reads the
+first 256 bytes at startup to decide whether to wipe the file; once a valid
+"v2" header exists at the top, nothing re-validates the rest of the file on
+later startups. If an older, pre-`5f72613` build is ever run again against
+that same file (a rebuilt/rolled-back executable, a colleague's older
+compiled `.exe`, etc.), it blindly appends its old unredacted format
+underneath an already-valid-looking header, and no future startup notices.
+
+Originally, `PruneExpiredDebugLogFile()` only recognized the current dated
+format and left anything else untouched ("do not block startup" was read as
+"when in doubt, keep it"). That meant this specific, identifiable legacy
+format would never be cleaned up — defeating both the general
+"standardlog stays redacted" invariant and the new seven-day retention
+promise, indefinitely.
+
+**Fix:** `PruneExpiredDebugLogFile()` now also matches the known legacy
+`^\d{2}:\d{2}:\d{2}\.\d{1,3} ` pattern and treats any match as
+unconditionally expired — the mere presence of that pattern proves the
+entry predates 2026-08-07, so no age computation is needed. Content that
+matches neither the current dated format nor this known legacy format
+(genuine corruption, a partial write) is still left alone rather than
+guessed at.
+
+**Not fixed here:** the root cause in `InitializeDiagnosticLogging()` (the
+256-byte-only, startup-only format check) is a separate, pre-existing gap
+that could let *other* not-yet-known stale formats slip through the same
+way in the future. Left as a follow-up rather than expanding this change's
+scope; see `docs/TODO.md`.

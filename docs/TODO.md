@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-16. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-17. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -300,7 +300,7 @@ seven days.
 - [x] Remove entries older than seven days from both the active standard log
   and the rotated `.oud` log without relying only on file modification time.
   Implemented on `claude/diagnostics-retention` (`AppVersion
-  2.3-diagnostiek-retentie.1`); see `docs/DECISIONS.md` D-044.
+  2.3-diagnostiek-retentie.2`); see `docs/DECISIONS.md` D-044.
   `PruneExpiredDebugLogEntries()` parses each entry's own leading timestamp.
 - [x] Preserve the existing redaction and approximately 2 MB size-rotation
   behavior. Unchanged; the new pruning runs independently of
@@ -308,10 +308,17 @@ seven days.
 - [x] Ensure malformed or legacy log lines and cleanup failures do not block
   application startup. Unparseable entries are left in place rather than
   guessed at; all pruning is wrapped in `try` and runs after, not inside,
-  the existing startup log-init `try` block.
-- [ ] Verify on managed Windows that recent entries remain available, expired
+  the existing startup log-init `try` block. A real compiled test build
+  surfaced actual pre-"v2" legacy lines (undated, unredacted, from before
+  commit `5f72613`/2026-08-07) still present in a shared `debug.log` — see
+  the D-044 addendum. `PruneExpiredDebugLogFile()` now specifically
+  recognizes and unconditionally expires that known legacy format.
+- [x] Verify on managed Windows that recent entries remain available, expired
   entries are removed and extended-session logging keeps its separate
-  lifecycle. Not yet done — needs a compiled build on Windows.
+  lifecycle. A compiled build on a real test machine surfaced the legacy-line
+  gap above (now fixed); the base current-format pruning behavior (recent
+  entries kept, aged current-format entries removed) has not yet been
+  separately confirmed on that machine after this fix.
 - [x] Keep `README.md` and `docs/DATA_PROTECTION.md` synchronized with the
   implemented behavior.
 
@@ -393,6 +400,46 @@ After significant architectural or release changes:
 - [ ] continue to treat `AGENTS.md`/`CLAUDE.md` as the authoritative operational rules agents must read before writes.
 
 Do not copy end-user changelog content into these docs verbatim; link concepts and rationale instead.
+
+---
+
+## P2 — Harden the standard-log format migration check beyond the first 256 bytes
+
+Discovered 2026-08-17 (see `docs/DECISIONS.md` D-044 addendum) via a real
+compiled test build: `debug.log` is not channel-specific
+(`GetStandardDebugLogPath()` always returns
+`%LocalAppData%\DocBot\debug.log`, regardless of stable/test/dev profile),
+so every build ever run on a machine shares one file.
+`InitializeDiagnosticLogging()` only reads the first 256 bytes at startup to
+decide whether the file is current-format and needs wiping; once a valid
+"DocBot standaardlog v2" header exists at the top, nothing re-validates the
+rest of the file on later startups. If an older/rolled-back build is ever
+run again against that same file, it can append its own (possibly
+unredacted or otherwise non-conforming) format underneath an
+already-valid-looking header, and no future startup notices.
+
+The immediate symptom (pre-"v2" legacy lines from before commit `5f72613`
+never expiring) is already fixed in `PruneExpiredDebugLogFile()`, which now
+specifically recognizes that one known legacy format. This item is about
+the more general root cause, for whatever future format mismatch isn't
+already known/pattern-matched:
+
+- [ ] Decide on an approach: e.g. validate every line's format (not just the
+  header) during `InitializeDiagnosticLogging()`, or make
+  `PruneExpiredDebugLogFile()`'s "does this line match a known format"
+  check exhaustive (current format + every known legacy format) with
+  unconditional expiry for anything that matches no known format at all,
+  rather than the current conservative "keep unknown content" default.
+- [ ] Weigh the tradeoff explicitly: the current conservative default
+  favors not deleting recent-but-corrupted entries; a stricter default
+  favors not indefinitely retaining unredacted content. Record the decision
+  in `docs/DECISIONS.md`.
+- [ ] If changed, keep it consistent with the "malformed/legacy content must
+  not block startup" invariant from the seven-day-retention work.
+
+This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
+branch from the then-current `develop` and update the branch-specific
+`AppVersion` in every commit that changes `DocBot.ahk`.
 
 ---
 
