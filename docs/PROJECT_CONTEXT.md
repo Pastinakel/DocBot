@@ -1,6 +1,6 @@
 # DocBot — Project Context
 
-_Last updated: 2026-08-14. This document combines the repository state around the DocBot 2.2 release and the start of the 2.3 development line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
+_Last updated: 2026-08-17. This document combines the repository state around the DocBot 2.2 release and the start of the 2.3 development line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
 
 ## 1. Purpose
 
@@ -37,32 +37,53 @@ There is currently no conventional `tests/` directory and no `migrations/` direc
 
 ## 3. Branch and release status at handover
 
-Repository state checked on 2026-08-14, after the DocBot 2.2 release:
+Repository state checked on 2026-08-17, on the `2.3-dev` line following the
+DocBot 2.2 release:
 
 - `main` is the production line and represents stable **DocBot 2.2**, merged
   from `release/2.2-rc` via PR #27 (merge commit `a156dfe`) and tagged
-  `v2.2` on that commit.
-- The full RC3 acceptance test (`docs/TODO.md`) was completed and accepted
-  by the project owner before this merge; the release-finalization steps
-  (AppVersion, README, regulatory/data-protection documentation, tag) are
-  recorded as done in `docs/TODO.md`.
+  `v2.2` on that commit. No further work is expected on `main` outside an
+  explicitly requested hotfix.
 - `release/2.2-rc` and `release/2.2-finalize` are the historical release
   branches for 2.2; no further work is expected on them.
-- `develop` is being brought back in line with the released `main` (merging
-  the release-only fixes, per `docs/DECISIONS.md` D-005) and will start the
-  next development line as `AppVersion = 2.3-dev.1`.
+- `develop` was brought back in line with the released `main` via PR #28
+  (`chore/bring-back-2.2-to-develop`) and started the 2.3 development line
+  at `AppVersion = 2.3-dev.1`. The `.github/workflows/ahk-syntax-check.yml`
+  CI syntax-only gate (D-040, `docs/ARCHITECTURE.md` §19) came along with
+  that merge, so it now also protects `develop`, not only `main`.
+- Since then, three further feature/fix branches merged into `develop`:
+  - PR #30 (`claude/docs-sync-and-ci-decision`) synced `docs/TODO.md` and
+    `docs/REGULATORY_ASSESSMENT.md` and recorded the "keep the AHK
+    syntax-check trigger unscoped" decision (`docs/DECISIONS.md` D-042).
+  - PR #31 (`claude/https-only-telephony-sms`) made HTTPS mandatory for
+    `Telephony.BaseUrl` and every `SmsCallAction.Url`, rejected at startup
+    validation (`docs/DECISIONS.md` D-043). Bumped `develop` to
+    `AppVersion = 2.3-dev.2`.
+  - PR #32 (`claude/diagnostics-retention`) added the seven-day residency
+    ceiling for the standard log, problem-report directories, and orphaned
+    extended-log files, confirmed on a compiled Windows test build
+    (`docs/DECISIONS.md` D-044). Bumped `develop` to
+    `AppVersion = 2.3-dev.3`, its current version.
+- `develop` is therefore currently at `AppVersion = 2.3-dev.3`. Verify this
+  against `global AppVersion` in `DocBot.ahk` before relying on it, since
+  this section is a point-in-time snapshot and further branches may have
+  merged since.
 - `feature/extended-logging` is no longer the branch to test or integrate;
   its work shipped as part of 2.2.
-- The `.github/workflows/ahk-syntax-check.yml` CI syntax-only gate (see
-  D-040 and `docs/ARCHITECTURE.md` §19) reached `main` as part of the 2.2
-  release and is being brought back to `develop` in the same step as the
-  rest of the release-only fixes.
+- The remaining open `docs/TODO.md` items on `develop` are the P1 items
+  "Change user-data profile selection to build mode" and "Standardize the
+  local engineering workflow", plus the P2 backlog (notably hardening the
+  256-byte-only `debug.log` format check that D-044 left as follow-up, and
+  introducing targeted automated tests).
 
 Do not infer functional validation from source integration alone for future
-cycles. The 2.2 feature work contained repeated AutoHotkey v2
-multiline-concatenation failures during development, which is why a real
-AHK v2 parse/compile/run and functional test on Windows — not just source
-review — was required before accepting the RC.
+cycles. Both the 2.2 feature work and the D-044 diagnostics-retention work
+needed multiple rounds of real Windows/compiled-build testing to catch
+issues that source review alone missed (repeated AutoHotkey v2
+multiline-concatenation failures for 2.2; a stale legacy log format and two
+generations of an unrecognized directory-naming pattern for D-044) — a real
+AHK v2 parse/compile/run and functional test on Windows remains required
+before declaring a change complete, not just source review.
 
 ## 4. Product requirements that must survive refactors
 
