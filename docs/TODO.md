@@ -176,22 +176,31 @@ every managed Windows workstation.
 
 ### Acceptance evidence
 
+Confirmed by the project owner on a compiled test build on the managed
+Windows workplace / internal hospital network (2026-08-17).
+
 - [x] Exploratory HTTPS test: registration/link code received.
 - [x] Exploratory HTTPS test: test call successfully established.
-- [ ] Registration/link-code request succeeds in a compiled test build on a
+- [x] Registration/link-code request succeeds in a compiled test build on a
   representative managed Windows workstation.
-- [ ] Event polling remains active over time, does not overlap, and recovers
+- [x] Event polling remains active over time, does not overlap, and recovers
   after the known stop/restart scenarios through HTTPS.
-- [ ] Linking and a controlled call to a designated test number succeed.
-- [ ] Certificate-name, trust-chain, expiry, and TLS failures are rejected and
+- [x] Linking and a controlled call to a designated test number succeed.
+- [x] Certificate-name, trust-chain, expiry, and TLS failures are rejected and
   produce a clear, non-sensitive diagnostic instead of falling back to HTTP.
-- [ ] A telephony or SMS URL using `http://` is rejected during configuration
-  validation with a clear, non-sensitive error. Implemented (D-043); still
-  needs a real compiled-build/Windows confirmation before checking this off,
-  per the project's manual-validation reality (`docs/ARCHITECTURE.md` §19).
-- [ ] The final release/preflight checklist records the HTTPS base URL and
+- [x] A telephony or SMS URL using `http://` is rejected during configuration
+  validation with a clear, non-sensitive error. Implemented (D-043) and now
+  confirmed on a compiled build on managed Windows, per the project's
+  manual-validation reality (`docs/ARCHITECTURE.md` §19).
+- [x] The final release/preflight checklist records the HTTPS base URL and
   certificate validation result without recording the confidential hostname,
   endpoints, telephone numbers, or certificate private material in Git.
+
+The "Application and documentation" server-authentication confirmation and
+the "Infrastructure dependencies" items below (certificate ownership,
+reverse-proxy timeouts, disabling the HTTP listener) are separate,
+organizational/ops-level follow-ups, not covered by this test round —
+they remain open below.
 
 This is a real `DocBot.ahk` behavior change. Implement it on a dedicated
 feature/fix branch from the then-current `develop`, update the branch-specific

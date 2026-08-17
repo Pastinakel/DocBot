@@ -790,12 +790,15 @@ local file should fail loudly at startup like every other required
 - An existing local configuration with an `http://` telephony or SMS URL now
   fails startup with a clear, non-sensitive validation error instead of
   running against an unencrypted endpoint.
-- This closes the "Application and documentation" checklist items in
-  `docs/TODO.md` P1 "Make HTTPS mandatory for telephony and SMS URLs". The
-  "Infrastructure dependencies" and "Acceptance evidence" items in that same
-  TODO entry (certificate/TLS confirmation on managed Windows, server-side
-  authentication) remain open — this decision covers application-level
-  enforcement only, not production infrastructure validation.
+- This closes the "Application and documentation" and "Acceptance evidence"
+  checklist items in `docs/TODO.md` P1 "Make HTTPS mandatory for telephony
+  and SMS URLs" — the latter confirmed by the project owner on a compiled
+  test build on managed Windows/the internal hospital network (2026-08-17).
+  The "Infrastructure dependencies" items in that same TODO entry
+  (production certificate/TLS ownership, reverse-proxy timeouts, disabling
+  the HTTP listener) and the separate server-side-authentication question
+  remain open — this decision covers application-level enforcement and its
+  compiled-build validation, not production infrastructure operations.
 - Does not address server/client authentication strength; TLS transport
   encryption alone does not establish client authorization, and that remains
   a separately tracked open question per `docs/TODO.md`.
