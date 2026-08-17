@@ -417,8 +417,8 @@ Microsoft-/mailboxbeleid van de organisatie.
 organisatorische mailtransport vast; leg vast dat er bij afwezigheid geen
 waarneming is; en beoordeel de ontvangerconfiguratie opnieuw wanneer de
 enige ontwikkelaar van functie wijzigt of uit dienst treedt. De automatische
-lokale verwijdering van logregels ouder dan zeven dagen is geïmplementeerd
-(D-044) maar nog niet op een beheerde Windows-werkplek gevalideerd.
+lokale verwijdering van logregels ouder dan zeven dagen is geïmplementeerd en
+op een beheerde Windows-werkplek/compiled build gevalideerd (D-044).
 
 ### 3.7 Uitgebreide logging en probleemrapportage
 
@@ -461,7 +461,7 @@ opschoonronde als de standaardlog-retentie.
 | Onderwerp | Vastgesteld | OPENSTAAND |
 | --- | --- | --- |
 | Supportontvanger | In de huidige opstartfase uitsluitend de enige ontwikkelaar, lokaal/configuratief bepaald | Er is momenteel geen waarneming of vervanger; bij afwezigheid wacht de rapportage op terugkeer van de ontwikkelaar. Bij functiewijziging of uitdiensttreding moet de configuratie opnieuw worden beoordeeld |
-| Rapportmap op werkplek | Verwijderd na geverifieerde Outlook-bijlage, of na expliciete bevestiging bij de handmatige fallback; anders uiterlijk na zeven dagen automatisch opgeruimd (D-044) | Nog niet gevalideerd op een beheerde Windows-werkplek/compiled build |
+| Rapportmap op werkplek | Verwijderd na geverifieerde Outlook-bijlage, of na expliciete bevestiging bij de handmatige fallback; anders uiterlijk na zeven dagen automatisch opgeruimd (D-044) | Gevalideerd op een beheerde Windows-werkplek/compiled build |
 | E-mail | Outlook-concept; verzending door gebruiker; speciale diagnostiekmap verwijdert berichten ouder dan zeven dagen automatisch | Mailtransport en eventuele langere retentie in herstelvoorzieningen, archieven en back-ups |
 | Toegang | Gebruiker en, na verzending, uitsluitend de enige ontwikkelaar via het organisatorische Outlook-account | Geen afzonderlijke continuïteitsmaatregel in de opstartfase; toegang volgt het organisatieaccount en wordt bij functie- of uitdiensttreding door de organisatie ingetrokken |
 | Incidentproces | Datalekken van DocBot vallen onder het algemene incident- en datalekproces van de organisatie en worden door de CISO afgehandeld | Verwijs naar de interne meldroute en procedure |
@@ -618,9 +618,9 @@ eventuele back-up- of securitydienstverleners.
 | SMS-webappgegevens | Buiten repository | OPENSTAAND |
 | Persoonlijke hotstrings | Tot wijziging/verwijdering/profielbeheer; `.bak` kan vorige versie bevatten | OPENSTAAND |
 | Snelkiesnummers en instellingen | Tot wijziging/verwijdering/profielbeheer | OPENSTAAND |
-| Standaardlog | Actief plus één geroteerd bestand; rotatie bij circa 2 MB; regels ouder dan zeven dagen worden automatisch verwijderd (D-044) | Maximale termijn zeven dagen — geïmplementeerd, nog niet op een beheerde Windows-werkplek gevalideerd |
-| Uitgebreid log | Tijdelijk gedurende rapportsessie; volgens sessielogica verwijderd, met sinds D-044 een vangnet van uiterlijk zeven dagen voor een bestand dat door een crash/geforceerd afsluiten wordt achtergelaten | Technische regel bevestigen in beheer-/testbewijs |
-| Probleemrapportmap | Verwijderd na geverifieerde Outlook-bijlage of expliciete bevestiging bij de handmatige fallback; anders uiterlijk na zeven dagen automatisch opgeruimd (D-044) | Geïmplementeerd, nog niet op een beheerde Windows-werkplek/compiled build gevalideerd |
+| Standaardlog | Actief plus één geroteerd bestand; rotatie bij circa 2 MB; regels ouder dan zeven dagen worden automatisch verwijderd (D-044) | Maximale termijn zeven dagen — geïmplementeerd en op een beheerde Windows-werkplek gevalideerd |
+| Uitgebreid log | Tijdelijk gedurende rapportsessie; volgens sessielogica verwijderd, met sinds D-044 een vangnet van uiterlijk zeven dagen voor een bestand dat door een crash/geforceerd afsluiten wordt achtergelaten | Geïmplementeerd en op een beheerde Windows-werkplek gevalideerd |
+| Probleemrapportmap | Verwijderd na geverifieerde Outlook-bijlage of expliciete bevestiging bij de handmatige fallback; anders uiterlijk na zeven dagen automatisch opgeruimd (D-044) | Geïmplementeerd en op een beheerde Windows-werkplek/compiled build gevalideerd |
 | Supportmail/ticket | Speciale Outlook-map verwijdert diagnostische berichten ouder dan zeven dagen automatisch | Eventuele aanvullende retentie in herstelvoorzieningen, archieven en back-ups bevestigen |
 | Telemetrie lokaal | Installatie-ID en tellers in `settings.ini` | OPENSTAAND |
 | Telemetrie extern | Power Automate/Teams-omgeving; registraties ouder dan één jaar worden verwijderd | Maximale termijn één jaar; toepassing op exports en back-ups bevestigen |
@@ -669,7 +669,7 @@ uitdiensttreding.
 | Telemetrie | Code vereist een `https://`-webhook | Tenant, TLS-inspectie, ontvangers en retentie vastleggen |
 | Probleemrapport per e-mail | Classic Outlook-concept of handmatige fallback | Mailtransport, classificatie, encryptie en externe ontvangers vastleggen |
 | Documents/OneDrive | Windows-profiel en beheerde opslag | ACL's, tenant, synchronisatie, back-up en versleuteling bevestigen |
-| LocalAppData/%TEMP% | Windows-profiel; automatische verwijdering van de tijdelijke rapportmap na verzending/bevestiging of uiterlijk na zeven dagen (D-044) | Schijfversleuteling, endpointbeheer; Windows-validatie van de D-044-verwijdering bevestigen |
+| LocalAppData/%TEMP% | Windows-profiel; automatische verwijdering van de tijdelijke rapportmap na verzending/bevestiging of uiterlijk na zeven dagen, bevestigd op een beheerde Windows-werkplek (D-044) | Schijfversleuteling, endpointbeheer |
 
 Aanvullend moeten secure development, kwetsbaarhedenbeheer, incidentrespons,
 sleutel-/secretbeheer en logging van beheerhandelingen worden gekoppeld aan

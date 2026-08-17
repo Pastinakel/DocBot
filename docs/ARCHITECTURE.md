@@ -501,10 +501,9 @@ session state, and sensitive-data boundaries — predating the switch to loose
 attachments in D-041. The broader full-RC3 acceptance test, covering the
 loose-attachment behavior together with the rest of the application, was
 subsequently completed and accepted before the 2.2 release (see
-`docs/TODO.md`). A real compiled test build of the D-044 retention/cleanup
-behavior (2026-08-17) confirmed the standard-log retention works and found
-`DocBot_diagnose_*` directories still present past the seven-day threshold;
-root cause not yet confirmed (see `docs/DECISIONS.md` D-044 addenda).
+`docs/TODO.md`). A compiled test build of the D-044 retention/cleanup
+behavior (2026-08-17) confirmed both the standard-log retention and the two
+directory/file sweeps work correctly on a managed Windows workplace.
 
 ## 16. Update/restart architecture
 

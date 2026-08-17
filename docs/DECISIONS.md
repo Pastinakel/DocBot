@@ -1,6 +1,6 @@
 # DocBot — Decisions
 
-_Last updated: 2026-08-09. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
+_Last updated: 2026-08-17. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
 
 ## How to read this file
 
@@ -751,11 +751,6 @@ Project owner decision (2026-08-15):
 
 **Status:** Accepted
 
-**Note on numbering:** at the time this was written, PR #30
-(`claude/docs-sync-and-ci-decision`, not yet merged into `develop`) already
-claims `D-042` for an unrelated CI-trigger decision. Whoever merges second
-should check this file still reads in ascending order and renumber if not.
-
 An exploratory test on 2026-08-09 (see `docs/TODO.md`) showed that an
 `https://` telephony `BaseUrl` works end-to-end (registration, linking, a
 test call), but `ValidateLocalConfiguration()` and
@@ -809,288 +804,84 @@ local file should fail loudly at startup like every other required
 
 ## D-044 — Bound standard-log and problem-report-directory residency to seven days
 
-**Status:** Accepted
+**Status:** Accepted; implemented on `claude/diagnostics-retention` and
+merged into `develop` (final `AppVersion 2.3-diagnostiek-retentie.6`),
+confirmed working on a compiled test build.
 
-**Note on numbering:** at the time this was written, PR #31
-(`claude/https-only-telephony-sms`, not yet merged into `develop`) already
-claims `D-043` for an unrelated HTTPS-enforcement decision. Whoever merges
-second should check this file still reads in ascending order and renumber
-if not.
-
-This covers the two related `docs/TODO.md` P1 items "Limit local standard
+Covers the two related `docs/TODO.md` P1 items "Limit local standard
 diagnostics to seven days" and "Remove temporary problem-report artifacts",
-implemented together on `claude/diagnostics-retention`
-(`AppVersion 2.3-diagnostiek-retentie.1`) because both are about bounding
-how long DocBot lets diagnostic residue sit on disk.
+implemented together because both bound how long diagnostic residue sits on
+disk.
 
-### Standard-log retention
+**Standard-log retention:** `debug.log` and its rotated `debug.log.oud`
+previously only shrank via the existing ~2 MB size rotation
+(`FlushDebugLog()`); nothing removed old entries by age.
+`PruneExpiredDebugLogEntries()` / `PruneExpiredDebugLogFile()` parse each
+entry by its own leading timestamp and drop entries older than seven days
+from both files independently, rewriting a file only when something was
+actually dropped. This also recognizes the pre-`5f72613` (2026-08-07)
+undated legacy log format (`^\d{2}:\d{2}:\d{2}\.\d{1,3} `) and treats any
+match as unconditionally expired, since the pattern's mere presence proves
+the entry predates the current redacted format. An entry matching neither
+format is left in place rather than guessed at. This runs once at startup
+and then on a repeating 24-hour timer (`RunDiagnosticsMaintenance()`),
+because DocBot is a long-running background tool that may not restart for a
+long time.
 
-`debug.log` and its rotated `debug.log.oud` previously only shrank via the
-existing ~2 MB size rotation (`FlushDebugLog()`); nothing removed old
-entries by age, so a lightly-used installation could accumulate log lines
-far older than intended. `PruneExpiredDebugLogEntries()` /
-`PruneExpiredDebugLogFile()` now parse each entry by its own leading
-timestamp (the format `BuildDebugLogLine()` already writes) and drop
-entries older than seven days, from both files independently, rewriting
-each file only when something was actually dropped (temp-file-then-`FileMove`
-pattern, matching the existing atomic-write style used elsewhere, e.g.
-`SavePackageSettingsToJson()`). This runs once at startup and then on a
-repeating 24-hour timer (`RunDiagnosticsMaintenance()`), not only at
-startup, because DocBot is a long-running background tool that may not
-restart for a long time — a startup-only check would leave the "seven day"
-promise unenforced for the length of a session.
+**Problem-report directory lifecycle:** `BuildProblemReportPackage()`
+writes loose report files (no ZIP, per D-041) to a temporary
+`%TEMP%\DocBot_diagnose_<stamp>` directory.
 
-**Rejected alternative:** pruning by whole-file modification time instead
-of per-entry timestamps. Rejected because the active log mixes old and
-recent entries (it only rotates at ~2 MB, which can take far longer than a
-week to fill on a lightly-used installation) — file-mtime-based deletion
-would either delete recent entries too early (deleting the whole file) or
-never delete anything (a file keeps getting touched as new lines are
-appended). The TODO item explicitly called this out.
+- Outlook success path (`OpenProblemReportEmail()`): verifies
+  `mail.Attachments.Count = files.Length` right after adding attachments,
+  then deletes the report directory only after `mail.Display()` succeeds,
+  so a later failure in the same `try` block still reaches the fallback
+  with an intact directory.
+- Manual fallback path (`OpenProblemReportFallback()`): the directory is
+  deliberately not auto-deleted, since the user may still need to attach
+  the files by hand; it asks explicitly, with "No" as the default so a
+  dismissed prompt never deletes anything.
+- Abandoned-directory sweep (`PruneAbandonedProblemReportDirs()`) and
+  abandoned extended-log sweep (`PruneAbandonedExtendedLogFiles()`) run on
+  the same daily timer and delete `DocBot_diagnose_*` directories /
+  `problem-report-*.log` files older than seven days, reading the
+  timestamp DocBot itself encodes in the filename rather than filesystem
+  mtime. This is the backstop for "user chose No and forgot", a crash
+  between creation and finalization, or DocBot closing mid-flow. The
+  directory-name regex accepts both the current millisecond-suffixed
+  format and the older `yyyyMMdd_HHmmss`-only format used before commit
+  `2a8127e` (2026-08-08).
+- All three sweeps (`PruneExpiredDebugLogFile()`,
+  `PruneAbandonedProblemReportDirs()`, `PruneAbandonedExtendedLogFiles()`)
+  log a one-line summary every run (counts seen/expired/deleted/failed,
+  plus the last error if any deletion failed) — the abandoned-directory and
+  extended-log sweeps log unconditionally on every run, not only when
+  something was found, kept deliberately on project-owner request as
+  ongoing, observable proof in the standard log that the seven-day cleanup
+  actually runs.
 
-An entry whose leading timestamp cannot be parsed (corruption, or a future
-format change) is left in place rather than guessed at — `InitializeDiagnosticLogging()`
-already wipes genuinely old-format files wholesale before this code ever
-runs, so an unparseable entry in an otherwise-current-format file is an
-edge case, not the normal path.
-
-### Problem-report directory lifecycle
-
-`BuildProblemReportPackage()` writes loose report files (no ZIP, per D-041)
-to a temporary `%TEMP%\DocBot_diagnose_<stamp>` directory. Previously
-nothing ever deleted that directory:
-
-- **Outlook success path** (`OpenProblemReportEmail()`): now verifies
-  `mail.Attachments.Count = files.Length` right after adding attachments
-  (throwing into the existing fallback path if Outlook silently dropped
-  one), then deletes the report directory only *after* `mail.Display()`
-  succeeds — at that point the attachment bytes live inside the mail item
-  itself, independent of the temp files. Deleting earlier (e.g.
-  immediately after `Attachments.Add()`) was rejected because a later
-  failure in the same `try` block (e.g. `Display()`) would then reach the
-  `catch` and hand `OpenProblemReportFallback()` a directory that no longer
-  exists.
-- **Manual fallback path** (`OpenProblemReportFallback()`): the directory
-  is deliberately *not* auto-deleted, since the user may still need to
-  attach the files by hand. It now asks explicitly ("is de e-mail
-  verzonden, of heb je de bestanden niet meer nodig?") with **No** as the
-  default button, so dismissing the prompt without answering never deletes
-  anything.
-- **Abandoned-directory sweep** (`PruneAbandonedProblemReportDirs()`): runs
-  in the same daily `RunDiagnosticsMaintenance()` timer as the log pruning
-  above, and deletes any `DocBot_diagnose_*` directory older than seven
-  days — read from the timestamp DocBot itself encodes in the directory
-  name, not filesystem mtime, so a later scan/copy of the folder (e.g. by
-  endpoint security tooling) can't accidentally extend its lifetime. This
-  is the backstop for "user chose No and then forgot", a crash between
-  directory creation and finalization, or DocBot being closed mid-flow —
-  none of those have a clean synchronous "cancel" hook to delete from, so a
-  bounded sweep is what actually satisfies "cannot leave sensitive report
-  artifacts behind indefinitely" from the TODO item.
-- Only directories matching DocBot's own exact naming pattern
-  (`DocBot_diagnose_yyyyMMdd_HHmmss_ms`) are ever touched by the sweep.
-
-**Rejected alternative:** deleting the report directory unconditionally
-right after building it or right after any `OpenProblemReportEmail()`/
-`OpenProblemReportFallback()` return. Rejected because the manual fallback
-explicitly depends on the files still being on disk for the user to attach
-by hand; deleting immediately would break that path entirely.
+**Rejected alternatives:** pruning by whole-file modification time instead
+of per-entry timestamps (the active log mixes old and recent entries
+because it only rotates at ~2 MB, which can take far longer than a week to
+fill on a lightly-used installation); deleting the report directory
+unconditionally right after building it or right after
+`OpenProblemReportEmail()`/`OpenProblemReportFallback()` return (breaks the
+manual fallback, which depends on the files still being on disk).
 
 **Consequences**
 
-- Seven days is now the shared, documented residency ceiling for both the
-  standard log and any problem-report directory; a future change to either
-  number should keep them intentionally in sync or explain why they
-  diverge.
+- Seven days is the shared, documented residency ceiling for the standard
+  log, problem-report directories, and orphaned extended-log files; a
+  future change to any of them should keep them intentionally in sync or
+  explain why they diverge.
 - The report-directory sweep depends on `BuildProblemReportPackage()`'s
   exact naming convention (`"DocBot_diagnose_" . FormatTime(A_Now,
   "yyyyMMdd_HHmmss") . "_" . Format("{:03}", A_MSec)`); changing that
-  format requires updating `PruneAbandonedProblemReportDirs()`'s regex in
-  the same change.
-- None of this touches the extended-log lifecycle
-  (`DeleteProblemReportExtendedLog()` / `ShutdownProblemReportLogging()`),
-  which was already correctly scoped to the session.
-- Not yet validated on managed Windows/a compiled build; see the
-  corresponding `docs/TODO.md` acceptance items.
-
-### Addendum (2026-08-17): pre-"v2" legacy log lines never expired
-
-A real `debug.log` from a compiled test build (`AppVersion
-2.3-https-telefonie.1` / `2.3-diagnostiek-retentie.1`) surfaced entries with
-no date, only `HH:mm:ss.mmm`, containing unredacted internal URLs (e.g.
-`http://<internal-host>/AllocNumber.xml?sid=...`). These predate commit
-`5f72613` (2026-08-07), which introduced `BuildDebugLogLine()`'s dated
-format, `SanitizeLogText()`'s URL redaction, and the "DocBot standaardlog v2"
-header/migration-wipe check in `InitializeDiagnosticLogging()` together in
-one change — DocBot 2.1's initial release (`c2b7407`, 2026-07-27) shipped
-only the old, undated, unredacted format.
-
-Root cause: `debug.log` is not channel-specific — `GetStandardDebugLogPath()`
-always returns `%LocalAppData%\DocBot\debug.log` regardless of
-stable/test/dev profile, so every build ever run on a given machine shares
-one file. `InitializeDiagnosticLogging()`'s format check only reads the
-first 256 bytes at startup to decide whether to wipe the file; once a valid
-"v2" header exists at the top, nothing re-validates the rest of the file on
-later startups. If an older, pre-`5f72613` build is ever run again against
-that same file (a rebuilt/rolled-back executable, a colleague's older
-compiled `.exe`, etc.), it blindly appends its old unredacted format
-underneath an already-valid-looking header, and no future startup notices.
-
-Originally, `PruneExpiredDebugLogFile()` only recognized the current dated
-format and left anything else untouched ("do not block startup" was read as
-"when in doubt, keep it"). That meant this specific, identifiable legacy
-format would never be cleaned up — defeating both the general
-"standardlog stays redacted" invariant and the new seven-day retention
-promise, indefinitely.
-
-**Fix:** `PruneExpiredDebugLogFile()` now also matches the known legacy
-`^\d{2}:\d{2}:\d{2}\.\d{1,3} ` pattern and treats any match as
-unconditionally expired — the mere presence of that pattern proves the
-entry predates 2026-08-07, so no age computation is needed. Content that
-matches neither the current dated format nor this known legacy format
-(genuine corruption, a partial write) is still left alone rather than
-guessed at.
-
-**Not fixed here:** the root cause in `InitializeDiagnosticLogging()` (the
-256-byte-only, startup-only format check) is a separate, pre-existing gap
-that could let *other* not-yet-known stale formats slip through the same
-way in the future. Left as a follow-up rather than expanding this change's
-scope; see `docs/TODO.md`.
-
-### Addendum (2026-08-17): no cleanup existed for orphaned extended-log files, and the sweeps were silent
-
-While investigating the report above, the project owner confirmed the
-`%TEMP%\DocBot_diagnose_*` report directories are real (on a machine where
-`A_Temp` happens to resolve to `...\AppData\Local\Temp\2`, a common
-consequence of Windows/Group Policy folder handling — not itself a DocBot
-issue, since `PruneAbandonedProblemReportDirs()` and
-`BuildProblemReportPackage()` both consistently use `A_Temp`) and reported
-some were still present after they were more than seven days old, despite
-having run a build containing `PruneAbandonedProblemReportDirs()`.
-
-Two things were found/fixed:
-
-1. **A confirmed, separate gap:** the loose extended-log file written by
-   `StartExtendedProblemLogging()`
-   (`%LocalAppData%\DocBot\problem-report-<yyyyMMdd-HHmmss>.log`) had *no*
-   cleanup path at all beyond `DeleteProblemReportExtendedLog()`, which only
-   knows about the path stored in the current in-memory
-   `ProblemReportSession` — i.e. only the *current* session's own file. Any
-   file orphaned by a crash, a forced process kill, or a Windows
-   restart/update during an active session had nothing to ever clean it up,
-   regardless of age. `PruneAbandonedExtendedLogFiles()` now sweeps this
-   directory the same way `PruneAbandonedProblemReportDirs()` sweeps
-   `%TEMP%` — same seven-day threshold, same "trust the timestamp encoded in
-   the filename, not filesystem mtime" approach, same "only touch files
-   matching the exact known naming pattern" guard.
-2. **All of the pruning added in this decision was silent** — no `DebugLog`
-   call anywhere, on success *or* failure. That made the report above
-   genuinely hard to diagnose from the standard log alone: there was no way
-   to tell whether a sweep ran and found nothing, ran and matched files but
-   `DirDelete`/`FileDelete` failed (e.g. a transient lock from endpoint
-   security software, plausible on the managed Windows workplaces this
-   project targets), or didn't run at all. `PruneExpiredDebugLogFile()`,
-   `PruneAbandonedProblemReportDirs()`, and `PruneAbandonedExtendedLogFiles()`
-   now each log a one-line summary (counts seen/expired/deleted/failed, plus
-   the last error message if any deletion failed) whenever they actually
-   found something to act on — deliberately not logging anything on a
-   no-op day, to avoid daily log noise for the common case.
-
-**Consequences**
-
-- The seven-day residency ceiling from the main D-044 entry now applies
-  uniformly to all three diagnostic artifact classes: standard-log entries,
-  problem-report directories, and orphaned extended-log files.
-- The next real-world test should show a "Probleemrapportmap opschonen" /
-  "Uitgebreid log opschonen" line in the standard log whenever expired
-  items exist, which will show directly whether old `DocBot_diagnose_*`
-  directories are being found-but-failing-to-delete versus not being found
-  at all — the open question from this report is not yet resolved, just
-  made observable.
-- `AppVersion` → `2.3-diagnostiek-retentie.3`.
-
-### Addendum 2 (2026-08-17): root cause found — a second, older report-directory naming format
-
-The project owner reported (before even re-testing the logging above) that
-folders matching a different pattern, `DocBot_diagnose_yyyyMMdd_HHmmss`
-(no millisecond suffix), still exist on the test machine. Confirmed via git
-history: `BuildProblemReportPackage()`'s directory-naming stamp was
-`FormatTime(A_Now, "yyyyMMdd_HHmmss")` (no suffix) from problem reporting's
-introduction (`5f72613`, 2026-08-07) until commit `2a8127e` (2026-08-08)
-added the `. "_" . Format("{:03}", A_MSec)` suffix — so any report directory
-created in that roughly one-day window has the older, shorter name.
-
-Critically, that same original (`5f72613`-era) code — still ZIP-based at the
-time, before D-041 switched to loose files — *did* delete `reportDir`
-automatically, but only after a successful `CompressDirectoryContents()`
-call; a ZIP-build failure threw before reaching that cleanup line, leaving
-the loose directory orphaned. D-041's own rationale (`CompressDirectoryContents()`
-proving unreliable on some managed workplaces) means such failures were a
-real, not hypothetical, occurrence — this is exactly how these specific
-leftover directories were most likely created.
-
-`PruneAbandonedProblemReportDirs()`'s regex required the millisecond suffix
-(`^DocBot_diagnose_(\d{8})_(\d{6})_\d+$`), so it silently skipped this older
-format as "unrecognized" — the addendum-1 logging above would have surfaced
-this as `onherkend > 0` on the very next test, but the owner identified the
-exact old format first by inspecting the directories directly.
-
-**Fix:** the millisecond-suffix group is now optional
-(`^DocBot_diagnose_(\d{8})_(\d{6})(?:_\d+)?$`). No separate
-"unconditionally expired" branch was needed here (unlike the debug.log
-legacy-format fix in the first addendum) — both the old and new naming
-formats already encode a full `yyyyMMdd_HHmmss`, so the existing
-age-cutoff comparison applies correctly to either format once it's
-recognized at all.
-
-`AppVersion` → `2.3-diagnostiek-retentie.4`.
-
-### Addendum 3 (2026-08-17): the regex fix didn't help — sweep summary was still conditional
-
-A real debug.log covering all of `.1` through `.4` on the test machine showed
-**zero** "Probleemrapportmap opschonen" lines across every startup —
-including after the `.4` regex fix above, and including a startup triggered
-via the `signal.txt`/Task Scheduler update-restart path
-(`README.md` "Build-EPD_Machine.bat"), not just interactive launches.
-
-The regex fix in addendum 2 was real and correct, but couldn't have been
-observed either way: `PruneAbandonedProblemReportDirs()` only called
-`DebugLog()` when `gezien > 0`. Silence was therefore consistent with *two*
-very different situations — "the sweep ran and found nothing at the path it
-searched" versus "the sweep never reached that point" — and there was no
-way to tell them apart from the log alone.
-
-**Fix:** both `PruneAbandonedProblemReportDirs()` and
-`PruneAbandonedExtendedLogFiles()` now log their one-line summary
-unconditionally, every run (startup and daily), not only when something was
-found. `PruneAbandonedProblemReportDirs()`'s summary now also reports which
-folder `A_Temp` actually resolved to at sweep time — deliberately only the
-*last path component* (e.g. `2` or `Temp`) via `SplitPath()`, never the full
-path, so this stays consistent with the project's local-path redaction
-policy while still being enough to compare against what the project owner
-sees in Explorer. This exists specifically to test a hypothesis: that a
-Task-Scheduler-triggered restart might resolve `%TEMP%`/`A_Temp`
-differently than an interactive launch on this machine (which already has
-`A_Temp` resolving to `...\Temp\2` instead of `...\Temp` — itself a sign of
-non-default temp-folder handling, plausible on a managed workplace).
-
-**Confirmed (2026-08-17):** the next compiled test build showed the
-"Probleemrapportmap opschonen" summary line, and the project owner
-confirmed the old directories were genuinely gone from disk afterward. The
-sweep logic itself (naming regex, age cutoff, deletion) works correctly;
-the earlier silence really was the "only logs when something was found"
-gap from addendum 2/3, not a deeper `A_Temp`/Task-Scheduler issue. Whether
-the specific Task-Scheduler-restart hypothesis was the actual reason for
-the earlier zero-results runs was not separately isolated, and doesn't need
-to be — the observable behavior (old directories removed, confirmed on
-disk) is what matters here.
-
-The unconditional "log every run" behavior (both sweeps) is kept
-deliberately, on explicit project-owner request — not only as a debugging
-aid but as an ongoing, observable proof in the standard log that the
-seven-day cleanup actually runs and finds nothing to act on, not merely
-that nothing has gone wrong loudly. This is a one-line addition per sweep
-per day/startup, negligible next to the existing telephony poll-cycle log
-volume.
-
-`AppVersion` → `2.3-diagnostiek-retentie.6`.
+  format requires updating the sweep's regex in the same change.
+- `InitializeDiagnosticLogging()` still only reads the first 256 bytes at
+  startup to decide whether `debug.log` needs wiping, so a not-yet-known
+  future log format could still slip past `PruneExpiredDebugLogFile()`'s
+  pattern matching the same way the pre-`5f72613` format initially did.
+  Tracked separately as `docs/TODO.md` P2 "Harden the standard-log format
+  migration check beyond the first 256 bytes" rather than expanding this
+  decision's scope.
