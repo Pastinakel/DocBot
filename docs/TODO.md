@@ -364,17 +364,21 @@ ZIP — see DECISIONS.md.)
   older, pre-`2a8127e` (2026-08-08) directory name without the millisecond
   suffix, confirmed still present on a real test machine (see
   `docs/DECISIONS.md` D-044 addendum 2).
-- [x] Verify that cancelling at each stage and closing DocBot cannot leave
-  sensitive report artifacts behind indefinitely. Root cause of the real
-  test-build report (`DocBot_diagnose_*` directories surviving past seven
-  days) found and fixed: those specific directories used an older,
-  pre-`2a8127e` naming format the sweep's regex didn't recognize, most
-  likely orphaned by a ZIP-build failure back when problem reporting was
-  still ZIP-based (before D-041). The sweeps also now log a one-line
-  summary whenever they find something to act on, so a similar gap
-  wouldn't be silent again. Still needs one more compiled-build pass on
-  the same machine to confirm the fixed regex actually clears the existing
-  backlog of old-format directories.
+- [ ] Verify that cancelling at each stage and closing DocBot cannot leave
+  sensitive report artifacts behind indefinitely. Still open: a real
+  compiled test build (`.1` through `.4`) showed **zero**
+  "Probleemrapportmap opschonen" log lines across every startup, including
+  after the pre-`2a8127e` naming-format fix above — meaning that fix's
+  effect couldn't even be observed, because the sweep only logged when it
+  found something (`gezien > 0`). Fixed in `.5`: the summary now logs
+  unconditionally every run and reports which folder `A_Temp` actually
+  resolved to (last path component only, e.g. `2` or `Temp` — never the
+  full path). Working hypothesis, not yet confirmed: a Task-Scheduler-
+  triggered restart (via `signal.txt`) may resolve `%TEMP%` differently
+  than an interactive launch on this machine, which already has `A_Temp`
+  resolving to `...\Temp\2` instead of `...\Temp`. See `docs/DECISIONS.md`
+  D-044 addendum 3. Needs another compiled-build test to read the actual
+  `N map(pen) gezien` / `Doorzocht in ...\<naam>\.` values.
 - [x] Update `README.md` and `docs/DATA_PROTECTION.md` to the implemented
   lifecycle.
 

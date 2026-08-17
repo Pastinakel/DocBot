@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-diagnostiek-retentie.4"
+global AppVersion := "2.3-diagnostiek-retentie.5"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -3661,6 +3661,7 @@ PruneAbandonedProblemReportDirs() {
     static maxAgeDays := 7
 
     cutoff := DateAdd(A_Now, -maxAgeDays, "Days")
+    SplitPath(A_Temp, &tempMapnaam)  ; alleen de laatste mapnaam, geen volledig pad (privacygevoelig)
     gezien := 0
     onherkend := 0
     voorbeeldOnherkend := ""
@@ -3700,21 +3701,22 @@ PruneAbandonedProblemReportDirs() {
         return
     }
 
-    ; Bewust ook loggen als er niets is verlopen: anders is "0 mappen gezien"
-    ; niet te onderscheiden van "mappen gezien maar geen enkele herkend op
-    ; naampatroon" — allebei stil geven zou toekomstige diagnose onnodig
-    ; moeilijk maken, zoals nu bleek bij een reëel testrapport.
-    if (gezien > 0) {
-        samenvatting := Format(
-            "{1} map(pen) gezien, {2} niet herkend op naampatroon, {3} verlopen (>7 dagen), {4} verwijderd, {5} mislukt.",
-            gezien, onherkend, verlopen, verwijderd, mislukt
-        )
-        if (onherkend > 0)
-            samenvatting .= " Voorbeeld onherkende naam: " SanitizeLogText(voorbeeldOnherkend)
-        if (mislukt > 0)
-            samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
-        DebugLog("i", "Probleemrapportmap opschonen", samenvatting)
-    }
+    ; Altijd loggen, ook bij 0 gezien: anders is "sweep vond niets op dit pad"
+    ; niet te onderscheiden van "sweep is nooit uitgevoerd of gecrasht vóór
+    ; dit punt" — dat onderscheid bleek essentieel bij een reëel testrapport
+    ; waarbij mappen op schijf stonden maar de sweep structureel niets logde.
+    ; "doorzocht in ...\<mapnaam>" toont alleen de laatste mapnaam van A_Temp
+    ; (bijv. "Temp" of "2"), niet het volledige pad, om geen gebruikersnaam
+    ; of ander lokaal pad in het log te zetten.
+    samenvatting := Format(
+        "{1} map(pen) gezien, {2} niet herkend op naampatroon, {3} verlopen (>7 dagen), {4} verwijderd, {5} mislukt. Doorzocht in ...\{6}\.",
+        gezien, onherkend, verlopen, verwijderd, mislukt, tempMapnaam
+    )
+    if (onherkend > 0)
+        samenvatting .= " Voorbeeld onherkende naam: " SanitizeLogText(voorbeeldOnherkend)
+    if (mislukt > 0)
+        samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
+    DebugLog("i", "Probleemrapportmap opschonen", samenvatting)
 }
 
 ; Vangnet voor het losse uitgebreide-logbestand van StartExtendedProblemLogging()
@@ -3762,15 +3764,16 @@ PruneAbandonedExtendedLogFiles() {
         return
     }
 
-    if (verlopen > 0) {
-        samenvatting := Format(
-            "{1} bestand(en) gezien, {2} verlopen (>7 dagen), {3} verwijderd, {4} mislukt.",
-            gezien, verlopen, verwijderd, mislukt
-        )
-        if (mislukt > 0)
-            samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
-        DebugLog("i", "Uitgebreid log opschonen", samenvatting)
-    }
+    ; Zelfde reden als bij PruneAbandonedProblemReportDirs(): altijd loggen,
+    ; ook bij 0 gezien, zodat "niets gevonden" en "nooit uitgevoerd" niet
+    ; allebei stil blijven.
+    samenvatting := Format(
+        "{1} bestand(en) gezien, {2} verlopen (>7 dagen), {3} verwijderd, {4} mislukt.",
+        gezien, verlopen, verwijderd, mislukt
+    )
+    if (mislukt > 0)
+        samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
+    DebugLog("i", "Uitgebreid log opschonen", samenvatting)
 }
 
 ResetProblemReportAfterCompletion() {

@@ -984,3 +984,40 @@ age-cutoff comparison applies correctly to either format once it's
 recognized at all.
 
 `AppVersion` → `2.3-diagnostiek-retentie.4`.
+
+### Addendum 3 (2026-08-17): the regex fix didn't help — sweep summary was still conditional
+
+A real debug.log covering all of `.1` through `.4` on the test machine showed
+**zero** "Probleemrapportmap opschonen" lines across every startup —
+including after the `.4` regex fix above, and including a startup triggered
+via the `signal.txt`/Task Scheduler update-restart path
+(`README.md` "Build-EPD_Machine.bat"), not just interactive launches.
+
+The regex fix in addendum 2 was real and correct, but couldn't have been
+observed either way: `PruneAbandonedProblemReportDirs()` only called
+`DebugLog()` when `gezien > 0`. Silence was therefore consistent with *two*
+very different situations — "the sweep ran and found nothing at the path it
+searched" versus "the sweep never reached that point" — and there was no
+way to tell them apart from the log alone.
+
+**Fix:** both `PruneAbandonedProblemReportDirs()` and
+`PruneAbandonedExtendedLogFiles()` now log their one-line summary
+unconditionally, every run (startup and daily), not only when something was
+found. `PruneAbandonedProblemReportDirs()`'s summary now also reports which
+folder `A_Temp` actually resolved to at sweep time — deliberately only the
+*last path component* (e.g. `2` or `Temp`) via `SplitPath()`, never the full
+path, so this stays consistent with the project's local-path redaction
+policy while still being enough to compare against what the project owner
+sees in Explorer. This exists specifically to test a hypothesis: that a
+Task-Scheduler-triggered restart might resolve `%TEMP%`/`A_Temp`
+differently than an interactive launch on this machine (which already has
+`A_Temp` resolving to `...\Temp\2` instead of `...\Temp` — itself a sign of
+non-default temp-folder handling, plausible on a managed workplace).
+
+**Not yet confirmed:** whether this hypothesis is correct. The next test
+will show either `"N map(pen) gezien"` with `N > 0` (meaning the sweep does
+find them now, and any remaining `mislukt` count would point to permission
+issues) or `"0 map(pen) gezien"` (meaning the search path itself is the
+problem, and the `Doorzocht in ...\<naam>\.` value will show why).
+
+`AppVersion` → `2.3-diagnostiek-retentie.5`.
