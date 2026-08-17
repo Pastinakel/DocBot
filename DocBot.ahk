@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-diagnostiek-retentie.2"
+global AppVersion := "2.3-diagnostiek-retentie.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2686,11 +2686,13 @@ InitializeDiagnosticLogging() {
 }
 
 ; Draait bij opstart en daarna eenmaal per dag: schoont het standaardlog op
-; naar bewaartermijn en ruimt vergeten tijdelijke probleemrapportmappen op.
-; Eén gedeelde timer in plaats van losse timers per onderdeel.
+; naar bewaartermijn en ruimt vergeten tijdelijke probleemrapport- en
+; uitgebreide-logbestanden op. Eén gedeelde timer in plaats van losse timers
+; per onderdeel.
 RunDiagnosticsMaintenance() {
     PruneExpiredDebugLogEntries()
     PruneAbandonedProblemReportDirs()
+    PruneAbandonedExtendedLogFiles()
 }
 
 ; Verwijdert individuele standaardlogregels ouder dan DebugLogRetentionDays,
@@ -2701,11 +2703,11 @@ RunDiagnosticsMaintenance() {
 ; zodat een langdurig actieve sessie niet wacht op een herstart.
 PruneExpiredDebugLogEntries() {
     logPath := GetStandardDebugLogPath()
-    try PruneExpiredDebugLogFile(logPath)
-    try PruneExpiredDebugLogFile(logPath ".oud")
+    try PruneExpiredDebugLogFile(logPath, "actieve standaardlog")
+    try PruneExpiredDebugLogFile(logPath ".oud", "geroteerd .oud-standaardlog")
 }
 
-PruneExpiredDebugLogFile(path) {
+PruneExpiredDebugLogFile(path, label) {
     static delimiter := "───`r`n"
     static DebugLogRetentionDays := 7
 
@@ -2727,7 +2729,7 @@ PruneExpiredDebugLogFile(path) {
 
     cutoff := DateAdd(A_Now, -DebugLogRetentionDays, "Days")
     nieuweInhoud := delen[1] delimiter  ; het kopblok blijft altijd staan
-    gewijzigd := false
+    verwijderdAantal := 0
 
     loop delen.Length - 1 {
         chunk := delen[A_Index + 1]
@@ -2737,7 +2739,7 @@ PruneExpiredDebugLogFile(path) {
         if RegExMatch(chunk, "^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})", &m) {
             entryStamp := m[1] m[2] m[3] m[4] m[5] m[6]
             if (entryStamp < cutoff) {
-                gewijzigd := true
+                verwijderdAantal += 1
                 continue  ; regel is ouder dan de bewaartermijn: laat vervallen
             }
             nieuweInhoud .= chunk delimiter
@@ -2754,7 +2756,7 @@ PruneExpiredDebugLogFile(path) {
         ; definitie (ver) ouder dan de bewaartermijn: onvoorwaardelijk laten
         ; vervallen in plaats van voor altijd te bewaren.
         if RegExMatch(chunk, "^\d{2}:\d{2}:\d{2}\.\d{1,3} ") {
-            gewijzigd := true
+            verwijderdAantal += 1
             continue
         }
 
@@ -2764,7 +2766,7 @@ PruneExpiredDebugLogFile(path) {
         nieuweInhoud .= chunk delimiter
     }
 
-    if !gewijzigd
+    if (verwijderdAantal = 0)
         return
 
     tempPath := path ".tmp"
@@ -2773,9 +2775,19 @@ PruneExpiredDebugLogFile(path) {
             FileDelete(tempPath)
         FileAppend(nieuweInhoud, tempPath, "UTF-8")
         FileMove(tempPath, path, true)
-    } catch {
+        DebugLog(
+            "i",
+            "Standaardlog opschonen",
+            verwijderdAantal " verlopen regel(s) verwijderd uit " label "."
+        )
+    } catch as writeError {
         if FileExist(tempPath)
             try FileDelete(tempPath)
+        DebugLog(
+            "!",
+            "Standaardlog opschonen",
+            "Wegschrijven van opgeschoond " label " mislukt: " writeError.Message
+        )
     }
 }
 
@@ -3644,18 +3656,103 @@ PruneAbandonedProblemReportDirs() {
     static maxAgeDays := 7
 
     cutoff := DateAdd(A_Now, -maxAgeDays, "Days")
+    gezien := 0
+    verlopen := 0
+    verwijderd := 0
+    mislukt := 0
+    laatsteFout := ""
 
     try {
         Loop Files, A_Temp "\DocBot_diagnose_*", "D" {
+            gezien += 1
             if !RegExMatch(A_LoopFileName, "^DocBot_diagnose_(\d{8})_(\d{6})_\d+$", &m)
                 continue  ; onbekende mapnaam: niet aanraken
 
             stamp := m[1] m[2]
-            if (stamp < cutoff)
-                try DirDelete(A_LoopFileFullPath, true)
+            if (stamp < cutoff) {
+                verlopen += 1
+                try {
+                    DirDelete(A_LoopFileFullPath, true)
+                    verwijderd += 1
+                } catch as dirError {
+                    mislukt += 1
+                    laatsteFout := dirError.Message
+                }
+            }
         }
-    } catch {
-        ; Opschonen mag het reguliere onderhoud nooit blokkeren.
+    } catch as sweepError {
+        DebugLog(
+            "!",
+            "Probleemrapportmap opschonen",
+            "Doorzoeken van %TEMP% mislukt: " sweepError.Message
+        )
+        return
+    }
+
+    if (verlopen > 0) {
+        samenvatting := Format(
+            "{1} map(pen) gezien, {2} verlopen (>7 dagen), {3} verwijderd, {4} mislukt.",
+            gezien, verlopen, verwijderd, mislukt
+        )
+        if (mislukt > 0)
+            samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
+        DebugLog("i", "Probleemrapportmap opschonen", samenvatting)
+    }
+}
+
+; Vangnet voor het losse uitgebreide-logbestand van StartExtendedProblemLogging()
+; (%LocalAppData%\DocBot\problem-report-<tijdstip>.log). DeleteProblemReportExtendedLog()
+; ruimt dat bestand alleen op vanuit het lopende ProblemReportSession — na een
+; crash, geforceerd afsluiten of Windows-herstart tijdens een actieve sessie
+; is er geen enkele andere plek die dat bestand nog kent. Zelfde aanpak als
+; PruneAbandonedProblemReportDirs(): tijdstempel uit de bestandsnaam, niet de
+; bestandssysteem-wijzigingstijd.
+PruneAbandonedExtendedLogFiles() {
+    static maxAgeDays := 7
+
+    cutoff := DateAdd(A_Now, -maxAgeDays, "Days")
+    logDir := EnvGet("LocalAppData") "\DocBot"
+    gezien := 0
+    verlopen := 0
+    verwijderd := 0
+    mislukt := 0
+    laatsteFout := ""
+
+    try {
+        Loop Files, logDir "\problem-report-*.log" {
+            gezien += 1
+            if !RegExMatch(A_LoopFileName, "^problem-report-(\d{8})-(\d{6})\.log$", &m)
+                continue  ; onbekende bestandsnaam: niet aanraken
+
+            stamp := m[1] m[2]
+            if (stamp < cutoff) {
+                verlopen += 1
+                try {
+                    FileDelete(A_LoopFileFullPath)
+                    verwijderd += 1
+                } catch as fileError {
+                    mislukt += 1
+                    laatsteFout := fileError.Message
+                }
+            }
+        }
+    } catch as sweepError {
+        DebugLog(
+            "!",
+            "Uitgebreid log opschonen",
+            "Doorzoeken van " logDir " mislukt: " sweepError.Message
+        )
+        return
+    }
+
+    if (verlopen > 0) {
+        samenvatting := Format(
+            "{1} bestand(en) gezien, {2} verlopen (>7 dagen), {3} verwijderd, {4} mislukt.",
+            gezien, verlopen, verwijderd, mislukt
+        )
+        if (mislukt > 0)
+            samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
+        DebugLog("i", "Uitgebreid log opschonen", samenvatting)
     }
 }
 

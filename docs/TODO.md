@@ -336,12 +336,18 @@ ZIP — see DECISIONS.md.)
 
 - [x] On cancellation, remove the report directory and temporary extended log
   created for that report session. The extended log was already handled
-  (`DeleteProblemReportExtendedLog()`/`ShutdownProblemReportLogging()`); the
-  report *directory* only ever gets created as part of finalize (no separate
-  synchronous "cancel after creation" UI point exists), so this is covered
-  by the abandoned-directory sweep below plus the two explicit paths.
-  Implemented on `claude/diagnostics-retention`
-  (`AppVersion 2.3-diagnostiek-retentie.1`); see `docs/DECISIONS.md` D-044.
+  (`DeleteProblemReportExtendedLog()`/`ShutdownProblemReportLogging()`) for
+  the *current* session; a real test build surfaced that an extended-log
+  file orphaned by a crash/force-kill/Windows restart had no cleanup path
+  at all (no session left to know its path). `PruneAbandonedExtendedLogFiles()`
+  now sweeps `%LocalAppData%\DocBot\problem-report-*.log` older than seven
+  days on the same daily timer as everything else below. The report
+  *directory* only ever gets created as part of finalize (no separate
+  synchronous "cancel after creation" UI point exists), so that remains
+  covered by the abandoned-directory sweep below plus the two explicit
+  paths. Implemented on `claude/diagnostics-retention`
+  (`AppVersion 2.3-diagnostiek-retentie.3`); see `docs/DECISIONS.md` D-044
+  and its addenda.
 - [x] After successful attachment to an Outlook draft, remove the local
   report directory only after verifying that Outlook has safely taken over
   the attachments. `OpenProblemReportEmail()` now checks
@@ -357,7 +363,14 @@ ZIP — see DECISIONS.md.)
   encodes in the directory name.
 - [ ] Verify that cancelling at each stage and closing DocBot cannot leave
   sensitive report artifacts behind indefinitely. Architecturally bounded to
-  seven days now; not yet verified on managed Windows with a compiled build.
+  seven days now; a real compiled test build found `DocBot_diagnose_*`
+  directories still present past that threshold — root cause not yet
+  confirmed (the sweeps were completely silent, which is also now fixed:
+  `PruneExpiredDebugLogFile()`, `PruneAbandonedProblemReportDirs()`, and
+  `PruneAbandonedExtendedLogFiles()` each log a one-line summary whenever
+  they find something to act on). Needs re-testing on the same machine with
+  the logging in place to see whether items are found-but-fail-to-delete or
+  not found at all.
 - [x] Update `README.md` and `docs/DATA_PROTECTION.md` to the implemented
   lifecycle.
 

@@ -420,7 +420,9 @@ Changelog
 - De tijdelijke probleemrapportmap in `%TEMP%` blijft niet langer onbeperkt
   staan: verwijderd na een geverifieerde Outlook-bijlage, expliciet
   (standaard "Nee") bij de handmatige fallback, en anders uiterlijk na zeven
-  dagen automatisch opgeruimd (D-044).
+  dagen automatisch opgeruimd (D-044). Een los uitgebreid-logbestand dat
+  door een crash of geforceerd afsluiten wordt achtergelaten, ruimt DocBot
+  op dezelfde manier uiterlijk na zeven dagen op.
 
 ### 2.2 — Huidige stabiele release
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.

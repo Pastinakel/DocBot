@@ -71,7 +71,7 @@ OneDrive en organisatorisch werkplekbeheer.
 | Locatie | Inhoud | Technische begrenzing/verwijdering |
 | --- | --- | --- |
 | `%LocalAppData%\DocBot\debug.log` | Centraal geredigeerde diagnostiek | Rotatie boven circa 2 MB naar één `.oud`-bestand; regels ouder dan zeven dagen worden sinds `docs/DECISIONS.md` D-044 automatisch verwijderd (bij opstart en daarna dagelijks), uit zowel het actieve als het `.oud`-bestand |
-| `%LocalAppData%\DocBot\<tijdelijk uitgebreid log>` | Ongeredigeerde diagnostiek tijdens toegestane sessie | Verwijderd bij afsluiten, nieuwe sessie en na succesvolle rapportvoorbereiding |
+| `%LocalAppData%\DocBot\<tijdelijk uitgebreid log>` | Ongeredigeerde diagnostiek tijdens toegestane sessie | Verwijderd bij afsluiten, nieuwe sessie en na succesvolle rapportvoorbereiding; een bestand dat door een crash/geforceerd afsluiten wordt achtergelaten, ruimt DocBot sinds D-044 uiterlijk na zeven dagen automatisch op |
 | `%TEMP%\DocBot_diagnose_<tijdstip>\` | Losse bestanden: beschrijving, standaardlog en optioneel uitgebreid log | Verwijderd na een geverifieerde Outlook-bijlage; bij de handmatige fallback expliciet gevraagd (standaard "Nee"); een vergeten map wordt sinds D-044 uiterlijk na zeven dagen automatisch opgeruimd |
 | `%LocalAppData%\DocBot[-dev]\packages` | Uitgepakte ingebouwde pakketten | Pakketinhoud, normaal geen gebruikers- of patiëntgegevens |
 
@@ -615,7 +615,7 @@ eventuele back-up- of securitydienstverleners.
 | Persoonlijke hotstrings | Tot wijziging/verwijdering/profielbeheer; `.bak` kan vorige versie bevatten | OPENSTAAND |
 | Snelkiesnummers en instellingen | Tot wijziging/verwijdering/profielbeheer | OPENSTAAND |
 | Standaardlog | Actief plus één geroteerd bestand; rotatie bij circa 2 MB; regels ouder dan zeven dagen worden automatisch verwijderd (D-044) | Maximale termijn zeven dagen — geïmplementeerd, nog niet op een beheerde Windows-werkplek gevalideerd |
-| Uitgebreid log | Tijdelijk gedurende rapportsessie; volgens sessielogica verwijderd | Technische regel bevestigen in beheer-/testbewijs |
+| Uitgebreid log | Tijdelijk gedurende rapportsessie; volgens sessielogica verwijderd, met sinds D-044 een vangnet van uiterlijk zeven dagen voor een bestand dat door een crash/geforceerd afsluiten wordt achtergelaten | Technische regel bevestigen in beheer-/testbewijs |
 | Probleemrapportmap | Verwijderd na geverifieerde Outlook-bijlage of expliciete bevestiging bij de handmatige fallback; anders uiterlijk na zeven dagen automatisch opgeruimd (D-044) | Geïmplementeerd, nog niet op een beheerde Windows-werkplek/compiled build gevalideerd |
 | Supportmail/ticket | Speciale Outlook-map verwijdert diagnostische berichten ouder dan zeven dagen automatisch | Eventuele aanvullende retentie in herstelvoorzieningen, archieven en back-ups bevestigen |
 | Telemetrie lokaal | Installatie-ID en tellers in `settings.ini` | OPENSTAAND |

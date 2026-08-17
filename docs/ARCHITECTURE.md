@@ -476,7 +476,16 @@ directory creation and finalization — is bounded by the same daily
 `RunDiagnosticsMaintenance()` timer as the standard-log retention above:
 `PruneAbandonedProblemReportDirs()` deletes any `DocBot_diagnose_*`
 directory older than seven days, based on the timestamp DocBot encodes in
-the directory name itself.
+the directory name itself. The loose extended-log file written by
+`StartExtendedProblemLogging()` (`%LocalAppData%\DocBot\problem-report-<stamp>.log`)
+has the same seven-day backstop via `PruneAbandonedExtendedLogFiles()` — it
+exists because `DeleteProblemReportExtendedLog()` only knows the path of
+the *current* session's file, so a file orphaned by a crash, a forced
+process kill, or a Windows restart mid-session had no other cleanup path.
+All three sweeps (`PruneExpiredDebugLogFile()`,
+`PruneAbandonedProblemReportDirs()`, `PruneAbandonedExtendedLogFiles()`) log
+a one-line summary via `DebugLog()` whenever they find something to act on,
+so their behavior is observable in the standard log rather than silent.
 
 The project owner completed the dedicated compiled-Windows validation of the
 RC2 flow on 2026-08-09, including ZIP behavior, Outlook/fallback cases,
@@ -484,8 +493,10 @@ session state, and sensitive-data boundaries — predating the switch to loose
 attachments in D-041. The broader full-RC3 acceptance test, covering the
 loose-attachment behavior together with the rest of the application, was
 subsequently completed and accepted before the 2.2 release (see
-`docs/TODO.md`). The report-directory cleanup behavior added in D-044 has
-not yet had an equivalent compiled-Windows validation pass.
+`docs/TODO.md`). A real compiled test build of the D-044 retention/cleanup
+behavior (2026-08-17) confirmed the standard-log retention works and found
+`DocBot_diagnose_*` directories still present past the seven-day threshold;
+root cause not yet confirmed (see `docs/DECISIONS.md` D-044 addenda).
 
 ## 16. Update/restart architecture
 

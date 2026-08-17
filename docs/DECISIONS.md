@@ -896,3 +896,55 @@ guessed at.
 that could let *other* not-yet-known stale formats slip through the same
 way in the future. Left as a follow-up rather than expanding this change's
 scope; see `docs/TODO.md`.
+
+### Addendum (2026-08-17): no cleanup existed for orphaned extended-log files, and the sweeps were silent
+
+While investigating the report above, the project owner confirmed the
+`%TEMP%\DocBot_diagnose_*` report directories are real (on a machine where
+`A_Temp` happens to resolve to `...\AppData\Local\Temp\2`, a common
+consequence of Windows/Group Policy folder handling — not itself a DocBot
+issue, since `PruneAbandonedProblemReportDirs()` and
+`BuildProblemReportPackage()` both consistently use `A_Temp`) and reported
+some were still present after they were more than seven days old, despite
+having run a build containing `PruneAbandonedProblemReportDirs()`.
+
+Two things were found/fixed:
+
+1. **A confirmed, separate gap:** the loose extended-log file written by
+   `StartExtendedProblemLogging()`
+   (`%LocalAppData%\DocBot\problem-report-<yyyyMMdd-HHmmss>.log`) had *no*
+   cleanup path at all beyond `DeleteProblemReportExtendedLog()`, which only
+   knows about the path stored in the current in-memory
+   `ProblemReportSession` — i.e. only the *current* session's own file. Any
+   file orphaned by a crash, a forced process kill, or a Windows
+   restart/update during an active session had nothing to ever clean it up,
+   regardless of age. `PruneAbandonedExtendedLogFiles()` now sweeps this
+   directory the same way `PruneAbandonedProblemReportDirs()` sweeps
+   `%TEMP%` — same seven-day threshold, same "trust the timestamp encoded in
+   the filename, not filesystem mtime" approach, same "only touch files
+   matching the exact known naming pattern" guard.
+2. **All of the pruning added in this decision was silent** — no `DebugLog`
+   call anywhere, on success *or* failure. That made the report above
+   genuinely hard to diagnose from the standard log alone: there was no way
+   to tell whether a sweep ran and found nothing, ran and matched files but
+   `DirDelete`/`FileDelete` failed (e.g. a transient lock from endpoint
+   security software, plausible on the managed Windows workplaces this
+   project targets), or didn't run at all. `PruneExpiredDebugLogFile()`,
+   `PruneAbandonedProblemReportDirs()`, and `PruneAbandonedExtendedLogFiles()`
+   now each log a one-line summary (counts seen/expired/deleted/failed, plus
+   the last error message if any deletion failed) whenever they actually
+   found something to act on — deliberately not logging anything on a
+   no-op day, to avoid daily log noise for the common case.
+
+**Consequences**
+
+- The seven-day residency ceiling from the main D-044 entry now applies
+  uniformly to all three diagnostic artifact classes: standard-log entries,
+  problem-report directories, and orphaned extended-log files.
+- The next real-world test should show a "Probleemrapportmap opschonen" /
+  "Uitgebreid log opschonen" line in the standard log whenever expired
+  items exist, which will show directly whether old `DocBot_diagnose_*`
+  directories are being found-but-failing-to-delete versus not being found
+  at all — the open question from this report is not yet resolved, just
+  made observable.
+- `AppVersion` → `2.3-diagnostiek-retentie.3`.
