@@ -70,13 +70,15 @@ DocBot 2.2 release:
   merged since.
 - `feature/extended-logging` is no longer the branch to test or integrate;
   its work shipped as part of 2.2.
-- The remaining open `docs/TODO.md` items on `develop` are the P1 item
-  "Standardize the local engineering workflow", plus the P2 backlog
-  (notably hardening the 256-byte-only `debug.log` format check that D-044
-  left as follow-up, introducing targeted automated tests, and "Change
-  user-data profile selection to build mode" — downgraded from P1 to P2 on
-  2026-08-17 since it closes a real but so-far unreported data-isolation
-  gap rather than a release-blocking one).
+- No P1 items remain open on `develop`; "Standardize the local engineering
+  workflow" was closed by documenting its checklist as the new "Lokale
+  werkwijze" subsection under "Branch-workflow" in `AGENTS.md`/`CLAUDE.md`.
+  What remains is the P2 backlog (notably hardening the 256-byte-only
+  `debug.log` format check that D-044 left as follow-up, introducing
+  targeted automated tests, and "Change user-data profile selection to
+  build mode" — downgraded from P1 to P2 on 2026-08-17 since it closes a
+  real but so-far unreported data-isolation gap rather than a
+  release-blocking one).
 
 Do not infer functional validation from source integration alone for future
 cycles. Both the 2.2 feature work and the D-044 diagnostics-retention work

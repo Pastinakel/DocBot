@@ -337,23 +337,29 @@ branch from the then-current `develop` and update the branch-specific
 
 ---
 
-## P1 — Standardize the local engineering workflow
+## P1 — Standardize the local engineering workflow (done)
 
 The project has suffered from GitHub connector limitations on the very large `DocBot.ahk` file and temporary GitHub Actions workflows used as an editing workaround.
 
-Preferred workflow to document/adopt:
+Preferred workflow, now documented as the "Lokale werkwijze" subsection under
+"Branch-workflow" in both `AGENTS.md` and `CLAUDE.md`:
 
-- [ ] local clone for source editing;
-- [ ] `git fetch --prune` before branch work;
-- [ ] branch from current `develop` unless explicit hotfix;
-- [ ] inspect `git status` before pull/switch;
-- [ ] commit or stash intentional local changes before `git pull`;
-- [ ] explicit per-commit preflight for AppVersion/README/telemetry docs;
-- [ ] push branch normally;
-- [ ] use GitHub PRs for review/integration;
-- [ ] perform Windows AHK functional validation separately when developing from a Mac.
+- [x] local clone for source editing;
+- [x] `git fetch --prune` before branch work;
+- [x] branch from current `develop` unless explicit hotfix;
+- [x] inspect `git status` before pull/switch;
+- [x] commit or stash intentional local changes before `git pull`;
+- [x] explicit per-commit preflight for AppVersion/README/telemetry docs;
+- [x] push branch normally;
+- [x] use GitHub PRs for review/integration;
+- [x] perform Windows AHK functional validation separately when developing from a Mac.
 
-Avoid workflow-as-editor/temporary trigger PRs unless normal git/connector methods are genuinely unavailable.
+Avoid workflow-as-editor/temporary trigger PRs unless normal git/connector
+methods are genuinely unavailable — also now documented in the same
+subsection, cross-referencing `docs/DECISIONS.md` D-036 and D-037.
+
+This item documents the practice rather than changing `DocBot.ahk`, so no
+`AppVersion` bump applies.
 
 ---
 
