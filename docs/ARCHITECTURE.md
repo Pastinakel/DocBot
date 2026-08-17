@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-08-15. Repository facts refer to stable DocBot 2.2 (`main`, tag `v2.2`) and the start of the 2.3 development line unless noted otherwise._
+_Last updated: 2026-08-16. Repository facts refer to stable DocBot 2.2 (`main`, tag `v2.2`) and the start of the 2.3 development line unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -417,6 +417,8 @@ The normal application maintains a bounded/buffered background debug log and flu
 
 The developer-only debug UI is gated by Windows account in current code.
 
+Retention is enforced per log entry, not per file: `RunDiagnosticsMaintenance()` runs once at startup and then on a repeating 24-hour timer, and `PruneExpiredDebugLogEntries()` removes individual entries older than seven days from both the active `debug.log` and the rotated `debug.log.oud`, based on each entry's own leading timestamp rather than file modification time (see `docs/DECISIONS.md` D-044). This exists independently of, and does not change, the ~2 MB size-based rotation in `FlushDebugLog()`.
+
 ### 15.2 Integrated problem reporting and extended logging
 
 The current DocBot 2.2 code contains the `Probleem melden...`
@@ -456,10 +458,42 @@ Architectural boundaries:
   causing report finalization itself to fail (see `DECISIONS.md` D-041);
 - finalization stops extended logging before Outlook or fallback work, so an
   external mail failure cannot leave the UI claiming that logging is active;
-- successful completion resets the session and removes its detailed log;
-  the temporary report directory remains for the mail/manual-send workflow;
+- successful completion resets the in-memory session and removes its
+  detailed log; the temporary report *directory*'s lifecycle is now
+  independent of that session reset (see below) rather than tied to it;
 - Outlook automation failure degrades to `mailto:` where possible, Explorer
   opening the report directory, and visible manual attachment instructions.
+
+**Report-directory lifecycle (see `docs/DECISIONS.md` D-044):** the
+temporary `%TEMP%\DocBot_diagnose_<stamp>` directory is not kept
+indefinitely. On the Outlook success path, `OpenProblemReportEmail()`
+deletes it only after verifying Outlook's attachment count matches and
+`mail.Display()` has succeeded — at that point the file bytes already live
+inside the mail item, independent of the temp files, and any earlier
+failure in that same code path still reaches the fallback with an intact
+directory. On the manual-fallback path, `OpenProblemReportFallback()`
+deliberately leaves the directory in place (the user may still need to
+attach the files by hand) and instead asks explicitly whether it can be
+cleaned up now, defaulting to "no". Whatever is left behind by either
+path — an abandoned fallback directory, or one orphaned by a crash between
+directory creation and finalization — is bounded by the same daily
+`RunDiagnosticsMaintenance()` timer as the standard-log retention above:
+`PruneAbandonedProblemReportDirs()` deletes any `DocBot_diagnose_*`
+directory older than seven days, based on the timestamp DocBot encodes in
+the directory name itself. The loose extended-log file written by
+`StartExtendedProblemLogging()` (`%LocalAppData%\DocBot\problem-report-<stamp>.log`)
+has the same seven-day backstop via `PruneAbandonedExtendedLogFiles()` — it
+exists because `DeleteProblemReportExtendedLog()` only knows the path of
+the *current* session's file, so a file orphaned by a crash, a forced
+process kill, or a Windows restart mid-session had no other cleanup path.
+All three sweeps log a one-line summary via `DebugLog()`, so their behavior
+is observable in the standard log rather than silent.
+`PruneExpiredDebugLogFile()` logs only when it actually removes entries,
+to avoid daily noise on an already-clean log. `PruneAbandonedProblemReportDirs()`
+and `PruneAbandonedExtendedLogFiles()` log unconditionally on every run —
+deliberately, on project-owner request, so the log itself is ongoing proof
+that the seven-day cleanup ran and found nothing, not just an absence of
+loud failure (see `docs/DECISIONS.md` D-044 addendum 3).
 
 The project owner completed the dedicated compiled-Windows validation of the
 RC2 flow on 2026-08-09, including ZIP behavior, Outlook/fallback cases,
@@ -467,7 +501,10 @@ session state, and sensitive-data boundaries — predating the switch to loose
 attachments in D-041. The broader full-RC3 acceptance test, covering the
 loose-attachment behavior together with the rest of the application, was
 subsequently completed and accepted before the 2.2 release (see
-`docs/TODO.md`).
+`docs/TODO.md`). A real compiled test build of the D-044 retention/cleanup
+behavior (2026-08-17) confirmed the standard-log retention works and found
+`DocBot_diagnose_*` directories still present past the seven-day threshold;
+root cause not yet confirmed (see `docs/DECISIONS.md` D-044 addenda).
 
 ## 16. Update/restart architecture
 

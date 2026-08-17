@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-15. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-17. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -305,16 +305,28 @@ decision above is revisited.
 Implement automatic cleanup of standard diagnostic log entries older than
 seven days.
 
-- [ ] Remove entries older than seven days from both the active standard log
+- [x] Remove entries older than seven days from both the active standard log
   and the rotated `.oud` log without relying only on file modification time.
-- [ ] Preserve the existing redaction and approximately 2 MB size-rotation
-  behavior.
-- [ ] Ensure malformed or legacy log lines and cleanup failures do not block
-  application startup.
-- [ ] Verify on managed Windows that recent entries remain available, expired
+  Implemented on `claude/diagnostics-retention` (`AppVersion
+  2.3-diagnostiek-retentie.2`); see `docs/DECISIONS.md` D-044.
+  `PruneExpiredDebugLogEntries()` parses each entry's own leading timestamp.
+- [x] Preserve the existing redaction and approximately 2 MB size-rotation
+  behavior. Unchanged; the new pruning runs independently of
+  `FlushDebugLog()`'s size rotation.
+- [x] Ensure malformed or legacy log lines and cleanup failures do not block
+  application startup. Unparseable entries are left in place rather than
+  guessed at; all pruning is wrapped in `try` and runs after, not inside,
+  the existing startup log-init `try` block. A real compiled test build
+  surfaced actual pre-"v2" legacy lines (undated, unredacted, from before
+  commit `5f72613`/2026-08-07) still present in a shared `debug.log` — see
+  the D-044 addendum. `PruneExpiredDebugLogFile()` now specifically
+  recognizes and unconditionally expires that known legacy format.
+- [x] Verify on managed Windows that recent entries remain available, expired
   entries are removed and extended-session logging keeps its separate
-  lifecycle.
-- [ ] Keep `README.md` and `docs/DATA_PROTECTION.md` synchronized with the
+  lifecycle. Confirmed on a real compiled test build: the project owner
+  reported the standard-log pruning behaves correctly (recent entries kept,
+  the legacy-line gap above included).
+- [x] Keep `README.md` and `docs/DATA_PROTECTION.md` synchronized with the
   implemented behavior.
 
 This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
@@ -329,18 +341,47 @@ Complete the lifecycle of the report directory and temporary files created
 during problem reporting. (Report files are attached individually, not as a
 ZIP — see DECISIONS.md.)
 
-- [ ] On cancellation, remove the report directory and temporary extended log
-  created for that report session.
-- [ ] After successful attachment to an Outlook draft, remove the local
+- [x] On cancellation, remove the report directory and temporary extended log
+  created for that report session. The extended log was already handled
+  (`DeleteProblemReportExtendedLog()`/`ShutdownProblemReportLogging()`) for
+  the *current* session; a real test build surfaced that an extended-log
+  file orphaned by a crash/force-kill/Windows restart had no cleanup path
+  at all (no session left to know its path). `PruneAbandonedExtendedLogFiles()`
+  now sweeps `%LocalAppData%\DocBot\problem-report-*.log` older than seven
+  days on the same daily timer as everything else below. The report
+  *directory* only ever gets created as part of finalize (no separate
+  synchronous "cancel after creation" UI point exists), so that remains
+  covered by the abandoned-directory sweep below plus the two explicit
+  paths. Implemented on `claude/diagnostics-retention`
+  (`AppVersion 2.3-diagnostiek-retentie.3`); see `docs/DECISIONS.md` D-044
+  and its addenda.
+- [x] After successful attachment to an Outlook draft, remove the local
   report directory only after verifying that Outlook has safely taken over
-  the attachments.
-- [ ] For the manual fallback, keep the report directory available until the
+  the attachments. `OpenProblemReportEmail()` now checks
+  `mail.Attachments.Count = files.Length` and deletes the directory only
+  after `mail.Display()` succeeds.
+- [x] For the manual fallback, keep the report directory available until the
   user has had a usable opportunity to attach the files, then provide an
   explicit completion/cleanup path and a safe cleanup fallback for abandoned
-  artifacts.
-- [ ] Verify that cancelling at each stage and closing DocBot cannot leave
-  sensitive report artifacts behind indefinitely.
-- [ ] Update `README.md` and `docs/DATA_PROTECTION.md` to the implemented
+  artifacts. `OpenProblemReportFallback()` now asks explicitly (default
+  "No"); `PruneAbandonedProblemReportDirs()` sweeps any
+  `DocBot_diagnose_*` directory older than seven days on the same daily
+  timer as the log retention above, using the timestamp DocBot itself
+  encodes in the directory name. Its naming regex now also accepts the
+  older, pre-`2a8127e` (2026-08-08) directory name without the millisecond
+  suffix, confirmed still present on a real test machine (see
+  `docs/DECISIONS.md` D-044 addendum 2).
+- [x] Verify that cancelling at each stage and closing DocBot cannot leave
+  sensitive report artifacts behind indefinitely. Confirmed on a real
+  compiled test build (`AppVersion 2.3-diagnostiek-retentie.6`): after
+  fixing the pre-`2a8127e` naming-format gap and making the sweep summary
+  log unconditionally (not only when something was found — see
+  `docs/DECISIONS.md` D-044 addendum 3), the project owner confirmed both
+  the "Probleemrapportmap opschonen" log line appears and the old
+  directories are genuinely gone from disk. The unconditional logging is
+  kept permanently, on project-owner request, as ongoing observable proof
+  the seven-day cleanup runs — not only a debugging aid.
+- [x] Update `README.md` and `docs/DATA_PROTECTION.md` to the implemented
   lifecycle.
 
 This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
@@ -382,6 +423,46 @@ After significant architectural or release changes:
 - [ ] continue to treat `AGENTS.md`/`CLAUDE.md` as the authoritative operational rules agents must read before writes.
 
 Do not copy end-user changelog content into these docs verbatim; link concepts and rationale instead.
+
+---
+
+## P2 — Harden the standard-log format migration check beyond the first 256 bytes
+
+Discovered 2026-08-17 (see `docs/DECISIONS.md` D-044 addendum) via a real
+compiled test build: `debug.log` is not channel-specific
+(`GetStandardDebugLogPath()` always returns
+`%LocalAppData%\DocBot\debug.log`, regardless of stable/test/dev profile),
+so every build ever run on a machine shares one file.
+`InitializeDiagnosticLogging()` only reads the first 256 bytes at startup to
+decide whether the file is current-format and needs wiping; once a valid
+"DocBot standaardlog v2" header exists at the top, nothing re-validates the
+rest of the file on later startups. If an older/rolled-back build is ever
+run again against that same file, it can append its own (possibly
+unredacted or otherwise non-conforming) format underneath an
+already-valid-looking header, and no future startup notices.
+
+The immediate symptom (pre-"v2" legacy lines from before commit `5f72613`
+never expiring) is already fixed in `PruneExpiredDebugLogFile()`, which now
+specifically recognizes that one known legacy format. This item is about
+the more general root cause, for whatever future format mismatch isn't
+already known/pattern-matched:
+
+- [ ] Decide on an approach: e.g. validate every line's format (not just the
+  header) during `InitializeDiagnosticLogging()`, or make
+  `PruneExpiredDebugLogFile()`'s "does this line match a known format"
+  check exhaustive (current format + every known legacy format) with
+  unconditional expiry for anything that matches no known format at all,
+  rather than the current conservative "keep unknown content" default.
+- [ ] Weigh the tradeoff explicitly: the current conservative default
+  favors not deleting recent-but-corrupted entries; a stricter default
+  favors not indefinitely retaining unredacted content. Record the decision
+  in `docs/DECISIONS.md`.
+- [ ] If changed, keep it consistent with the "malformed/legacy content must
+  not block startup" invariant from the seven-day-retention work.
+
+This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
+branch from the then-current `develop` and update the branch-specific
+`AppVersion` in every commit that changes `DocBot.ahk`.
 
 ---
 

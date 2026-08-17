@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-dev.2"
+global AppVersion := "2.3-dev.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2677,6 +2677,118 @@ InitializeDiagnosticLogging() {
     } catch {
         ; Diagnostiek mag de normale start van DocBot nooit blokkeren.
     }
+
+    ; Opschonen mag nooit de rest van de opstart blokkeren en staat daarom
+    ; los van het try-blok hierboven; RunDiagnosticsMaintenance() vangt
+    ; fouten per onderdeel zelf af.
+    RunDiagnosticsMaintenance()
+    SetTimer(RunDiagnosticsMaintenance, 86400000)
+}
+
+; Draait bij opstart en daarna eenmaal per dag: schoont het standaardlog op
+; naar bewaartermijn en ruimt vergeten tijdelijke probleemrapport- en
+; uitgebreide-logbestanden op. Eén gedeelde timer in plaats van losse timers
+; per onderdeel.
+RunDiagnosticsMaintenance() {
+    PruneExpiredDebugLogEntries()
+    PruneAbandonedProblemReportDirs()
+    PruneAbandonedExtendedLogFiles()
+}
+
+; Verwijdert individuele standaardlogregels ouder dan DebugLogRetentionDays,
+; in zowel het actieve logbestand als het geroteerde .oud-bestand. Werkt per
+; regel (op basis van de tijdstempel vooraan iedere regel), niet op
+; bestandsniveau, zodat een actief bestand met zowel oude als recente regels
+; correct wordt opgeschoond. Draait bij opstart en daarna eenmaal per dag,
+; zodat een langdurig actieve sessie niet wacht op een herstart.
+PruneExpiredDebugLogEntries() {
+    logPath := GetStandardDebugLogPath()
+    try PruneExpiredDebugLogFile(logPath, "actieve standaardlog")
+    try PruneExpiredDebugLogFile(logPath ".oud", "geroteerd .oud-standaardlog")
+}
+
+PruneExpiredDebugLogFile(path, label) {
+    static delimiter := "───`r`n"
+    static DebugLogRetentionDays := 7
+
+    if !FileExist(path)
+        return
+
+    try {
+        content := FileRead(path, "UTF-8")
+    } catch {
+        return
+    }
+
+    if Trim(content) = ""
+        return
+
+    delen := StrSplit(content, delimiter)
+    if delen.Length <= 1
+        return  ; alleen het kopblok (of niets herkenbaars): niets te knippen
+
+    cutoff := DateAdd(A_Now, -DebugLogRetentionDays, "Days")
+    nieuweInhoud := delen[1] delimiter  ; het kopblok blijft altijd staan
+    verwijderdAantal := 0
+
+    loop delen.Length - 1 {
+        chunk := delen[A_Index + 1]
+        if Trim(chunk) = ""
+            continue  ; lege staart na de laatste scheidingsregel
+
+        if RegExMatch(chunk, "^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})", &m) {
+            entryStamp := m[1] m[2] m[3] m[4] m[5] m[6]
+            if (entryStamp < cutoff) {
+                verwijderdAantal += 1
+                continue  ; regel is ouder dan de bewaartermijn: laat vervallen
+            }
+            nieuweInhoud .= chunk delimiter
+            continue
+        }
+
+        ; Regels van vóór de "v2"-opschoning (tot en met commit 5f72613,
+        ; 2026-08-07) hadden geen datum, alleen "HH:mm:ss.mmm", en werden
+        ; nooit URL-geschoond. Zo'n regel kan hier alleen staan als een
+        ; oudere, niet-geschoonde build ooit naar hetzelfde bestand heeft
+        ; geschreven nadat de v2-kopregel al aanwezig was — de
+        ; formaatcontrole in InitializeDiagnosticLogging() leest bij opstart
+        ; alleen de eerste 256 bytes en ziet dit dus niet. Zo'n regel is per
+        ; definitie (ver) ouder dan de bewaartermijn: onvoorwaardelijk laten
+        ; vervallen in plaats van voor altijd te bewaren.
+        if RegExMatch(chunk, "^\d{2}:\d{2}:\d{2}\.\d{1,3} ") {
+            verwijderdAantal += 1
+            continue
+        }
+
+        ; Overige onherkenbare inhoud (bijv. een afgebroken/beschadigde
+        ; regel): voor de zekerheid ongewijzigd behouden in plaats van te
+        ; gokken.
+        nieuweInhoud .= chunk delimiter
+    }
+
+    if (verwijderdAantal = 0)
+        return
+
+    tempPath := path ".tmp"
+    try {
+        if FileExist(tempPath)
+            FileDelete(tempPath)
+        FileAppend(nieuweInhoud, tempPath, "UTF-8")
+        FileMove(tempPath, path, true)
+        DebugLog(
+            "i",
+            "Standaardlog opschonen",
+            verwijderdAantal " verlopen regel(s) verwijderd uit " label "."
+        )
+    } catch as writeError {
+        if FileExist(tempPath)
+            try FileDelete(tempPath)
+        DebugLog(
+            "!",
+            "Standaardlog opschonen",
+            "Wegschrijven van opgeschoond " label " mislukt: " writeError.Message
+        )
+    }
 }
 
 FlushDebugLog() {
@@ -3376,12 +3488,22 @@ OpenProblemReportEmail(package, description, usedExtended) {
         mail.Body := body
         for attachmentPath in files
             mail.Attachments.Add(attachmentPath)
+        if mail.Attachments.Count != files.Length
+            throw Error("Outlook heeft niet alle bestanden als bijlage overgenomen.")
         mail.Display()
         try {
             inspector := mail.GetInspector
             inspector.Activate()
         } catch {
         }
+
+        ; Outlook heeft de bijlagen nu in het conceptbericht overgenomen (het
+        ; aantal is hierboven geverifieerd) en het venster staat open; de
+        ; tijdelijke rapportmap op schijf is vanaf hier niet meer nodig. Dit
+        ; gebeurt bewust na Display() en niet direct na Attachments.Add(), zodat
+        ; een latere fout in dit blok nog steeds via de catch naar de
+        ; handmatige fallback kan met een intacte rapportmap.
+        try DirDelete(reportDir, true)
 
         DebugLog(
             "✓",
@@ -3467,7 +3589,29 @@ OpenProblemReportFallback(
         "Icon!"
     )
 
-    return mailOpened || DirExist(reportDir)
+    ; De rapportmap blijft bewust staan tot de gebruiker heeft aangegeven
+    ; klaar te zijn: op dit moment kan de e-mail nog onverzonden open staan.
+    ; Bij twijfel (bijvoorbeeld dit venster gewoon wegklikken) is "Nee" de
+    ; standaardknop, zodat er nooit per ongeluk bestanden verdwijnen vóór
+    ; verzending.
+    completed := mailOpened || DirExist(reportDir)
+
+    if DirExist(reportDir) {
+        cleanupChoice := MsgBox(
+            "Is de e-mail met het probleemrapport verzonden, of heb je de "
+            "bestanden niet meer nodig?"
+            . "`n`nJa: ruim de rapportmap nu op."
+            . "`nNee: laat de rapportmap staan (bijvoorbeeld omdat je de "
+            "bijlagen nog moet toevoegen en verzenden). DocBot ruimt een "
+            "vergeten rapportmap later automatisch op.",
+            "DocBot - Probleem melden",
+            "YesNo Icon? Default2"
+        )
+        if cleanupChoice = "Yes"
+            try DirDelete(reportDir, true)
+    }
+
+    return completed
 }
 
 UriEncode(text) {
@@ -3498,6 +3642,139 @@ DeleteProblemReportExtendedLog() {
     extendedPath := ProblemReportSession["ExtendedLogPath"]
     if extendedPath != "" && FileExist(extendedPath)
         try FileDelete(extendedPath)
+}
+
+; Vangnet voor tijdelijke rapportmappen (BuildProblemReportPackage()) die om
+; welke reden dan ook nooit zijn opgeruimd: de handmatige fallback waarbij de
+; gebruiker "Nee" koos of het venster wegklikte, een crash tussen het
+; aanmaken van de map en het afronden van de melding, of het afsluiten van
+; DocBot midden in de flow. Gebruikt de tijdstempel die DocBot zelf in de
+; mapnaam codeert (niet de bestandssysteem-wijzigingstijd), zodat een latere
+; kopieer- of scanactie op de map de bewaartermijn niet per ongeluk verlengt.
+; Alleen mappen die aan een bekend eigen naampatroon voldoen worden
+; verwijderd. Het millisecondesuffix is optioneel: vóór commit 2a8127e
+; (2026-08-08) heette de map "DocBot_diagnose_yyyyMMdd_HHmmss" zonder dat
+; suffix. Zulke mappen konden destijds achterblijven wanneer het (inmiddels
+; met D-041 verwijderde) ZIP-opbouwproces mislukte vóórdat de map werd
+; opgeruimd — bevestigd aanwezig op een echte testmachine.
+PruneAbandonedProblemReportDirs() {
+    static maxAgeDays := 7
+
+    cutoff := DateAdd(A_Now, -maxAgeDays, "Days")
+    SplitPath(A_Temp, &tempMapnaam)  ; alleen de laatste mapnaam, geen volledig pad (privacygevoelig)
+    gezien := 0
+    onherkend := 0
+    voorbeeldOnherkend := ""
+    verlopen := 0
+    verwijderd := 0
+    mislukt := 0
+    laatsteFout := ""
+
+    try {
+        Loop Files, A_Temp "\DocBot_diagnose_*", "D" {
+            gezien += 1
+            if !RegExMatch(A_LoopFileName, "^DocBot_diagnose_(\d{8})_(\d{6})(?:_\d+)?$", &m) {
+                onherkend += 1
+                if (voorbeeldOnherkend = "")
+                    voorbeeldOnherkend := A_LoopFileName
+                continue  ; onbekende mapnaam: niet aanraken
+            }
+
+            stamp := m[1] m[2]
+            if (stamp < cutoff) {
+                verlopen += 1
+                try {
+                    DirDelete(A_LoopFileFullPath, true)
+                    verwijderd += 1
+                } catch as dirError {
+                    mislukt += 1
+                    laatsteFout := dirError.Message
+                }
+            }
+        }
+    } catch as sweepError {
+        DebugLog(
+            "!",
+            "Probleemrapportmap opschonen",
+            "Doorzoeken van %TEMP% mislukt: " sweepError.Message
+        )
+        return
+    }
+
+    ; Altijd loggen, ook bij 0 gezien: bevestigd via een reëel testrapport
+    ; (zie docs/DECISIONS.md D-044 addendum 3) dat dit onderscheid nodig is
+    ; om te kunnen zien of de sweep daadwerkelijk draait. De projecteigenaar
+    ; wil deze regel bovendien bewust als dagelijks/opstart-bewijs dat de
+    ; opschoning werkt, niet alleen als foutopsporingshulpmiddel.
+    ; "doorzocht in ...\<mapnaam>" toont alleen de laatste mapnaam van A_Temp
+    ; (bijv. "Temp" of "2"), niet het volledige pad, om geen gebruikersnaam
+    ; of ander lokaal pad in het log te zetten.
+    samenvatting := Format(
+        "{1} map(pen) gezien, {2} niet herkend op naampatroon, {3} verlopen (>7 dagen), {4} verwijderd, {5} mislukt. Doorzocht in ...\{6}\.",
+        gezien, onherkend, verlopen, verwijderd, mislukt, tempMapnaam
+    )
+    if (onherkend > 0)
+        samenvatting .= " Voorbeeld onherkende naam: " SanitizeLogText(voorbeeldOnherkend)
+    if (mislukt > 0)
+        samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
+    DebugLog("i", "Probleemrapportmap opschonen", samenvatting)
+}
+
+; Vangnet voor het losse uitgebreide-logbestand van StartExtendedProblemLogging()
+; (%LocalAppData%\DocBot\problem-report-<tijdstip>.log). DeleteProblemReportExtendedLog()
+; ruimt dat bestand alleen op vanuit het lopende ProblemReportSession — na een
+; crash, geforceerd afsluiten of Windows-herstart tijdens een actieve sessie
+; is er geen enkele andere plek die dat bestand nog kent. Zelfde aanpak als
+; PruneAbandonedProblemReportDirs(): tijdstempel uit de bestandsnaam, niet de
+; bestandssysteem-wijzigingstijd.
+PruneAbandonedExtendedLogFiles() {
+    static maxAgeDays := 7
+
+    cutoff := DateAdd(A_Now, -maxAgeDays, "Days")
+    logDir := EnvGet("LocalAppData") "\DocBot"
+    gezien := 0
+    verlopen := 0
+    verwijderd := 0
+    mislukt := 0
+    laatsteFout := ""
+
+    try {
+        Loop Files, logDir "\problem-report-*.log" {
+            gezien += 1
+            if !RegExMatch(A_LoopFileName, "^problem-report-(\d{8})-(\d{6})\.log$", &m)
+                continue  ; onbekende bestandsnaam: niet aanraken
+
+            stamp := m[1] m[2]
+            if (stamp < cutoff) {
+                verlopen += 1
+                try {
+                    FileDelete(A_LoopFileFullPath)
+                    verwijderd += 1
+                } catch as fileError {
+                    mislukt += 1
+                    laatsteFout := fileError.Message
+                }
+            }
+        }
+    } catch as sweepError {
+        DebugLog(
+            "!",
+            "Uitgebreid log opschonen",
+            "Doorzoeken van " logDir " mislukt: " sweepError.Message
+        )
+        return
+    }
+
+    ; Altijd loggen, ook bij 0 gezien: zelfde afweging als bij
+    ; PruneAbandonedProblemReportDirs() — bewijst dat de opschoning draait,
+    ; niet alleen een foutopsporingshulpmiddel.
+    samenvatting := Format(
+        "{1} bestand(en) gezien, {2} verlopen (>7 dagen), {3} verwijderd, {4} mislukt.",
+        gezien, verlopen, verwijderd, mislukt
+    )
+    if (mislukt > 0)
+        samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
+    DebugLog("i", "Uitgebreid log opschonen", samenvatting)
 }
 
 ResetProblemReportAfterCompletion() {
