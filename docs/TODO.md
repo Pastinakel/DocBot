@@ -315,10 +315,9 @@ seven days.
   recognizes and unconditionally expires that known legacy format.
 - [x] Verify on managed Windows that recent entries remain available, expired
   entries are removed and extended-session logging keeps its separate
-  lifecycle. A compiled build on a real test machine surfaced the legacy-line
-  gap above (now fixed); the base current-format pruning behavior (recent
-  entries kept, aged current-format entries removed) has not yet been
-  separately confirmed on that machine after this fix.
+  lifecycle. Confirmed on a real compiled test build: the project owner
+  reported the standard-log pruning behaves correctly (recent entries kept,
+  the legacy-line gap above included).
 - [x] Keep `README.md` and `docs/DATA_PROTECTION.md` synchronized with the
   implemented behavior.
 
@@ -364,21 +363,16 @@ ZIP — see DECISIONS.md.)
   older, pre-`2a8127e` (2026-08-08) directory name without the millisecond
   suffix, confirmed still present on a real test machine (see
   `docs/DECISIONS.md` D-044 addendum 2).
-- [ ] Verify that cancelling at each stage and closing DocBot cannot leave
-  sensitive report artifacts behind indefinitely. Still open: a real
-  compiled test build (`.1` through `.4`) showed **zero**
-  "Probleemrapportmap opschonen" log lines across every startup, including
-  after the pre-`2a8127e` naming-format fix above — meaning that fix's
-  effect couldn't even be observed, because the sweep only logged when it
-  found something (`gezien > 0`). Fixed in `.5`: the summary now logs
-  unconditionally every run and reports which folder `A_Temp` actually
-  resolved to (last path component only, e.g. `2` or `Temp` — never the
-  full path). Working hypothesis, not yet confirmed: a Task-Scheduler-
-  triggered restart (via `signal.txt`) may resolve `%TEMP%` differently
-  than an interactive launch on this machine, which already has `A_Temp`
-  resolving to `...\Temp\2` instead of `...\Temp`. See `docs/DECISIONS.md`
-  D-044 addendum 3. Needs another compiled-build test to read the actual
-  `N map(pen) gezien` / `Doorzocht in ...\<naam>\.` values.
+- [x] Verify that cancelling at each stage and closing DocBot cannot leave
+  sensitive report artifacts behind indefinitely. Confirmed on a real
+  compiled test build (`AppVersion 2.3-diagnostiek-retentie.6`): after
+  fixing the pre-`2a8127e` naming-format gap and making the sweep summary
+  log unconditionally (not only when something was found — see
+  `docs/DECISIONS.md` D-044 addendum 3), the project owner confirmed both
+  the "Probleemrapportmap opschonen" log line appears and the old
+  directories are genuinely gone from disk. The unconditional logging is
+  kept permanently, on project-owner request, as ongoing observable proof
+  the seven-day cleanup runs — not only a debugging aid.
 - [x] Update `README.md` and `docs/DATA_PROTECTION.md` to the implemented
   lifecycle.
 

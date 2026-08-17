@@ -482,10 +482,14 @@ has the same seven-day backstop via `PruneAbandonedExtendedLogFiles()` — it
 exists because `DeleteProblemReportExtendedLog()` only knows the path of
 the *current* session's file, so a file orphaned by a crash, a forced
 process kill, or a Windows restart mid-session had no other cleanup path.
-All three sweeps (`PruneExpiredDebugLogFile()`,
-`PruneAbandonedProblemReportDirs()`, `PruneAbandonedExtendedLogFiles()`) log
-a one-line summary via `DebugLog()` whenever they find something to act on,
-so their behavior is observable in the standard log rather than silent.
+All three sweeps log a one-line summary via `DebugLog()`, so their behavior
+is observable in the standard log rather than silent.
+`PruneExpiredDebugLogFile()` logs only when it actually removes entries,
+to avoid daily noise on an already-clean log. `PruneAbandonedProblemReportDirs()`
+and `PruneAbandonedExtendedLogFiles()` log unconditionally on every run —
+deliberately, on project-owner request, so the log itself is ongoing proof
+that the seven-day cleanup ran and found nothing, not just an absence of
+loud failure (see `docs/DECISIONS.md` D-044 addendum 3).
 
 The project owner completed the dedicated compiled-Windows validation of the
 RC2 flow on 2026-08-09, including ZIP behavior, Outlook/fallback cases,

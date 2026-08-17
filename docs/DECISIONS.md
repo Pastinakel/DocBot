@@ -1014,10 +1014,23 @@ differently than an interactive launch on this machine (which already has
 `A_Temp` resolving to `...\Temp\2` instead of `...\Temp` — itself a sign of
 non-default temp-folder handling, plausible on a managed workplace).
 
-**Not yet confirmed:** whether this hypothesis is correct. The next test
-will show either `"N map(pen) gezien"` with `N > 0` (meaning the sweep does
-find them now, and any remaining `mislukt` count would point to permission
-issues) or `"0 map(pen) gezien"` (meaning the search path itself is the
-problem, and the `Doorzocht in ...\<naam>\.` value will show why).
+**Confirmed (2026-08-17):** the next compiled test build showed the
+"Probleemrapportmap opschonen" summary line, and the project owner
+confirmed the old directories were genuinely gone from disk afterward. The
+sweep logic itself (naming regex, age cutoff, deletion) works correctly;
+the earlier silence really was the "only logs when something was found"
+gap from addendum 2/3, not a deeper `A_Temp`/Task-Scheduler issue. Whether
+the specific Task-Scheduler-restart hypothesis was the actual reason for
+the earlier zero-results runs was not separately isolated, and doesn't need
+to be — the observable behavior (old directories removed, confirmed on
+disk) is what matters here.
 
-`AppVersion` → `2.3-diagnostiek-retentie.5`.
+The unconditional "log every run" behavior (both sweeps) is kept
+deliberately, on explicit project-owner request — not only as a debugging
+aid but as an ongoing, observable proof in the standard log that the
+seven-day cleanup actually runs and finds nothing to act on, not merely
+that nothing has gone wrong loudly. This is a one-line addition per sweep
+per day/startup, negligible next to the existing telephony poll-cycle log
+volume.
+
+`AppVersion` → `2.3-diagnostiek-retentie.6`.

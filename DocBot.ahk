@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-diagnostiek-retentie.5"
+global AppVersion := "2.3-diagnostiek-retentie.6"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -3701,10 +3701,11 @@ PruneAbandonedProblemReportDirs() {
         return
     }
 
-    ; Altijd loggen, ook bij 0 gezien: anders is "sweep vond niets op dit pad"
-    ; niet te onderscheiden van "sweep is nooit uitgevoerd of gecrasht vóór
-    ; dit punt" — dat onderscheid bleek essentieel bij een reëel testrapport
-    ; waarbij mappen op schijf stonden maar de sweep structureel niets logde.
+    ; Altijd loggen, ook bij 0 gezien: bevestigd via een reëel testrapport
+    ; (zie docs/DECISIONS.md D-044 addendum 3) dat dit onderscheid nodig is
+    ; om te kunnen zien of de sweep daadwerkelijk draait. De projecteigenaar
+    ; wil deze regel bovendien bewust als dagelijks/opstart-bewijs dat de
+    ; opschoning werkt, niet alleen als foutopsporingshulpmiddel.
     ; "doorzocht in ...\<mapnaam>" toont alleen de laatste mapnaam van A_Temp
     ; (bijv. "Temp" of "2"), niet het volledige pad, om geen gebruikersnaam
     ; of ander lokaal pad in het log te zetten.
@@ -3764,9 +3765,9 @@ PruneAbandonedExtendedLogFiles() {
         return
     }
 
-    ; Zelfde reden als bij PruneAbandonedProblemReportDirs(): altijd loggen,
-    ; ook bij 0 gezien, zodat "niets gevonden" en "nooit uitgevoerd" niet
-    ; allebei stil blijven.
+    ; Altijd loggen, ook bij 0 gezien: zelfde afweging als bij
+    ; PruneAbandonedProblemReportDirs() — bewijst dat de opschoning draait,
+    ; niet alleen een foutopsporingshulpmiddel.
     samenvatting := Format(
         "{1} bestand(en) gezien, {2} verlopen (>7 dagen), {3} verwijderd, {4} mislukt.",
         gezien, verlopen, verwijderd, mislukt
