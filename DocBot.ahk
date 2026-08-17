@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-diagnostiek-retentie.3"
+global AppVersion := "2.3-diagnostiek-retentie.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -3651,12 +3651,19 @@ DeleteProblemReportExtendedLog() {
 ; DocBot midden in de flow. Gebruikt de tijdstempel die DocBot zelf in de
 ; mapnaam codeert (niet de bestandssysteem-wijzigingstijd), zodat een latere
 ; kopieer- of scanactie op de map de bewaartermijn niet per ongeluk verlengt.
-; Alleen mappen die exact aan het eigen naampatroon voldoen worden verwijderd.
+; Alleen mappen die aan een bekend eigen naampatroon voldoen worden
+; verwijderd. Het millisecondesuffix is optioneel: vóór commit 2a8127e
+; (2026-08-08) heette de map "DocBot_diagnose_yyyyMMdd_HHmmss" zonder dat
+; suffix. Zulke mappen konden destijds achterblijven wanneer het (inmiddels
+; met D-041 verwijderde) ZIP-opbouwproces mislukte vóórdat de map werd
+; opgeruimd — bevestigd aanwezig op een echte testmachine.
 PruneAbandonedProblemReportDirs() {
     static maxAgeDays := 7
 
     cutoff := DateAdd(A_Now, -maxAgeDays, "Days")
     gezien := 0
+    onherkend := 0
+    voorbeeldOnherkend := ""
     verlopen := 0
     verwijderd := 0
     mislukt := 0
@@ -3665,8 +3672,12 @@ PruneAbandonedProblemReportDirs() {
     try {
         Loop Files, A_Temp "\DocBot_diagnose_*", "D" {
             gezien += 1
-            if !RegExMatch(A_LoopFileName, "^DocBot_diagnose_(\d{8})_(\d{6})_\d+$", &m)
+            if !RegExMatch(A_LoopFileName, "^DocBot_diagnose_(\d{8})_(\d{6})(?:_\d+)?$", &m) {
+                onherkend += 1
+                if (voorbeeldOnherkend = "")
+                    voorbeeldOnherkend := A_LoopFileName
                 continue  ; onbekende mapnaam: niet aanraken
+            }
 
             stamp := m[1] m[2]
             if (stamp < cutoff) {
@@ -3689,11 +3700,17 @@ PruneAbandonedProblemReportDirs() {
         return
     }
 
-    if (verlopen > 0) {
+    ; Bewust ook loggen als er niets is verlopen: anders is "0 mappen gezien"
+    ; niet te onderscheiden van "mappen gezien maar geen enkele herkend op
+    ; naampatroon" — allebei stil geven zou toekomstige diagnose onnodig
+    ; moeilijk maken, zoals nu bleek bij een reëel testrapport.
+    if (gezien > 0) {
         samenvatting := Format(
-            "{1} map(pen) gezien, {2} verlopen (>7 dagen), {3} verwijderd, {4} mislukt.",
-            gezien, verlopen, verwijderd, mislukt
+            "{1} map(pen) gezien, {2} niet herkend op naampatroon, {3} verlopen (>7 dagen), {4} verwijderd, {5} mislukt.",
+            gezien, onherkend, verlopen, verwijderd, mislukt
         )
+        if (onherkend > 0)
+            samenvatting .= " Voorbeeld onherkende naam: " SanitizeLogText(voorbeeldOnherkend)
         if (mislukt > 0)
             samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
         DebugLog("i", "Probleemrapportmap opschonen", samenvatting)

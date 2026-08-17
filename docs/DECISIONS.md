@@ -948,3 +948,39 @@ Two things were found/fixed:
   at all — the open question from this report is not yet resolved, just
   made observable.
 - `AppVersion` → `2.3-diagnostiek-retentie.3`.
+
+### Addendum 2 (2026-08-17): root cause found — a second, older report-directory naming format
+
+The project owner reported (before even re-testing the logging above) that
+folders matching a different pattern, `DocBot_diagnose_yyyyMMdd_HHmmss`
+(no millisecond suffix), still exist on the test machine. Confirmed via git
+history: `BuildProblemReportPackage()`'s directory-naming stamp was
+`FormatTime(A_Now, "yyyyMMdd_HHmmss")` (no suffix) from problem reporting's
+introduction (`5f72613`, 2026-08-07) until commit `2a8127e` (2026-08-08)
+added the `. "_" . Format("{:03}", A_MSec)` suffix — so any report directory
+created in that roughly one-day window has the older, shorter name.
+
+Critically, that same original (`5f72613`-era) code — still ZIP-based at the
+time, before D-041 switched to loose files — *did* delete `reportDir`
+automatically, but only after a successful `CompressDirectoryContents()`
+call; a ZIP-build failure threw before reaching that cleanup line, leaving
+the loose directory orphaned. D-041's own rationale (`CompressDirectoryContents()`
+proving unreliable on some managed workplaces) means such failures were a
+real, not hypothetical, occurrence — this is exactly how these specific
+leftover directories were most likely created.
+
+`PruneAbandonedProblemReportDirs()`'s regex required the millisecond suffix
+(`^DocBot_diagnose_(\d{8})_(\d{6})_\d+$`), so it silently skipped this older
+format as "unrecognized" — the addendum-1 logging above would have surfaced
+this as `onherkend > 0` on the very next test, but the owner identified the
+exact old format first by inspecting the directories directly.
+
+**Fix:** the millisecond-suffix group is now optional
+(`^DocBot_diagnose_(\d{8})_(\d{6})(?:_\d+)?$`). No separate
+"unconditionally expired" branch was needed here (unlike the debug.log
+legacy-format fix in the first addendum) — both the old and new naming
+formats already encode a full `yyyyMMdd_HHmmss`, so the existing
+age-cutoff comparison applies correctly to either format once it's
+recognized at all.
+
+`AppVersion` → `2.3-diagnostiek-retentie.4`.

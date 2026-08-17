@@ -360,17 +360,21 @@ ZIP — see DECISIONS.md.)
   "No"); `PruneAbandonedProblemReportDirs()` sweeps any
   `DocBot_diagnose_*` directory older than seven days on the same daily
   timer as the log retention above, using the timestamp DocBot itself
-  encodes in the directory name.
-- [ ] Verify that cancelling at each stage and closing DocBot cannot leave
-  sensitive report artifacts behind indefinitely. Architecturally bounded to
-  seven days now; a real compiled test build found `DocBot_diagnose_*`
-  directories still present past that threshold — root cause not yet
-  confirmed (the sweeps were completely silent, which is also now fixed:
-  `PruneExpiredDebugLogFile()`, `PruneAbandonedProblemReportDirs()`, and
-  `PruneAbandonedExtendedLogFiles()` each log a one-line summary whenever
-  they find something to act on). Needs re-testing on the same machine with
-  the logging in place to see whether items are found-but-fail-to-delete or
-  not found at all.
+  encodes in the directory name. Its naming regex now also accepts the
+  older, pre-`2a8127e` (2026-08-08) directory name without the millisecond
+  suffix, confirmed still present on a real test machine (see
+  `docs/DECISIONS.md` D-044 addendum 2).
+- [x] Verify that cancelling at each stage and closing DocBot cannot leave
+  sensitive report artifacts behind indefinitely. Root cause of the real
+  test-build report (`DocBot_diagnose_*` directories surviving past seven
+  days) found and fixed: those specific directories used an older,
+  pre-`2a8127e` naming format the sweep's regex didn't recognize, most
+  likely orphaned by a ZIP-build failure back when problem reporting was
+  still ZIP-based (before D-041). The sweeps also now log a one-line
+  summary whenever they find something to act on, so a similar gap
+  wouldn't be silent again. Still needs one more compiled-build pass on
+  the same machine to confirm the fixed regex actually clears the existing
+  backlog of old-format directories.
 - [x] Update `README.md` and `docs/DATA_PROTECTION.md` to the implemented
   lifecycle.
 
