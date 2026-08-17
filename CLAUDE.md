@@ -178,6 +178,29 @@ Werk alleen rechtstreeks vanaf `main` wanneer de gebruiker expliciet zegt dat he
 
 Wijzig develop en main nooit rechtstreeks. Maak altijd een pull request vanuit een feature-, fix- of releasebranch. Merge pas nadat de gebruiker daar expliciet opdracht voor geeft.
 
+### Lokale werkwijze
+
+Gebruik voor bronbewerking een lokale git-clone, niet de GitHub-webeditor/
+-connector en niet een tijdelijke, zichzelf-verwijderende GitHub Actions-
+workflow als editing-workaround (zie `docs/DECISIONS.md` D-036). Gebruik
+GitHub-tooling voor pull requests, reviews en kleinere metadata-acties; val
+alleen op een workflow-as-editor-truc terug als normale git-/
+connectormethoden echt niet beschikbaar zijn.
+
+Controleer `git status` vóór iedere `git pull` of branchwissel. Commit of
+stash bewuste lokale wijzigingen eerst; laat een `pull` nooit lokale
+wijzigingen stilzwijgend overschrijven.
+
+Controleer vóór iedere commit expliciet: het branchtype en de bijbehorende
+`AppVersion`-teller; of `DocBot.ahk` is gewijzigd en zo ja of `AppVersion` in
+dezelfde commit is aangepast; of de README/changelog moet worden bijgewerkt;
+en of de telemetriedocumentatie moet worden bijgewerkt.
+
+Git-bewerking (clonen, branchen, committen, pushen) kan vanaf een Mac,
+maar functionele AutoHotkey v2-validatie vereist Windows. Behandel "de
+patch is bewerkt en gepusht" nooit als bewijs dat DocBot ook daadwerkelijk
+is gevalideerd (zie `docs/DECISIONS.md` D-037).
+
 ### Versienummers per branch
 
 Gebruik in de huidige ontwikkelcyclus deze versies:
