@@ -200,59 +200,6 @@ compiled result on Windows and the internal network before integration.
 
 ---
 
-## P1 — Change user-data profile selection to build mode
-
-### Desired rule
-
-Replace the current prerelease-suffix-based Documents-profile selection with a rule based on stability and whether the script is compiled:
-
-```text
-stable                     -> Documents\DocBot
-compiled non-stable        -> Documents\DocBot-test
-noncompiled non-stable     -> Documents\DocBot-dev
-```
-
-Stable has priority: a stable numeric `AppVersion` uses `DocBot` regardless of whether it is compiled. For every non-stable version, `A_IsCompiled` determines whether the test or development profile is used. The prerelease label (`-dev`, `-rc`, feature/fix name) must no longer independently choose `DocBot-test` versus `DocBot-dev`.
-
-### Rationale
-
-- A compiled prerelease is a test of the deliverable form and should share the central `DocBot-test` profile regardless of whether it came from `develop`, an RC branch, or a feature/fix branch.
-- A noncompiled prerelease is source-level development and should remain isolated in `DocBot-dev`.
-- `AppVersion` continues to identify branch/release state for versioning; it should not by itself determine the non-stable storage profile.
-
-### Implementation scope
-
-- [ ] Change the profile-selection logic in `DocBot.ahk` (currently centered around `GetUserDataProfile(AppVersion)`) so it incorporates stability plus `A_IsCompiled`.
-- [ ] Keep the existing one-time bootstrap chain unless implementation review finds a concrete reason to change it: missing `DocBot-test` copies from `DocBot`; missing `DocBot-dev` prefers `DocBot-test`, otherwise `DocBot`; never overwrite an existing destination profile.
-- [ ] Update nearby source comments so they no longer describe `-dev`/`-rc` versus other prerelease suffixes as the profile selector.
-- [ ] Update `README.md` wherever the old profile rule is described.
-- [ ] Update the `Gebruikersprofielen` rule in both `AGENTS.md` and `CLAUDE.md`; make explicit that build form, not feature/RC suffix, selects the non-stable profile.
-- [ ] Update `docs/PROJECT_CONTEXT.md` and `docs/ARCHITECTURE.md` to the new invariant/data-flow.
-- [ ] Add/supersede the corresponding storage-profile decision in `docs/DECISIONS.md` rather than silently erasing the old rationale.
-- [ ] Revisit this TODO and any acceptance-test wording that still assumes suffix-only profile selection.
-- [ ] Do not change the branch-version scheme (`2.3-dev.N`, `2.3-<branch>.N`, `2.3-rc.N`, stable `2.3`).
-- [ ] Do not treat package-cache behavior under `%LocalAppData%` as part of this change unless explicitly approved; this task concerns Documents/config/user-data profile selection.
-- [ ] Telemetry payload, fields and interval should remain unchanged; only its `settings.ini` location follows the selected user profile. Update telemetry documentation only if the implementation changes telemetric behavior beyond that.
-
-### Required test matrix
-
-- [ ] Stable `2.3`, compiled -> `Documents\DocBot`.
-- [ ] Stable `2.3`, noncompiled -> `Documents\DocBot`.
-- [ ] `2.3-dev.N`, compiled -> `Documents\DocBot-test`.
-- [ ] `2.3-rc.N`, compiled -> `Documents\DocBot-test`.
-- [ ] Feature/fix prerelease such as `2.3-example.1`, compiled -> `Documents\DocBot-test`.
-- [ ] `2.3-dev.N`, noncompiled -> `Documents\DocBot-dev`.
-- [ ] `2.3-rc.N`, noncompiled -> `Documents\DocBot-dev`.
-- [ ] Feature/fix prerelease, noncompiled -> `Documents\DocBot-dev`.
-- [ ] Existing `DocBot-test` and `DocBot-dev` directories are never repopulated/overwritten merely because selection rules changed.
-- [ ] Stored hotstring/settings/package/speeddial paths still migrate or resolve correctly in the selected profile.
-
-### Version/preflight requirement when implementing
-
-This is a real `DocBot.ahk` behavior change, so implement it on its own feature/fix branch from the then-current `develop`. Every commit that changes `DocBot.ahk` must update the branch-specific `AppVersion` in that same commit. README/changelog need must be assessed in the same commit sequence; telemetry documentation only changes if telemetry behavior/config/payload changes.
-
----
-
 ## P1 — Propagate the AutoHotkey v2 syntax smoke check to `develop`
 
 ### Status
@@ -426,9 +373,71 @@ Do not copy end-user changelog content into these docs verbatim; link concepts a
 
 ---
 
+## P2 — Change user-data profile selection to build mode
+
+_Downgraded from P1 to P2 on 2026-08-17: this closes a real gap in D-009's
+data-isolation intent (an uncompiled `develop`/`-rc` script run currently
+shares the central `DocBot-test` profile with real testers, and a compiled
+feature/fix acceptance-test build lands in `DocBot-dev` instead), but no
+concrete incident from either gap is recorded, and in the project's actual
+workflow only the project owner compiles and tests builds — the
+uncompiled-run scenario is expected to be rare in practice. Correctness/
+future-proofing improvement, not release-blocking._
+
+### Desired rule
+
+Replace the current prerelease-suffix-based Documents-profile selection with a rule based on stability and whether the script is compiled:
+
+```text
+stable                     -> Documents\DocBot
+compiled non-stable        -> Documents\DocBot-test
+noncompiled non-stable     -> Documents\DocBot-dev
+```
+
+Stable has priority: a stable numeric `AppVersion` uses `DocBot` regardless of whether it is compiled. For every non-stable version, `A_IsCompiled` determines whether the test or development profile is used. The prerelease label (`-dev`, `-rc`, feature/fix name) must no longer independently choose `DocBot-test` versus `DocBot-dev`.
+
+### Rationale
+
+- A compiled prerelease is a test of the deliverable form and should share the central `DocBot-test` profile regardless of whether it came from `develop`, an RC branch, or a feature/fix branch.
+- A noncompiled prerelease is source-level development and should remain isolated in `DocBot-dev`.
+- `AppVersion` continues to identify branch/release state for versioning; it should not by itself determine the non-stable storage profile.
+
+### Implementation scope
+
+- [ ] Change the profile-selection logic in `DocBot.ahk` (currently centered around `GetUserDataProfile(AppVersion)`) so it incorporates stability plus `A_IsCompiled`.
+- [ ] Keep the existing one-time bootstrap chain unless implementation review finds a concrete reason to change it: missing `DocBot-test` copies from `DocBot`; missing `DocBot-dev` prefers `DocBot-test`, otherwise `DocBot`; never overwrite an existing destination profile.
+- [ ] Update nearby source comments so they no longer describe `-dev`/`-rc` versus other prerelease suffixes as the profile selector.
+- [ ] Update `README.md` wherever the old profile rule is described.
+- [ ] Update the `Gebruikersprofielen` rule in both `AGENTS.md` and `CLAUDE.md`; make explicit that build form, not feature/RC suffix, selects the non-stable profile.
+- [ ] Update `docs/PROJECT_CONTEXT.md` and `docs/ARCHITECTURE.md` to the new invariant/data-flow.
+- [ ] Add/supersede the corresponding storage-profile decision in `docs/DECISIONS.md` rather than silently erasing the old rationale.
+- [ ] Revisit this TODO and any acceptance-test wording that still assumes suffix-only profile selection.
+- [ ] Do not change the branch-version scheme (`2.3-dev.N`, `2.3-<branch>.N`, `2.3-rc.N`, stable `2.3`).
+- [ ] Do not treat package-cache behavior under `%LocalAppData%` as part of this change unless explicitly approved; this task concerns Documents/config/user-data profile selection.
+- [ ] Telemetry payload, fields and interval should remain unchanged; only its `settings.ini` location follows the selected user profile. Update telemetry documentation only if the implementation changes telemetric behavior beyond that.
+
+### Required test matrix
+
+- [ ] Stable `2.3`, compiled -> `Documents\DocBot`.
+- [ ] Stable `2.3`, noncompiled -> `Documents\DocBot`.
+- [ ] `2.3-dev.N`, compiled -> `Documents\DocBot-test`.
+- [ ] `2.3-rc.N`, compiled -> `Documents\DocBot-test`.
+- [ ] Feature/fix prerelease such as `2.3-example.1`, compiled -> `Documents\DocBot-test`.
+- [ ] `2.3-dev.N`, noncompiled -> `Documents\DocBot-dev`.
+- [ ] `2.3-rc.N`, noncompiled -> `Documents\DocBot-dev`.
+- [ ] Feature/fix prerelease, noncompiled -> `Documents\DocBot-dev`.
+- [ ] Existing `DocBot-test` and `DocBot-dev` directories are never repopulated/overwritten merely because selection rules changed.
+- [ ] Stored hotstring/settings/package/speeddial paths still migrate or resolve correctly in the selected profile.
+
+### Version/preflight requirement when implementing
+
+This is a real `DocBot.ahk` behavior change, so implement it on its own feature/fix branch from the then-current `develop`. Every commit that changes `DocBot.ahk` must update the branch-specific `AppVersion` in that same commit. README/changelog need must be assessed in the same commit sequence; telemetry documentation only changes if telemetry behavior/config/payload changes.
+
+---
+
 ## P2 — Harden the standard-log format migration check beyond the first 256 bytes
 
-Discovered 2026-08-17 (see `docs/DECISIONS.md` D-044 addendum) via a real
+Discovered 2026-08-17 (see `docs/DECISIONS.md` D-044) via a real
 compiled test build: `debug.log` is not channel-specific
 (`GetStandardDebugLogPath()` always returns
 `%LocalAppData%\DocBot\debug.log`, regardless of stable/test/dev profile),
