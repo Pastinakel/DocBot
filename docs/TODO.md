@@ -181,11 +181,11 @@ Windows workplace / internal hospital network (2026-08-17).
   certificate validation result without recording the confidential hostname,
   endpoints, telephone numbers, or certificate private material in Git.
 
-The "Application and documentation" server-authentication confirmation and
-the "Infrastructure dependencies" items below (certificate ownership,
-reverse-proxy timeouts, disabling the HTTP listener) are separate,
-organizational/ops-level follow-ups, not covered by this test round —
-they remain open below.
+The only remaining open item in this P1 entry is the "Application and
+documentation" server-authentication confirmation above. The project owner
+removed the separate "Infrastructure dependencies" checklist (certificate
+ownership, reverse-proxy timeouts, disabling the HTTP listener) as no
+longer tracked here.
 
 This is a real `DocBot.ahk` behavior change. Implement it on a dedicated
 feature/fix branch from the then-current `develop`, update the branch-specific
