@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-dev.4"
+global AppVersion := "2.3-pakket-logging.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -6490,10 +6490,11 @@ InitializeBundledPackages() {
     try {
         BundledPackageDir := GetBundledPackageDirectory()
         manifestPath := BundledPackageDir "\manifest.json"
+        DebugLog("i", "Pakketten laden", "Manifest: " manifestPath)
         manifest := LoadBundledJsonFile(manifestPath)
 
         if !(manifest is Map)
-            throw Error("Het pakketmanifest moet een JSON-object zijn.")
+            throw Error("Het pakketmanifest moet een JSON-object zijn: " manifestPath)
 
         schemaVersion := manifest.Has("schemaVersion")
             ? (manifest["schemaVersion"] + 0)
@@ -6510,39 +6511,81 @@ InitializeBundledPackages() {
         }
 
         if !manifest.Has("packages") || !(manifest["packages"] is Array)
-            throw Error("Het veld 'packages' ontbreekt in het pakketmanifest.")
+            throw Error("Het veld 'packages' ontbreekt in het pakketmanifest: " manifestPath)
 
         loadedPackages := Map()
+        failedCount := 0
 
+        ; Eén ongeldig pakketbestand mag de overige, wel geldige pakketten
+        ; niet meeslepen. Elk bestand wordt daarom los geprobeerd en gelogd,
+        ; zodat precies zichtbaar is welk bestand faalde en waarom.
         for _, packageEntry in manifest["packages"] {
             if !(packageEntry is Map)
-                throw Error("Een pakketvermelding in het manifest is ongeldig.")
+                throw Error("Een pakketvermelding in het manifest is ongeldig: " manifestPath)
 
             if !packageEntry.Has("id") || !packageEntry.Has("file")
-                throw Error("Een pakketvermelding mist 'id' of 'file'.")
+                throw Error("Een pakketvermelding mist 'id' of 'file': " manifestPath)
 
             packageId := Trim(packageEntry["id"])
             fileName := Trim(packageEntry["file"])
-            package := LoadBundledPackageFile(BundledPackageDir "\\" fileName)
+            filePath := BundledPackageDir "\\" fileName
 
-            if package["id"] != packageId {
-                throw Error(
+            DebugLog("→", "Pakket laden", "Bestand: " fileName " (manifest-id: " packageId ")")
+
+            try {
+                package := LoadBundledPackageFile(filePath)
+
+                if package["id"] != packageId {
+                    throw Error(
+                        Format(
+                            "Pakket-id '{1}' komt niet overeen met manifest-id '{2}': {3}",
+                            package["id"],
+                            packageId,
+                            filePath
+                        )
+                    )
+                }
+
+                if loadedPackages.Has(packageId)
+                    throw Error("Dubbel pakket-id in manifest: " packageId " (" filePath ")")
+
+                loadedPackages[packageId] := package
+                DebugLog(
+                    "✓",
+                    "Pakket geladen",
                     Format(
-                        "Pakket-id '{1}' komt niet overeen met manifest-id '{2}'.",
-                        package["id"],
-                        packageId
+                        "{1} ({2}), versie {3}, {4} items — {5}",
+                        package["name"],
+                        packageId,
+                        package["version"],
+                        package["items"].Length,
+                        fileName
                     )
                 )
+            } catch as packageError {
+                failedCount += 1
+                ReportStorageError(
+                    Format(
+                        "Hotstringpakket '{1}' kon niet worden geladen.`n`n{2}",
+                        fileName,
+                        packageError.Message
+                    ),
+                    false
+                )
             }
-
-            if loadedPackages.Has(packageId)
-                throw Error("Dubbel pakket-id in manifest: " packageId)
-
-            loadedPackages[packageId] := package
         }
 
         BundledPackages := loadedPackages
-        return true
+        DebugLog(
+            failedCount ? "!" : "i",
+            "Pakketten geladen",
+            Format(
+                "{1} pakket(ten) geladen, {2} mislukt.",
+                loadedPackages.Count,
+                failedCount
+            )
+        )
+        return failedCount = 0
     } catch as error {
         BundledPackages := Map()
         ReportStorageError(
@@ -6602,7 +6645,7 @@ LoadBundledPackageFile(path) {
 
         for _, requiredField in ["id", "trigger", "replacement"] {
             if !item.Has(requiredField)
-                throw Error("Pakketitem " index " mist veld '" requiredField "'.")
+                throw Error("Pakketitem " index " mist veld '" requiredField "': " path)
         }
 
         itemId := Trim(item["id"])
@@ -6610,7 +6653,7 @@ LoadBundledPackageFile(path) {
         replacement := item["replacement"] ""
 
         if itemId = "" || trigger = "" || replacement = ""
-            throw Error("Pakketitem " index " bevat een lege id, trigger of vervanging.")
+            throw Error("Pakketitem " index " bevat een lege id, trigger of vervanging: " path)
 
         if seenIds.Has(itemId)
             throw Error("Dubbel item-id in pakket: " itemId)
@@ -7376,6 +7419,11 @@ AutoSaveHotstrings(*) {
 }
 
 ReportStorageError(message, showMessage := false) {
+    ; Iedere opslagfout moet terug te vinden zijn in het standaardlog, ook
+    ; wanneer de gebruiker de melding zelf nooit ziet (bijv. stille
+    ; achtergrondacties) of wegklikt.
+    DebugLog("✕", "Opslagfout", message)
+
     if showMessage {
         MsgBox(message, "DocBot - JSON", "Icon!")
         return

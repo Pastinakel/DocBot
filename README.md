@@ -424,6 +424,13 @@ Changelog
 ---------
 
 ### 2.3 — In ontwikkeling
+- Het laden van meegeleverde hotstringpakketten logt nu per bestand naar het
+  standaardlog: welk bestand wordt geprobeerd, of dat lukt (met naam, versie
+  en itemaantal) en zo niet, waarom. Eén ongeldig pakketbestand blokkeert
+  niet langer het laden van de overige pakketten. `ReportStorageError()`
+  schrijft elke opslagfout (pakketten, hotstrings, instellingen,
+  snelkiesnummers) voortaan ook naar het standaardlog, ook wanneer alleen
+  een tray-melding wordt getoond.
 - Nieuwe gebruikersinstructie voor veilige hotstring-inhoud: een vijfde
   Help-sectie ("Wat mag ik wel en niet in een hotstring zetten?") en een
   bijbehorende, altijd zichtbare hint op de Tekstvervanging-pagina. De

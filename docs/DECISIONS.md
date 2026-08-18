@@ -1,6 +1,6 @@
 # DocBot — Decisions
 
-_Last updated: 2026-08-17. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
+_Last updated: 2026-08-18. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
 
 ## How to read this file
 
@@ -1086,3 +1086,65 @@ requirement.
   (`AppVersion 2.3-hotstring-instructie.6`); not yet validated on a
   compiled build on Windows (see D-037) — layout math was verified by hand
   against the fixed 1000×700 window size, not by rendering the GUI.
+
+---
+
+## D-046 — Log bundled-package load outcomes per file; route every storage error through the standard log
+
+**Status:** Accepted
+
+The project owner built a custom bundled hotstring package that failed to
+load, with no way to tell which file was at fault: `InitializeBundledPackages()`
+wrapped manifest parsing and every package file in one `try`/`catch`, so a
+single bad file discarded `BundledPackages` entirely (silently dropping any
+already-valid packages too) and surfaced only one generic message via
+`ReportStorageError()`. `ReportStorageError()` itself never wrote to the
+standard log (`DebugLog()`) — it only showed a `MsgBox` or a tray
+notification — so the failure, and its message, left no trace in
+`debug.log` at all.
+
+`InitializeBundledPackages()` now logs the manifest path before parsing it,
+then tries each manifest-listed package file in its own inner
+`try`/`catch`: a `DebugLog("→", "Pakket laden", ...)` line before the
+attempt, a `DebugLog("✓", "Pakket geladen", ...)` line with name, id,
+version and item count on success, and — on failure — the file is skipped
+(not the whole run) and the error goes through `ReportStorageError()`,
+prefixed with the failing file name. A summary line
+(`DebugLog("i"/"!", "Pakketten geladen", ...)`) reports how many packages
+loaded and how many failed. Manifest-level problems (missing/invalid
+manifest, unsupported manifest `schemaVersion`, a malformed `packages`
+entry) stay fatal for the whole batch, since they are infrastructure the
+per-file packages depend on, not a property of one file.
+
+`ReportStorageError()` now always calls `DebugLog("✕", "Opslagfout", message)`
+before showing the `MsgBox` or tray notification, so every caller across the
+codebase (bundled packages, `hotstrings.json`, `settings.ini`/JSON blobs,
+speed dials) gets its error text into the standard log automatically,
+without touching each call site. Two `LoadBundledPackageFile()` error
+messages that previously omitted the file path (`Pakketitem N mist veld ...`
+and `... bevat een lege id, trigger of vervanging`) now include it, matching
+every other error message in that function.
+
+**Rejected alternatives:** adding a manual `DebugLog()` call next to every
+existing `ReportStorageError()` call site instead of logging inside
+`ReportStorageError()` itself — rejected as repetitive and easy to miss on
+a future call site; leaving package-file failures fatal for the whole
+manifest — rejected because it means one broken custom package also takes
+down every bundled package that loaded fine, which is what produced the
+original, hard-to-diagnose report.
+
+**Consequences**
+
+- A broken custom or bundled package file no longer silently empties
+  `BundledPackages`; only that package is missing, and `debug.log` names
+  the exact file and reason.
+- Any future `ReportStorageError()` caller gets standard-log coverage for
+  free; no call site needs its own `DebugLog()` call for that purpose.
+- `InitializeBundledPackages()`'s return value now reflects whether *any*
+  package failed (`failedCount = 0`), not only whether the manifest itself
+  parsed; the return value is currently unused by its one call site.
+- Not yet validated on a compiled build on Windows (see D-037) — the
+  control-flow change (inner `try`/`catch` per package file) was verified
+  by source review only.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.1`).
