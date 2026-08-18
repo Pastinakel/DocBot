@@ -1655,12 +1655,18 @@ now-removed local-cache-clearing logic (D-048).
 
 ## D-053 — Document the migration registry and add an opt-in self-test entry point, without a code module split
 
-**Status:** Provisional; implemented on `claude/schema-migrations-setup-waiigd`,
+**Status:** Accepted; implemented on `claude/schema-migrations-setup-waiigd`,
 merged into `claude/hotstring-package-load-logging-w4cc5a`
 (`AppVersion 2.3-schema-migraties.1` originally; renumbered from this
 branch's own D-046 to D-053 on merge, see that branch's D-046 through D-052
-above), not yet validated on a compiled build
-on Windows (see D-037).
+above), confirmed working by the project owner on real Windows/AutoHotkey
+v2 (2026-08-19): `AutoHotkey64.exe DocBot.ahk --selftest`, run interpreted
+(not yet as a compiled `.exe`), produced all 24 `ok` lines and exited
+cleanly, with `%TEMP%\docbot-selftest-results.txt` written and readable as
+designed. The project owner also separately confirmed the related
+`ReportStorageError()` regression (D-046): a normal hotstring/speed-dial
+storage error still shows a clean message and logs to `debug.log`, no
+crash.
 
 Requested directly by the project owner ahead of the next feature: "get
 schema migrations in order first." `docs/TODO.md` already carried two
@@ -1782,15 +1788,15 @@ behavior immediately," not to build new abstraction.
   without the `--selftest` argument, which no normal end-user launch path
   supplies; this mirrors already-shipped dev-only code gated by other
   conditions (e.g. `IsDevMode`).
-- Not yet confirmed on a compiled build on Windows: that `--selftest`
-  actually exits cleanly with the expected exit code from a compiled `.exe`
-  (only interpreter-level reasoning and the CI runner's use of the portable
-  interpreter support this so far), and that
-  `%TEMP%\docbot-selftest-results.txt` is actually written and readable by
-  the CI step in that environment. The exit code is the load-bearing signal
-  either way — the log file is diagnostics only, and its absence degrades to
-  a warning, not a failed step. If either mechanism turns out not to work as
-  expected on Windows, fix it rather than removing the gate.
+- Confirmed on real Windows (interpreted): `--selftest` exits cleanly and
+  `%TEMP%\docbot-selftest-results.txt` is written and readable, as designed
+  (see Status above). Still not separately confirmed for a **compiled**
+  `.exe` specifically (`DocBot.exe --selftest`) or for the CI runner's own
+  read of that same file after `WaitForExit` — both are expected to behave
+  identically to the interpreted case validated here, since neither path
+  does anything build-type-specific, but that is inference, not a run. If
+  either turns out not to work as expected there, fix it rather than
+  removing the gate.
 
 ---
 

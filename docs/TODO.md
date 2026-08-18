@@ -494,9 +494,10 @@ D-053). High-value testable areas:
   write path, or GUI-refresh side of the four loaders — see
   `tests/README.md` for the exact boundary. Implemented on
   `claude/schema-migrations-setup-waiigd` (`AppVersion
-  2.3-schema-migraties.1`); not yet validated on a compiled build on Windows
-  (D-037) — confirm `--selftest` exits with the expected code from the
-  compiled `.exe` and that the CI step's stdout capture actually works.
+  2.3-schema-migraties.1`); confirmed by the project owner on real Windows
+  (interpreted `AutoHotkey64.exe DocBot.ahk --selftest`, 24/24 passing,
+  2026-08-19, see `docs/DECISIONS.md` D-053). Still open: the same check
+  against a **compiled** `DocBot.exe --selftest` specifically.
 - [ ] package conflict resolution and status calculation;
 - [ ] telemetry payload serialization/redaction boundaries;
 - [ ] telemetry InstallationId persistence state machine using controlled file conditions;
