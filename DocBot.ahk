@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-dev.3"
+global AppVersion := "2.3-hotstring-instructie.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -423,6 +423,7 @@ BuildMainGui() {
     AddFlatButton("telefonie", 702, 436, 42, 36, Chr(0xE70E), MoveSpeedDialUp, false)
     AddFlatButton("telefonie", 752, 436, 42, 36, Chr(0xE70D), MoveSpeedDialDown, false)
 
+    ; y=500 h=148 eindigt op y=648; Hotstrings en Over sluiten hier op aan.
     AddCard("telefonie", 236, 500, 736, 148)
     AddCardLabel("telefonie", 260, 520, 300, 24, "Snelkiesnummer bewerken", "s12 bold c" C["Text"])
     SpeedDialEnabledCheck := MainGui.AddCheckbox("x260 y560 w82 h24 Background" C["Card"], "Actief")
@@ -475,8 +476,14 @@ BuildMainGui() {
     AddFlatButton("tekstvervanging", 402, 388, 140, 36, Chr(0xE70F) "  Wijzig", EditSelectedHotstring, false)
     AddFlatButton("tekstvervanging", 552, 388, 140, 36, Chr(0xE74D) "  Verwijder", DeleteSelectedHotstring, false)
 
+    ; Beide kaarten eindigen bewust op dezelfde y=648 als de kaart
+    ; "Snelkiesnummer bewerken" op de Telefonie-pagina (y=500 h=148), zodat
+    ; Hotstrings en Telefonie onderaan gelijk aflopen. Het uitgeklapte
+    ; meerregelige veld is daarom iets minder hoog (56 i.p.v. 70) dan vóór
+    ; deze uitlijning, en Opslaan staat op een vaste plek die in beide
+    ; standen past in plaats van te verspringen tussen y=590 en y=626.
     HotEditorCompactCard := AddCard("tekstvervanging", 236, 452, 736, 196)
-    HotEditorExpandedCard := AddCard("tekstvervanging", 236, 452, 736, 230)
+    HotEditorExpandedCard := AddCard("tekstvervanging", 236, 452, 736, 196)
     AddCardLabel("tekstvervanging", 260, 472, 220, 22, "Hotstring bewerken", "s12 bold c" C["Text"])
     AddFlatButton("tekstvervanging", 588, 464, 220, 34, "⚙  Geavanceerde opties...", ShowAdvancedHotstringOptions, false)
     HotEnabledCheck := MainGui.AddCheckbox("x840 y472 w100 h22 Background" C["Card"], "Actief")
@@ -484,15 +491,15 @@ BuildMainGui() {
     AddPageControl("tekstvervanging", HotEnabledCheck)
     AddCardLabel("tekstvervanging", 260, 512, 100, 20, "Afkorting", "s10 c" C["Text"])
     HotTriggerEdit := AddRoundedEdit("tekstvervanging", 370, 504, 586, 34, "")
-    AddCardLabel("tekstvervanging", 260, 552, 100, 20, "Vervanging", "s10 c" C["Text"])
-    HotReplacementSingleGroup := AddRoundedEditGroup("tekstvervanging", 370, 544, 538, 34, "", false, 8)
-    HotReplacementMultiGroup := AddRoundedEditGroup("tekstvervanging", 370, 544, 538, 70, "", true, 6)
+    AddCardLabel("tekstvervanging", 260, 548, 100, 20, "Vervanging", "s10 c" C["Text"])
+    HotReplacementSingleGroup := AddRoundedEditGroup("tekstvervanging", 370, 540, 538, 34, "", false, 8)
+    HotReplacementMultiGroup := AddRoundedEditGroup("tekstvervanging", 370, 540, 538, 56, "", true, 6)
     HotReplacementSingleGroup["Edit"].OnEvent("Change", UpdateHotReplacementDraft)
     HotReplacementMultiGroup["Edit"].OnEvent("Change", UpdateHotReplacementDraft)
     ; Deze twee eenvoudige klikcontrols worden door Windows betrouwbaarder
     ; opnieuw getekend na hide/show dan twee overlappende custom-draw buttons.
     HotReplacementExpandButton := MainGui.AddText(
-        "x920 y544 w36 h34 Center 0x200 Background" C["Button"],
+        "x920 y540 w36 h34 Center 0x200 Background" C["Button"],
         Chr(0xE740)
     )
     HotReplacementExpandButton.SetFont("s12 c" C["Text"], "Segoe MDL2 Assets")
@@ -503,7 +510,7 @@ BuildMainGui() {
     )
 
     HotReplacementCollapseButton := MainGui.AddText(
-        "x920 y544 w36 h34 Center 0x200 Background" C["Button"],
+        "x920 y540 w36 h34 Center 0x200 Background" C["Button"],
         Chr(0xE73F)
     )
     HotReplacementCollapseButton.SetFont("s12 c" C["Text"], "Segoe MDL2 Assets")
@@ -512,8 +519,23 @@ BuildMainGui() {
     HotReplacementCollapseButton.OnEvent(
         "Click", ToggleHotReplacementEditor.Bind(false)
     )
-    HotSaveButton := AddFlatButton("tekstvervanging", 808, 590, 148, 36, "💾  Opslaan", SaveHotstringFromForm, true)
+    ; Vaste positie (was afhankelijk van HotReplacementExpanded): het
+    ; meerregelige veld eindigt nu altijd ruim vóór y=638, dus Opslaan hoeft
+    ; niet meer te verspringen.
+    HotSaveButton := AddFlatButton("tekstvervanging", 808, 602, 148, 36, "💾  Opslaan", SaveHotstringFromForm, true)
     ApplyHotReplacementEditorState()
+
+    ; Onderaan de pagina, op dezelfde y=654 als de GitHub-link op de
+    ; Over-pagina en de knop "Probleem melden..." op de Help-pagina. Als
+    ; paginabreed element (geen kaartinhoud) blijft de melding zichtbaar in
+    ; zowel de compacte als de uitgeklapte weergave van de hotstringeditor.
+    HotPrivacyHint := MainGui.AddLink(
+        "x260 y654 w650 h20 Background" C["Window"],
+        'Zet geen patiëntgegevens in hotstrings. Bekijk de richtlijn op de <a href="help">Help</a>-pagina.'
+    )
+    HotPrivacyHint.SetFont("s9 c" C["Muted"], "Segoe UI")
+    HotPrivacyHint.OnEvent("Click", ShowPage.Bind("help"))
+    AddPageControl("tekstvervanging", HotPrivacyHint)
 
     ; -------------------------------------------------------------------------
     ; PAGINA: INSTELLINGEN
@@ -625,6 +647,35 @@ BuildMainGui() {
         ["Overzicht", "Tekstvervanging", "Hotstrings"],
         Map("Overzicht", "overzicht", "Hotstrings", "tekstvervanging")
     )
+    AddHelpAccordionSection(
+        "Wat mag ik wel en niet in een hotstring zetten?",
+        "Hotstrings zijn bedoeld voor generieke, herbruikbare tekst: vaste zinnen, "
+        "standaardformuleringen of afkortingen die je voor meerdere situaties gebruikt."
+        "`r`n`r`nZet nooit patiëntidentificerende of patiëntspecifieke gegevens in een "
+        "hotstring, zoals een patiëntnaam, geboortedatum, BSN of dossiernummer, of een "
+        "tekst die alleen op één patiënt van toepassing is. Hotstrings staan in "
+        "hotstrings.json op je eigen computer en zijn niet bedoeld als plek voor "
+        "dossierinformatie."
+        "`r`n`r`nGenerieke klinische formuleringen die niet aan een identificeerbare "
+        "patiënt gekoppeld zijn, mag je wel gebruiken, bijvoorbeeld 'geen afwijkingen' "
+        "of 'Op {{datum}} zag ik uw patiënt'. Zulke tekst wordt pas patiëntspecifiek op "
+        "het moment dat jij ze in een dossier invoegt en aanvult, niet door de hotstring "
+        "zelf."
+        "`r`n`r`nOok je eigen naam, telefoonnummer, e-mailadres of ondertekening in een "
+        "hotstring kan persoonsgegevens zijn. Dat is toegestaan voor praktisch gebruik, "
+        "zoals een vaste afsluiting, maar valt onder het reguliere privacybeleid van je "
+        "organisatie."
+        "`r`n`r`nDocBot controleert de inhoud van je hotstrings niet automatisch op "
+        "patiëntgegevens. Je blijft dus zelf verantwoordelijk voor wat je opslaat."
+        "`r`n`r`nBeheer je persoonlijke hotstrings op de pagina Hotstrings in DocBot.",
+        [
+            "hotstrings.json",
+            "patiëntidentificerende of patiëntspecifieke gegevens",
+            "controleert de inhoud van je hotstrings niet automatisch",
+            "Hotstrings"
+        ],
+        Map("Hotstrings", "tekstvervanging")
+    )
     RefreshHelpAccordion()
 
     ; De bestaande footer wordt volledig vervangen door een herkenbare
@@ -643,23 +694,26 @@ BuildMainGui() {
 
     AddPageHeader("over", "Over", "Informatie over DocBot.")
 
-    AddCard("over", 236, 92, 736, 500)
+    ; Kaarthoogte 556 (i.p.v. voorheen 500) laat deze kaart, net als
+    ; Hotstrings en Telefonie, op y=648 eindigen. De GitHub-link hieronder
+    ; stond al op de gedeelde y=654 en hoeft niet te verschuiven.
+    AddCard("over", 236, 92, 736, 556)
 
-    aboutShell := MainGui.AddText("x260 y116 w688 h452 Background" C["Border"], "")
+    aboutShell := MainGui.AddText("x260 y116 w688 h508 Background" C["Border"], "")
     AddRound(aboutShell, 12)
     AddPageControl("over", aboutShell)
 
     aboutEdit := MainGui.AddEdit(
-        "x262 y118 w684 h448 ReadOnly VScroll Multi -E0x200 BackgroundFFFFFF",
+        "x262 y118 w684 h504 ReadOnly VScroll Multi -E0x200 BackgroundFFFFFF",
         BuildAboutText()
     )
     aboutEdit.SetFont("s10 c" C["Text"], "Segoe UI")
     AddRound(aboutEdit, 10)
     AddPageControl("over", aboutEdit)
 
-    ; Zelfde hoogte als de "Probleem melden..."-knop op de Help-pagina
-    ; (x786 y654 w170 h34), maar gespiegeld naar links, in de al onbenutte
-    ; ruimte onder de kaart. Laat de kaart/aboutEdit hierboven ongemoeid.
+    ; Zelfde y=654 als de "Probleem melden..."-knop op de Help-pagina en de
+    ; privacymelding op de Tekstvervanging-pagina, vlak onder de kaart erboven
+    ; die (net als Hotstrings en Telefonie) op y=648 eindigt.
     githubLink := MainGui.AddLink(
         "x262 y654 w300 h34",
         'Bekijk DocBot op <a href="https://github.com/Pastinakel/DocBot">GitHub</a>'
@@ -731,8 +785,11 @@ AddHelpAccordionSection(title, bodyText, boldTerms := [], linkTargets := 0) {
 
     ; Beide kaartformaten worden vooraf als GDI+-bitmap opgebouwd. Bij het
     ; openen wisselen we alleen zichtbaarheid en positie, waardoor de
-    ; afgeronde hoeken ook na paginawisselingen stabiel blijven.
-    collapsedCard := AddCard("help", 236, 104, 720, 64)
+    ; afgeronde hoeken ook na paginawisselingen stabiel blijven. De hoogtes
+    ; hier moeten gelijk blijven aan collapsedHeight/expandedHeight in
+    ; RefreshHelpAccordion() — dat bepaalt alleen de tussenruimte, niet de
+    ; werkelijke kaartgrootte.
+    collapsedCard := AddCard("help", 236, 104, 720, 54)
     expandedCard := AddCard("help", 236, 104, 720, 258)
     expandedCard.Opt("+Hidden")
 
@@ -1016,9 +1073,15 @@ ToggleHelpSection(sectionIndex, *) {
 RefreshHelpAccordion() {
     global HelpSections, HelpOpenSection
 
+    ; collapsedHeight is bewust kleiner dan de kaarthoogte die
+    ; AddHelpAccordionSection() voor iedere ingeklapte kaart aanmaakt (64):
+    ; met vijf secties en één opengeklapte sectie (258) moet de opsomming
+    ; nog boven de "Probleem melden..."-knop op y=654 eindigen. Bij
+    ; collapsedHeight=54 eindigt de langste combinatie (258 + 4×54 + 5×12)
+    ; op y=638, met 16px marge tot die knop.
     y := 104
     gap := 12
-    collapsedHeight := 64
+    collapsedHeight := 54
     expandedHeight := 258
 
     for index, section in HelpSections {
@@ -5327,7 +5390,9 @@ ApplyHotReplacementEditorState() {
     HotEditorExpandedCard.Opt(visible && HotReplacementExpanded ? "-Hidden" : "+Hidden")
     HotReplacementExpandButton.Opt(visible && !HotReplacementExpanded ? "-Hidden" : "+Hidden")
     HotReplacementCollapseButton.Opt(visible && HotReplacementExpanded ? "-Hidden" : "+Hidden")
-    HotSaveButton.Move(808, HotReplacementExpanded ? 626 : 590, 148, 36)
+    ; Opslaan staat sinds de bodemuitlijning met Telefonie/Over op een vaste
+    ; positie (y=602) die in zowel de compacte als de uitgeklapte kaart past,
+    ; dus hoeft hier niet meer te verspringen.
 }
 
 RefreshHotstringList(selectItemId := "", *) {

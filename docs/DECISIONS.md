@@ -888,3 +888,81 @@ manual fallback, which depends on the files still being on disk).
   Tracked separately as `docs/TODO.md` P2 "Harden the standard-log format
   migration check beyond the first 256 bytes" rather than expanding this
   decision's scope.
+
+---
+
+## D-045 — In-product user instruction for safe hotstring content
+
+**Status:** Accepted
+
+`docs/DATA_PROTECTION.md` §3.4 already stated that patient-identifying or
+patient-specific information is not intended as content of
+`hotstrings.json`, but that the free `Replacement` field has no technical
+control enforcing this — compliance was said to rest on user instruction
+and organizational policy, while no such instruction actually existed yet
+(`docs/TODO.md` P2 "Add a user instruction for safe hotstring content").
+
+The instruction is implemented as a fifth `AddHelpAccordionSection()` entry
+on the Help page ("Wat mag ik wel en niet in een hotstring zetten?"),
+matching the style of the existing four sections, plus a short, always-
+visible hint (`HotPrivacyHint`) at a fixed position (x260 y654) on the
+Tekstvervanging page that links to that Help section. The hint sits outside
+both `HotEditorCompactCard` and `HotEditorExpandedCard`, so it is visible
+in both the compact and the expanded hotstring editor, not only one of
+them. `README.md` (Hotstrings section) carries a shorter, consistent
+summary for users reading the bundled documentation instead of the
+in-product Help page.
+
+Fitting a fifth accordion section required reducing
+`RefreshHelpAccordion()`'s `collapsedHeight` from 64 to 54 (and the
+matching `AddCard()` height inside `AddHelpAccordionSection()`) so that the
+worst case — one section expanded (258) plus four collapsed (4×54) plus
+five 12px gaps — still ends at y=638, 16px above the "Probleem melden..."
+button at y=654.
+
+Placing the new hint at the same y=654 used by the "Probleem melden..."
+button (Help) and the GitHub link (Over) required the Tekstvervanging
+page's hotstring-editor cards to stop extending past y=648 in their
+expanded state. `HotEditorExpandedCard` shrank from height 230 to 196
+(matching `HotEditorCompactCard`), `HotReplacementMultiGroup`'s height
+from 70 to 56, and `HotSaveButton` moved from two conditional positions
+(y=590/626, set in `ApplyHotReplacementEditorState()`) to one fixed
+position (y=602) that fits under the multiline field in both states. This
+in turn made it natural to align the "Snelkiesnummer bewerken" card on
+Telefonie (already ending at y=648) with the Over page's content card
+(enlarged from height 500 to 556, so it also ends at y=648) — Hotstrings,
+Telefonie and Over now share the same bottom edge, at the project owner's
+request. The Help page and other non-full-height pages were deliberately
+left out of this alignment, since they are not designed to fill the
+window.
+
+Ownership of the instruction's content and its periodic review sits with
+the project owner; there is, for now, deliberately no separate
+organizational-onboarding text — the in-product instruction (Help +
+README) is intended to cover this on its own.
+
+**Rejected alternatives:** a technical content filter on the `Replacement`
+field that tries to detect patient-identifying text — rejected because
+free text cannot be reliably classified this way (the instruction itself
+says so, per the TODO's explicit requirement); leaving the expanded editor
+card taller than the compact one — rejected because it would either cover
+the new hint in expanded state or force the hint to move depending on
+`HotReplacementExpanded`, defeating the "visible in both states"
+requirement.
+
+**Consequences**
+
+- Closes all six content requirements and the placement/ownership
+  requirement of `docs/TODO.md` P2 "Add a user instruction for safe
+  hotstring content"; `docs/DATA_PROTECTION.md` §3.4 no longer needs to
+  describe this as an open follow-up action.
+- `hotstrings.json` still has no technical enforcement of this policy —
+  unchanged from before this decision, and consistent with the rejected
+  alternative above.
+- Any future change to the Tekstvervanging, Telefonie or Over page layout
+  that moves a card's bottom edge away from y=648, or moves the y=654 row,
+  should keep the other two in sync or explicitly record why they diverge.
+- Implemented on branch `claude/hotstring-user-instruction-hcv2jw`
+  (`AppVersion 2.3-hotstring-instructie.1`); not yet validated on a
+  compiled build on Windows (see D-037) — layout math was verified by hand
+  against the fixed 1000×700 window size, not by rendering the GUI.

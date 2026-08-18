@@ -331,13 +331,20 @@ van gebruikerstoegang betekent niet noodzakelijk dat de bestanden en back-ups
 direct worden verwijderd; daarvoor geldt het retentie- en verwijderbeleid van
 de organisatie.
 
+De gebruikersinstructie die patiëntidentificerende en patiëntspecifieke
+hotstringinhoud uitsluit, staat sinds `docs/DECISIONS.md` D-045 in DocBot
+zelf: een Help-sectie ("Wat mag ik wel en niet in een hotstring zetten?")
+en een altijd zichtbare hint op de Tekstvervanging-pagina, met een
+bijbehorende samenvatting in `README.md`. Eigenaarschap en periodieke
+review van de inhoud liggen bij de projecteigenaar; er is bewust geen
+aparte organisatorische onboarding voor dit onderwerp, de in-product
+instructie is bedoeld om dit zelf af te dekken.
+
 **OPENSTAAND:** concrete organisatorische bewaartermijnen voor het actieve
 OneDrive-profiel en back-ups, moment en wijze van definitieve verwijdering na
 uitdiensttreding, herbeoordeling van toegang bij functiewijziging,
 inhoudseigenaarschap van medische pakketten en toepasselijke grondslag voor
-eventuele medewerkergegevens. Het opstellen van een gebruikersinstructie die
-patiëntidentificerende en patiëntspecifieke hotstringinhoud uitsluit, is als
-vervolgactie opgenomen in `docs/TODO.md`.
+eventuele medewerkergegevens.
 
 ### 3.5 Snelkiesnummers en instellingen
 

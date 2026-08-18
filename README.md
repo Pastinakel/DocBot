@@ -133,6 +133,11 @@ Functionaliteit — Hotstrings
 - Bij de eerste start migreert het script eenmalig een eventueel bestaand
   `DocBot.ini` en `hotstrings.json` naast het script (oude locatie) naar de
   nieuwe gebruikersmap, zonder bestaande nieuwe bestanden te overschrijven.
+- Gebruik hotstrings voor generieke, herbruikbare tekst. Zet geen
+  patiëntidentificerende of patiëntspecifieke gegevens in een hotstring —
+  de volledige richtlijn, inclusief het onderscheid met generieke klinische
+  formuleringen, staat in DocBot onder Help. DocBot controleert de inhoud
+  van `hotstrings.json` niet automatisch op patiëntgegevens.
 
 Meegeleverde hotstringpakketten
 ---------------------------------
@@ -419,6 +424,11 @@ Changelog
 ---------
 
 ### 2.3 — In ontwikkeling
+- Nieuwe gebruikersinstructie voor veilige hotstring-inhoud: een vijfde
+  Help-sectie ("Wat mag ik wel en niet in een hotstring zetten?") en een
+  bijbehorende, altijd zichtbare hint op de Tekstvervanging-pagina. De
+  kaarten op Hotstrings, Telefonie en Over sluiten daarbij nu onderaan op
+  dezelfde hoogte af (`docs/DECISIONS.md` D-045).
 - Telefonie en SMS vereisen nu een HTTPS-URL: `ValidateLocalConfiguration()`
   weigert een niet-HTTPS `Telephony.BaseUrl` en `ValidateSmsCallActionItem()`
   weigert een niet-HTTPS `SmsCallAction.Url`, beide al bij het opstarten
