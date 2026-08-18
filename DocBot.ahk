@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-pakket-logging.4"
+global AppVersion := "2.3-pakket-logging.5"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -4742,13 +4742,20 @@ EscapeSmsJavaScriptString(value) {
 ; =============================================================================
 
 ShowPackageManager(*) {
-    global MainGui, C, BundledPackages
+    global MainGui, C, BundledPackages, BundledPackageDir
     global PackageManagerGui, PackageManagerPackageLV, PackageManagerItemLV
     global PackageManagerStatusText
 
     if BundledPackages.Count = 0 {
+        ; De pakketbron wordt hier expliciet op het scherm getoond (niet
+        ; alleen in het standaardlog): dat log schermt lokale/netwerkpaden
+        ; altijd af omdat het ongewijzigd in een probleemrapport terecht kan
+        ; komen, terwijl dit venster alleen zichtbaar is voor wie al achter
+        ; de machine zit. Precies bij nul geladen pakketten is dit pad de
+        ; belangrijkste aanwijzing om te controleren.
         MsgBox(
-            "Er zijn geen meegeleverde hotstringpakketten beschikbaar.",
+            "Er zijn geen meegeleverde hotstringpakketten beschikbaar.`n`n"
+            "Pakketbron: " (BundledPackageDir != "" ? BundledPackageDir : "(onbekend)"),
             "DocBot - Hotstringpakketten",
             "Icon!"
         )
@@ -4943,7 +4950,7 @@ PackageManagerPackageSelectionChanged(*) {
 }
 
 RefreshPackageManagerItems(selectItemId := "") {
-    global BundledPackages, PackageManagerStatusText
+    global BundledPackages, BundledPackageDir, PackageManagerStatusText
 
     ; De globale variabele kan tijdens callbacks opnieuw worden geraakt.
     ; Werk daarom uitsluitend met deze lokale, benoemde GUI-control.
@@ -4955,7 +4962,9 @@ RefreshPackageManagerItems(selectItemId := "") {
     if packageId = "" || !BundledPackages.Has(packageId) {
         itemListView.Delete()
         if IsObject(PackageManagerStatusText)
-            PackageManagerStatusText.Value := "Selecteer links een pakket."
+            ; Toont het echte pad op het scherm (zie ShowPackageManager()
+            ; voor waarom dit hier wel mag en in het standaardlog niet).
+            PackageManagerStatusText.Value := "Selecteer links een pakket.   Pakketbron: " BundledPackageDir
         return
     }
 

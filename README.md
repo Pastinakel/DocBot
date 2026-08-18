@@ -155,19 +155,26 @@ automatisch af: ook zij leest een map `packages` naast zichzelf
 `DocBot.exe` rechtstreeks van daar wordt gestart (bijvoorbeeld door een
 launcher als Ivanti die "vanaf de bron" start in plaats van een lokale
 kopie te draaien) — `A_ScriptDir` wordt bij elke start naar het standaardlog
-geschreven, zodat dit te controleren is. Start de launcher toch een lokale
-kopie, dan is dat automatisch afgeleide pad niet bruikbaar; `DocBot.local.ahk`
-kan dan `LocalConfig["Packages"]["ShareDir"]` zetten als expliciete override
-naar het echte UNC-pad (`manifest.json` en de pakketbestanden direct erin,
-geen submap). Een pakketbestand toevoegen, wijzigen of verwijderen op de
-uiteindelijke bron is voor gebruikers direct zichtbaar bij hun eerstvolgende
-DocBot-herstart, zonder dat `DocBot.ahk` hoeft te worden aangepast of
-opnieuw gecompileerd. Is de bron niet bereikbaar, dan laadt DocBot die
-sessie bewust gewoon geen pakketten in plaats van de hele opstart te
-blokkeren; persoonlijke hotstrings blijven altijd werken. Deze laag
-valideert manifest, schema, pakket-ID's, itemaantallen en dubbele triggers,
-en logt per pakketbestand of het laden is gelukt (`docs/DECISIONS.md`
-D-046, D-048, D-049).
+geschreven, al toont dat log het pad zelf nooit (zie hieronder). Start de
+launcher toch een lokale kopie, dan is dat automatisch afgeleide pad niet
+bruikbaar; `DocBot.local.ahk` kan dan `LocalConfig["Packages"]["ShareDir"]`
+zetten als expliciete override naar het echte UNC-pad (`manifest.json` en
+de pakketbestanden direct erin, geen submap). Een pakketbestand toevoegen,
+wijzigen of verwijderen op de uiteindelijke bron is voor gebruikers direct
+zichtbaar bij hun eerstvolgende DocBot-herstart, zonder dat `DocBot.ahk`
+hoeft te worden aangepast of opnieuw gecompileerd. Is de bron niet
+bereikbaar, dan laadt DocBot die sessie bewust gewoon geen pakketten in
+plaats van de hele opstart te blokkeren; persoonlijke hotstrings blijven
+altijd werken. Deze laag valideert manifest, schema, pakket-ID's,
+itemaantallen en dubbele triggers, en logt per pakketbestand of het laden
+is gelukt (`docs/DECISIONS.md` D-046, D-048, D-049).
+
+Het standaardlog schermt lokale en netwerkpaden altijd af (zie
+"Probleem melden en diagnostiek" hieronder) — een gelogde pakketbron toont
+dus alleen of het om een lokaal of een netwerkpad gaat, nooit het pad zelf.
+Het echte pad staat wél gewoon op het scherm: in het venster **Pakketten**
+(bij "Selecteer links een pakket." zolang niets is aangeklikt, en in de
+melding wanneer er nul pakketten geladen zijn) (`docs/DECISIONS.md` D-050).
 
 Pakketkeuzes worden apart en atomisch opgeslagen in
 `package-settings.json`. Dat bestand bevat uitsluitend ingeschakelde
@@ -458,7 +465,9 @@ Changelog
   Een pakketbestand toevoegen, wijzigen of verwijderen op de uiteindelijke
   bron is zo zichtbaar bij de eerstvolgende DocBot-herstart, zonder
   wijziging aan of herbouw van `DocBot.ahk` (`docs/DECISIONS.md` D-048/
-  D-049, die samen D-047 vervangen).
+  D-049, die samen D-047 vervangen). Het standaardlog schermt dat pad zelf
+  altijd af; het venster **Pakketten** toont het wél onafgeschermd, ook bij
+  nul geladen pakketten (D-050).
 - Nieuwe gebruikersinstructie voor veilige hotstring-inhoud: een vijfde
   Help-sectie ("Wat mag ik wel en niet in een hotstring zetten?") en een
   bijbehorende, altijd zichtbare hint op de Tekstvervanging-pagina. De

@@ -1452,3 +1452,61 @@ without DocBot needing to guess *why* it guessed wrong.
   yet answered.
 - Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
   (`AppVersion 2.3-pakket-logging.4`).
+
+---
+
+## D-050 — The resolved package path is shown on screen, not in the standard log
+
+**Status:** Accepted
+
+Testing D-049 immediately showed the flaw: `SanitizeLogText()` (D-031's
+standard-log sanitization, in place well before this work) unconditionally
+redacts anything shaped like a local drive path (`X:\...` → `<lokaal pad
+afgeschermd>`) or a UNC path (`\\...` → `<netwerkpad afgeschermd>`) before a
+line ever reaches `debug.log` — by design, because the standard log can be
+attached to an emailed problem report, and a local path frequently contains
+the Windows username. The new `A_ScriptDir`/"Pakketten bron" log lines went
+through this same path, so the one piece of information they existed to
+show — the actual resolved directory — was exactly what got stripped out
+every time. Bypassing sanitization for just these lines was rejected
+immediately: it would carve a one-off exception into the same privacy
+guarantee D-030/D-031 established for the whole standard log, for a value
+that predictably contains the Windows username.
+
+The redacted placeholder text is not entirely useless on its own — which
+category matched (`<netwerkpad afgeschermd>` vs. `<lokaal pad afgeschermd>`)
+already answers the yes/no version of the Ivanti question (UNC vs. local
+drive path) without revealing the path itself — but the project owner
+wants the actual path, not just that classification.
+
+The fix moves the diagnostic to a surface that is never written to disk or
+emailed: the Hotstringpakketten (Package Manager) window, which is only
+ever visible to whoever is already sitting at the machine.
+`RefreshPackageManagerItems()`'s existing "Selecteer links een pakket."
+status text (shown whenever nothing is selected, including right after the
+window opens) now appends `BundledPackageDir` unsanitized. The
+zero-packages case — arguably the most important one to diagnose, since it
+means the Package Manager window would otherwise never open at all — gets
+the same unsanitized path in its `MsgBox` instead.
+
+**Rejected alternatives:** bypassing or weakening `SanitizeLogText()` for
+this one log label — rejected per D-030/D-031 above; adding a new,
+separately-consented "show raw diagnostics" log tier — rejected as
+disproportionate for a single path value when an existing, always-available
+GUI surface already solves it with no new consent flow or storage.
+
+**Consequences**
+
+- The `A_ScriptDir`/"Pakketten bron" standard-log lines from D-049 stay as
+  they are (still sanitized, still useful for the network-vs-local
+  classification) — this decision adds a second, complementary surface
+  rather than replacing them.
+- Anyone diagnosing an Ivanti launch now opens **Pakketten** (or triggers
+  its "no packages" message) instead of reading `debug.log` for this
+  specific value.
+- `ShowPackageManager()` and `RefreshPackageManagerItems()` both now read
+  the `BundledPackageDir` global; neither previously depended on it.
+- Not yet validated on a compiled build on Windows (see D-037) — the
+  `MsgBox`/status-text wording was reviewed as source only.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.5`).
