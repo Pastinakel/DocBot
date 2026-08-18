@@ -172,9 +172,9 @@ is gelukt (`docs/DECISIONS.md` D-046, D-048, D-049).
 Het standaardlog schermt lokale en netwerkpaden altijd af (zie
 "Probleem melden en diagnostiek" hieronder) — een gelogde pakketbron toont
 dus alleen of het om een lokaal of een netwerkpad gaat, nooit het pad zelf.
-Het echte pad staat wél gewoon op het scherm: in het venster **Pakketten**
-(bij "Selecteer links een pakket." zolang niets is aangeklikt, en in de
-melding wanneer er nul pakketten geladen zijn) (`docs/DECISIONS.md` D-050).
+Het echte pad staat wél gewoon op het scherm: in het venster **Pakketten**,
+direct onder de titel, en in de melding wanneer er nul pakketten geladen
+zijn (`docs/DECISIONS.md` D-050).
 
 Pakketkeuzes worden apart en atomisch opgeslagen in
 `package-settings.json`. Dat bestand bevat uitsluitend ingeschakelde
@@ -468,6 +468,12 @@ Changelog
   D-049, die samen D-047 vervangen). Het standaardlog schermt dat pad zelf
   altijd af; het venster **Pakketten** toont het wél onafgeschermd, ook bij
   nul geladen pakketten (D-050).
+- Het venster **Pakketten** kon vastlopen met een foutmelding
+  ("Integer has no property named 'Value'") bij het sluiten van het venster
+  terwijl de conflictstatus van een groot pakket nog werd berekend.
+  `RefreshPackageManagerItemDetails()` controleert nu vlak vóór iedere
+  schrijfactie opnieuw of de statusregel nog bestaat, in plaats van alleen
+  bij binnenkomst (`docs/DECISIONS.md` D-051).
 - Nieuwe gebruikersinstructie voor veilige hotstring-inhoud: een vijfde
   Help-sectie ("Wat mag ik wel en niet in een hotstring zetten?") en een
   bijbehorende, altijd zichtbare hint op de Tekstvervanging-pagina. De

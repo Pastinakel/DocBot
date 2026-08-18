@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-pakket-logging.5"
+global AppVersion := "2.3-pakket-logging.6"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -4784,9 +4784,14 @@ ShowPackageManager(*) {
     )
     title.SetFont("s19 bold c" C["Text"], "Segoe UI")
 
+    ; Statische tekst (nooit overschreven door een selectiewijziging, in
+    ; tegenstelling tot PackageManagerStatusText hieronder) — vandaar dat de
+    ; pakketbron hier staat en niet alleen in het standaardlog, dat
+    ; lokale/netwerkpaden altijd afschermt (`docs/DECISIONS.md` D-050).
     intro := PackageManagerGui.AddText(
-        "x24 y54 w852 h28 Background" C["Window"],
-        "Kies links een pakket en bekijk rechts eerst de inhoud en eventuele conflicten."
+        "x24 y54 w852 h36 Background" C["Window"],
+        "Kies links een pakket en bekijk rechts eerst de inhoud en eventuele conflicten.`n"
+        "Pakketbron: " BundledPackageDir
     )
     intro.SetFont("s9 c" C["Muted"], "Segoe UI")
 
@@ -4950,7 +4955,7 @@ PackageManagerPackageSelectionChanged(*) {
 }
 
 RefreshPackageManagerItems(selectItemId := "") {
-    global BundledPackages, BundledPackageDir, PackageManagerStatusText
+    global BundledPackages, PackageManagerStatusText
 
     ; De globale variabele kan tijdens callbacks opnieuw worden geraakt.
     ; Werk daarom uitsluitend met deze lokale, benoemde GUI-control.
@@ -4962,9 +4967,7 @@ RefreshPackageManagerItems(selectItemId := "") {
     if packageId = "" || !BundledPackages.Has(packageId) {
         itemListView.Delete()
         if IsObject(PackageManagerStatusText)
-            ; Toont het echte pad op het scherm (zie ShowPackageManager()
-            ; voor waarom dit hier wel mag en in het standaardlog niet).
-            PackageManagerStatusText.Value := "Selecteer links een pakket.   Pakketbron: " BundledPackageDir
+            PackageManagerStatusText.Value := "Selecteer links een pakket."
         return
     }
 
@@ -5258,12 +5261,18 @@ GetPackageItemStatus(packageId, itemId) {
 RefreshPackageManagerItemDetails(*) {
     global BundledPackages, PackageManagerStatusText
 
-    if !IsObject(PackageManagerStatusText)
+    ; De gebruiker kan het venster sluiten terwijl GetPackageItemStatus()/
+    ; FindPackageItemConflict() voor een groot pakket nog aan het rekenen
+    ; is (zie dezelfde opmerking bij RefreshPackageManagerItems()). Toets
+    ; daarom niet alleen bij binnenkomst, maar ook vlak vóór iedere
+    ; schrijfactie opnieuw of de control nog bestaat.
+    if !IsLiveGuiControl(PackageManagerStatusText)
         return
 
     selected := GetSelectedPackageManagerItem()
     if !IsObject(selected) {
-        PackageManagerStatusText.Value := "Selecteer een pakketitem."
+        if IsLiveGuiControl(PackageManagerStatusText)
+            PackageManagerStatusText.Value := "Selecteer een pakketitem."
         return
     }
 
@@ -5300,7 +5309,8 @@ RefreshPackageManagerItemDetails(*) {
     if packageItem.Has("note") && Trim(packageItem["note"]) != ""
         detail .= " · " packageItem["note"]
 
-    PackageManagerStatusText.Value := detail
+    if IsLiveGuiControl(PackageManagerStatusText)
+        PackageManagerStatusText.Value := detail
 }
 
 ToggleSelectedPackage(*) {

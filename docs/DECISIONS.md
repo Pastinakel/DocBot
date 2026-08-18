@@ -1481,13 +1481,21 @@ wants the actual path, not just that classification.
 
 The fix moves the diagnostic to a surface that is never written to disk or
 emailed: the Hotstringpakketten (Package Manager) window, which is only
-ever visible to whoever is already sitting at the machine.
-`RefreshPackageManagerItems()`'s existing "Selecteer links een pakket."
-status text (shown whenever nothing is selected, including right after the
-window opens) now appends `BundledPackageDir` unsanitized. The
-zero-packages case — arguably the most important one to diagnose, since it
-means the Package Manager window would otherwise never open at all — gets
-the same unsanitized path in its `MsgBox` instead.
+ever visible to whoever is already sitting at the machine. The first
+attempt appended `BundledPackageDir` to `RefreshPackageManagerItems()`'s
+"Selecteer links een pakket." status text — but a screenshot from the
+project owner immediately showed why that doesn't work in practice: a
+package (and often an item within it) is normally already selected the
+moment the window opens, which overwrites that same status-text control
+with item/conflict details before it can ever be read. The path now lives
+instead in the window's static intro text (`"Kies links een pakket..."`,
+just below the title), which no selection-change handler ever touches —
+extending its height from 28 to 36px uses space already free above the
+list views (`y54 + h36 = 90`, exactly where they start), so no other
+control needed to move. The zero-packages case — arguably the most
+important one to diagnose, since it means the Package Manager window would
+otherwise never open at all — gets the same unsanitized path in its
+`MsgBox` instead.
 
 **Rejected alternatives:** bypassing or weakening `SanitizeLogText()` for
 this one log label — rejected per D-030/D-031 above; adding a new,
@@ -1504,9 +1512,73 @@ GUI surface already solves it with no new consent flow or storage.
 - Anyone diagnosing an Ivanti launch now opens **Pakketten** (or triggers
   its "no packages" message) instead of reading `debug.log` for this
   specific value.
-- `ShowPackageManager()` and `RefreshPackageManagerItems()` both now read
-  the `BundledPackageDir` global; neither previously depended on it.
+- `ShowPackageManager()` now reads the `BundledPackageDir` global, which it
+  did not previously depend on; `RefreshPackageManagerItems()`'s status text
+  is unchanged from before this decision.
+- The path is visible only while the Package Manager window is open with
+  nothing selected, or in the zero-packages message — not a permanent,
+  always-on-screen indicator. Acceptable for a diagnostic aid; revisit if
+  this needs to be checkable without opening that window.
 - Not yet validated on a compiled build on Windows (see D-037) — the
-  `MsgBox`/status-text wording was reviewed as source only.
+  `MsgBox`/intro-text wording and the two-line static text's rendering
+  were reviewed as source only.
 - Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
-  (`AppVersion 2.3-pakket-logging.5`).
+  (`AppVersion 2.3-pakket-logging.6`).
+
+---
+
+## D-051 — `RefreshPackageManagerItemDetails()` re-checks its status control before every write, not only at entry
+
+**Status:** Accepted
+
+While testing D-050, the project owner hit an unrelated, pre-existing crash
+in the Package Manager: `Error: This value of type "Integer" has no
+property named "Value"` at `PackageManagerStatusText.Value := detail`
+inside `RefreshPackageManagerItemDetails()`. That function already guarded
+against a destroyed GUI, but only once, at entry
+(`if !IsObject(PackageManagerStatusText) return`). `RefreshPackageManagerItems()`'s
+own comments already document why that single check is not enough for this
+window: "De gebruiker kan het venster sluiten terwijl de statusindex wordt
+opgebouwd" (the user can close the window while the status index is still
+being built) — `GetPackageItemStatus()`/`FindPackageItemConflict()` scan
+every active package's items for conflicts, which is slow enough on a large
+package (the project owner's own test had a 1,393-item package active) that
+AHK can dispatch a window-close event mid-function, which runs
+`ClosePackageManager()` and resets `PackageManagerStatusText` to `0` before
+`RefreshPackageManagerItemDetails()` reaches its own final write — passing
+the entry guard is no protection against that happening later in the same
+call. This is not a consequence of any of D-046 through D-050's changes;
+none of them touch this function. It surfaced now simply because a large
+package made the race easier to hit while testing them.
+
+The fix re-checks immediately before each of the function's two writes to
+`PackageManagerStatusText`, using `IsLiveGuiControl()` — the same
+`DllCall("IsWindow", ...)`-backed helper `RefreshPackageManagerItems()`
+already uses for its own controls, for consistency and because it catches a
+stale-but-still-object control reference, not only a reset-to-`0` global.
+
+**Rejected alternatives:** wrapping the whole function in `Critical` to
+block interruption — rejected because `GetPackageItemStatus()` on a large
+package is exactly the kind of long-running work `Critical` would make
+worse to interrupt cleanly (e.g. blocking the close button entirely while
+it runs, rather than letting the close proceed and this function simply no
+one write its now-stale result).
+
+**Consequences**
+
+- Closing the Package Manager window while a large package's status is
+  still being computed no longer crashes; the in-flight refresh silently
+  discards its result instead, which is correct since there is no longer a
+  window to show it in.
+- Established the same "re-check `IsLiveGuiControl()` before every write,
+  not only at function entry" pattern already used in
+  `RefreshPackageManagerItems()` should be considered for equivalent
+  functions with slow per-item work — not applied elsewhere in this
+  decision, since `RefreshPackageManagerPackages()`'s own loop is a fast
+  flat `.Add()` per package with no per-item conflict scan and no report of
+  it crashing this way.
+- Not yet re-validated on a compiled build on Windows (see D-037) after
+  this fix — the original crash was caught on a real compiled build, but
+  the fix itself has only been reviewed as source.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.6`).
