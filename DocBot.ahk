@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-pakket-logging.1"
+global AppVersion := "2.3-pakket-logging.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -6452,36 +6452,86 @@ GetBundledPackageDirectory() {
 }
 
 InstallBundledPackageFiles(packageDir) {
-    packageFiles := [
-        "manifest.json",
-        "nl-taal.json",
-        "medisch-algemeen.json",
-        "controles.json",
-        "spelfouten-wikipedia.json",
-        "gyn-obst.json"
-    ]
+    ; Eerst leegmaken: zo verdwijnt een pakketbestand dat in een latere
+    ; versie is hernoemd of verwijderd ook echt uit de cache, en telt de
+    ; wachtlus in ExtractBundledPackagesZip() nooit een bestand mee dat al
+    ; van een vorige run in packageDir stond.
+    Loop Files, packageDir "\*.*" {
+        try FileDelete(A_LoopFileFullPath)
+    }
 
     if A_IsCompiled {
-        ; De bronpaden van FileInstall moeten letterlijk in het script staan,
-        ; zodat Ahk2Exe alle pakketten in de executable kan opnemen.
-        FileInstall "packages\manifest.json", packageDir "\manifest.json", true
-        FileInstall "packages\nl-taal.json", packageDir "\nl-taal.json", true
-        FileInstall "packages\medisch-algemeen.json", packageDir "\medisch-algemeen.json", true
-        FileInstall "packages\controles.json", packageDir "\controles.json", true
-        FileInstall "packages\spelfouten-wikipedia.json", packageDir "\spelfouten-wikipedia.json", true
-        FileInstall "packages\gyn-obst.json", packageDir "\gyn-obst.json", true
+        ; Ahk2Exe kan alleen letterlijke, individuele FileInstall-bronnen
+        ; embedden — geen wildcard of dynamische lijst. Daarom wordt hier één
+        ; vast archief ingebakken; de inhoud daarvan mag wel volledig
+        ; dynamisch zijn. Build-EPD_Machine.bat pakt packages\ vlak vóór het
+        ; compileren in als packages.zip, zodat een nieuw pakketbestand geen
+        ; wijziging in deze functie vereist.
+        SplitPath(packageDir, , &cacheRoot)
+        zipPath := cacheRoot "\packages-bundle.zip"
+        FileInstall "packages.zip", zipPath, true
+
+        try {
+            ExtractBundledPackagesZip(zipPath, packageDir)
+        } finally {
+            try FileDelete(zipPath)
+        }
         return
     }
 
-    ; Tijdens ontwikkeling worden de bronbestanden naar een aparte cache
-    ; gekopieerd. Daardoor raakt een test nooit de productiecache.
-    for _, fileName in packageFiles {
-        FileCopy(
-            A_ScriptDir "\packages\" fileName,
-            packageDir "\" fileName,
-            true
-        )
+    ; Tijdens ontwikkeling wordt elk *.json-bestand rechtstreeks vanuit de
+    ; broncode-map packages\ naar een aparte cache gekopieerd. Nieuwe
+    ; pakketbestanden komen zo automatisch mee, zonder dat deze functie moet
+    ; worden aangepast.
+    Loop Files, A_ScriptDir "\packages\*.json" {
+        FileCopy(A_LoopFileFullPath, packageDir "\" A_LoopFileName, true)
     }
+}
+
+; Pakt een als FileInstall meegeleverd zip-archief met pakketbestanden uit
+; naar packageDir via Verkenners Shell.Application-COM-object, zonder externe
+; afhankelijkheden zoals PowerShell op de clientmachine. CopyHere() is
+; asynchroon: deze functie wacht daarom actief tot het aantal bestanden in
+; packageDir het aantal in het archief bereikt, met een tijdslimiet zodat een
+; vastgelopen of onvolledige uitpakactie een duidelijke fout oplevert in
+; plaats van dat InitializeBundledPackages() daarna een leeg/half manifest
+; leest.
+ExtractBundledPackagesZip(zipPath, packageDir) {
+    if !FileExist(zipPath)
+        throw Error("Pakketarchief niet gevonden: " zipPath)
+
+    shell := ComObject("Shell.Application")
+    zipFolder := shell.Namespace(zipPath)
+    if !IsObject(zipFolder)
+        throw Error("Kan het pakketarchief niet openen: " zipPath)
+
+    destFolder := shell.Namespace(packageDir)
+    if !IsObject(destFolder)
+        throw Error("Kan de pakketcache niet openen: " packageDir)
+
+    expectedCount := zipFolder.Items().Count
+    if expectedCount = 0
+        throw Error("Het pakketarchief is leeg: " zipPath)
+
+    ; Vlaggen: 4 = geen voortgangsvenster, 16 = overschrijven zonder vragen.
+    destFolder.CopyHere(zipFolder.Items(), 4 | 16)
+
+    deadline := A_TickCount + 10000
+    while A_TickCount < deadline {
+        actualCount := 0
+        try actualCount := destFolder.Items().Count
+        if actualCount >= expectedCount
+            return
+        Sleep(100)
+    }
+
+    throw Error(
+        Format(
+            "Uitpakken van het pakketarchief duurde te lang of is onvolledig: {1} (doel: {2})",
+            zipPath,
+            packageDir
+        )
+    )
 }
 
 InitializeBundledPackages() {

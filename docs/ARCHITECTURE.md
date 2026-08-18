@@ -258,9 +258,29 @@ Hotstring execution must never copy replacement text through the Windows clipboa
 
 `packages/manifest.json` declares the package catalogue. Package files contain stable IDs and items.
 
-At runtime/build:
+Bundling/extraction (`InstallBundledPackageFiles()`, `ExtractBundledPackagesZip()`):
 
-- package files are bundled/extracted;
+- **Compiled build:** `Build-EPD_Machine.bat` zips `packages/` into a single
+  `packages.zip` immediately before invoking Ahk2Exe. `DocBot.ahk` embeds
+  that one literal file via `FileInstall` — Ahk2Exe can only embed literal,
+  individual source paths, not a wildcard or a dynamically generated list —
+  so the *build step* is what makes the package set dynamic, not the
+  `FileInstall` call itself. At startup the compiled app extracts the
+  archive into `%LocalAppData%\DocBot\packages` via the `Shell.Application`
+  COM object (`Namespace(...).CopyHere()`), with no external dependency
+  (no PowerShell/`Expand-Archive` subprocess on the client). `CopyHere()` is
+  asynchronous, so extraction polls the destination's item count against
+  the archive's item count (10s timeout) before returning.
+- **Uncompiled/dev build:** every `*.json` file directly under the source
+  `packages/` directory is copied to `%LocalAppData%\DocBot-dev\packages`.
+  No file list is hardcoded on either path — adding, renaming, or removing
+  a package file under `packages/` needs no change to `DocBot.ahk`.
+- Both paths first clear the target `packages` cache directory, so a file
+  removed or renamed upstream does not linger in the cache.
+- Each package file's load attempt, success (name/version/item count), or
+  failure is written to the standard log; one invalid package file no
+  longer prevents the other, valid packages from loading
+  (`docs/DECISIONS.md` D-046, D-047).
 - manifest and package structure are validated;
 - duplicate triggers/item counts/schema consistency are checked;
 - effective conflicts are indexed;

@@ -1148,3 +1148,94 @@ original, hard-to-diagnose report.
   by source review only.
 - Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
   (`AppVersion 2.3-pakket-logging.1`).
+
+---
+
+## D-047 — Bundled-package file set is dynamic in both the dev and compiled build
+
+**Status:** Accepted
+
+D-046's new per-file logging immediately surfaced the project owner's real
+problem: a custom package (`anest.json`) was correctly listed in a locally
+edited `packages/manifest.json`, but `InitializeBundledPackages()` reported
+"Pakketbestand niet gevonden" for it. The cause was not, as first suspected,
+that the uncompiled dev build skips copying packages to a local cache — it
+does copy them. The actual cause was `InstallBundledPackageFiles()`
+hardcoding the bundled file set in two places that both had to be kept in
+sync by hand with `packages/manifest.json`: a `packageFiles` array (used for
+`FileCopy` in dev) and one literal `FileInstall` line per file (used for the
+compiled build). A new package file added to `packages/` and to the manifest
+but not to this array/list silently never reached
+`%LocalAppData%\...\packages`, in either build — the dev case is exactly
+what the project owner hit.
+
+`InstallBundledPackageFiles()` now derives the file set dynamically on both
+paths instead of maintaining a hardcoded list:
+
+- **Dev/uncompiled:** `Loop Files, A_ScriptDir "\packages\*.json"` copies
+  every `*.json` file under the source `packages/` directory. No list to
+  maintain; any file dropped into `packages/` is picked up on the next
+  start.
+- **Compiled:** Ahk2Exe's `FileInstall` fundamentally cannot embed a
+  wildcard or a dynamically generated list — only literal, individual
+  source paths, a hard constraint of the compiler, not a choice made here
+  (already noted in the pre-existing code comment this decision replaces).
+  The fix moves the dynamism to *build time* instead: `Build-EPD_Machine.bat`
+  zips `packages/` into one `packages.zip` immediately before invoking
+  Ahk2Exe; `DocBot.ahk` embeds that single, always-literal file via one
+  `FileInstall` call. At startup, the compiled app extracts the archive into
+  the packages cache using the `Shell.Application` COM object
+  (`Namespace(...).CopyHere()`), which ships with Windows and adds no
+  external dependency (no PowerShell/`Expand-Archive` subprocess on the
+  client machine, unlike `Build-EPD_Machine.bat`'s own build-time use of
+  PowerShell, which only runs on the build machine). `CopyHere()` is
+  asynchronous, so `ExtractBundledPackagesZip()` polls the destination
+  directory's item count against the archive's item count, with a 10-second
+  timeout that raises a clear error (through `ReportStorageError()` /
+  `debug.log`, per D-046) instead of `InitializeBundledPackages()` silently
+  reading a half-extracted directory.
+
+Both paths now also clear the target `packages` cache directory before
+(re)installing, so a package file removed or renamed in a later version does
+not linger in the cache indefinitely — a pre-existing gap neither the old
+`FileCopy` loop nor the old `FileInstall` lines closed, fixed here because
+the rewrite already touches this exact code path. Clearing first also makes
+`ExtractBundledPackagesZip()`'s item-count wait unambiguous: without it, a
+cache already populated by a previous run could satisfy the expected count
+before the new `CopyHere()` had actually finished writing, on a build where
+the file count happens not to change.
+
+**Rejected alternatives:** manually adding `anest.json` to the existing
+hardcoded lists — rejected because it fixes this one report but leaves the
+same silent-drop trap for the next custom or bundled package; keeping the
+per-file `FileInstall` lines and only fixing the dev-side array — rejected
+because the project owner explicitly asked for both build types to be
+dynamic, and the compiled build is what end users actually run, so leaving
+it manually maintained would leave the more consequential half of the bug
+in place.
+
+**Consequences**
+
+- Adding, renaming, or removing a package file under `packages/` (plus its
+  `manifest.json` entry) never requires a `DocBot.ahk` change again, in
+  either build type — only a rebuild.
+- `Build-EPD_Machine.bat` gained a build step and a new failure mode
+  (`Compress-Archive` failing, or producing no `packages.zip`), both
+  checked explicitly and both abort the build with a clear message before
+  Ahk2Exe runs, matching the script's existing pre-flight-check style.
+  `packages.zip` is a build artifact: written next to `DocBot.ahk`,
+  `.gitignore`d, and deleted again after a successful (or failed) compile.
+- The compiled app now depends on the Windows Shell's zip-folder
+  functionality (`Shell.Application` opening a `.zip` as a `Namespace`),
+  built into Windows since XP but in principle disableable by policy in a
+  locked-down managed environment; this has not been confirmed against the
+  hospital's actual machine policy.
+- Not yet validated on a compiled build on Windows (see D-037) — neither
+  the `Compress-Archive` build step, the `FileInstall`-of-a-zip path, nor
+  the `Shell.Application` extraction and its polling wait have been
+  exercised outside source review. This decision carries more startup-path
+  risk than D-046 alone (a failed or slow extraction now sits before every
+  other startup step that depends on `BundledPackages`), so compiled-build
+  validation matters more here than for most recent decisions.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.2`).

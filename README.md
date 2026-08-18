@@ -66,9 +66,10 @@ Bij de eerste start maakt het script zelf een gebruikersmap aan (zie hieronder)
 voor instellingen en hotstrings — daar is verder niets voor te installeren of 
 te configureren.
 
-`Build-EPD_Machine.bat` compileert in de bronmap eerst `DocBot.exe` en
-plaatst vervolgens een kopie in de bovenliggende applicatiemap, met de naam
-van die map. Wanneer het script een centrale `-dev`-versie bevat en de
+`Build-EPD_Machine.bat` pakt eerst de map `packages` in als `packages.zip`
+(zie "Meegeleverde hotstringpakketten" hieronder), compileert daarna in de
+bronmap `DocBot.exe` en plaatst vervolgens een kopie in de bovenliggende
+applicatiemap, met de naam van die map. Wanneer het script een centrale `-dev`-versie bevat en de
 batch vanuit een directe submap van `DocBot` draait, kan optioneel ook
 `EPD_Machine.exe` in de naastgelegen applicatiemap worden bijgewerkt. Voor
 iedere gekozen doelmap plaatst de batch tijdelijk `ALL:update` in het
@@ -146,13 +147,21 @@ de map `packages`, met `manifest.json` als index. Momenteel bevat de
 catalogus Nederlandse taal, Medisch algemeen, Controles, Veelgebruikte
 spelfouten en Gynaecologie & obstetrie, samen 1.596 pakketitems.
 
-Bij compilatie neemt Ahk2Exe de bestanden via `FileInstall` op in de
-executable. De gecompileerde applicatie pakt ze uit naar
-`%LocalAppData%\DocBot\packages`. Een ongecompileerde ontwikkelversie
-kopieert dezelfde bronbestanden naar
+`Build-EPD_Machine.bat` pakt de map `packages` vlak vóór het compileren in
+als `packages.zip`; Ahk2Exe embedt dat ene archief via `FileInstall` in de
+executable (Ahk2Exe kan geen wildcard of dynamische bestandenlijst
+embedden, wel de inhoud van één vast archief). De gecompileerde applicatie
+pakt het archief bij het opstarten uit naar `%LocalAppData%\DocBot\packages`
+via Verkenners Shell.Application-COM-object, zonder externe
+afhankelijkheden. Een ongecompileerde ontwikkelversie kopieert in plaats
+daarvan elk `*.json`-bestand rechtstreeks vanuit de bronmap `packages` naar
 `%LocalAppData%\DocBot-dev\packages`, zodat tests de productiecache nooit
-overschrijven. Deze laag valideert manifest, schema, pakket-ID's,
-itemaantallen en dubbele triggers.
+overschrijven. In beide gevallen wordt de doelmap eerst leeggemaakt, zodat
+een verwijderd of hernoemd pakketbestand niet blijft hangen; een nieuw
+pakketbestand in `packages` komt na een herbouw vanzelf mee, zonder dat
+`DocBot.ahk` hoeft te worden aangepast. Deze laag valideert manifest,
+schema, pakket-ID's, itemaantallen en dubbele triggers, en logt per
+pakketbestand of het laden is gelukt.
 
 Pakketkeuzes worden apart en atomisch opgeslagen in
 `package-settings.json`. Dat bestand bevat uitsluitend ingeschakelde
@@ -431,6 +440,12 @@ Changelog
   schrijft elke opslagfout (pakketten, hotstrings, instellingen,
   snelkiesnummers) voortaan ook naar het standaardlog, ook wanneer alleen
   een tray-melding wordt getoond.
+- Een nieuw of verwijderd bestand in `packages` vereist niet langer een
+  wijziging in `DocBot.ahk`: de ongecompileerde versie kopieert voortaan elk
+  `*.json`-bestand in die map automatisch, en `Build-EPD_Machine.bat` pakt
+  de map vlak vóór het compileren in als één archief dat de gecompileerde
+  applicatie bij het opstarten zelf weer uitpakt (`docs/DECISIONS.md`
+  D-047).
 - Nieuwe gebruikersinstructie voor veilige hotstring-inhoud: een vijfde
   Help-sectie ("Wat mag ik wel en niet in een hotstring zetten?") en een
   bijbehorende, altijd zichtbare hint op de Tekstvervanging-pagina. De
