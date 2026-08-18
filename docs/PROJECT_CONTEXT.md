@@ -29,11 +29,18 @@ Current top-level structure:
 - `ThirdParty/ColorButton/` — button library and original license.
 - `ThirdParty/JXON/` — JSON library and original license.
 - `ThirdParty/UIA-v2/` — UI Automation library and original license.
+- `tests/SelfTests.ahk` — opt-in self-test suite for pure migration-support logic, run via `DocBot.ahk --selftest`; see `tests/README.md` and `docs/DECISIONS.md` D-053.
 - `README.md` — end-user/developer documentation and the only maintained changelog.
 - `AGENTS.md` and `CLAUDE.md` — repository workflow rules for coding agents.
 - `LICENSE` — DocBot's own license.
 
-There is currently no conventional `tests/` directory and no `migrations/` directory. Data migrations are implemented in application code through schema-version logic. Functional validation is therefore still heavily dependent on running AutoHotkey v2 on Windows.
+There is no `migrations/` directory; data migrations are implemented in
+application code through schema-version logic, documented in
+`docs/MIGRATIONS.md`. There is no conventional test-runner-based `tests/`
+directory either — `tests/SelfTests.ahk` is a narrow, opt-in exception
+(pure logic only, see D-053), not a general test harness. Functional
+validation is therefore still heavily dependent on running AutoHotkey v2 on
+Windows.
 
 ## 3. Branch and release status at handover
 
@@ -107,7 +114,10 @@ before declaring a change complete, not just source review.
 ### 4.2 Bundled hotstring packages
 
 - Versioned package sources live under `packages/`; `manifest.json` is the index.
-- Bundled package data is extracted to LocalAppData at runtime/build time and validated.
+- Package data is not embedded or cached; `InitializeBundledPackages()` reads
+  and validates it live on every start, directly from the dev build's own
+  `packages/` or, for the compiled build, an auto-detected or explicitly
+  configured network share (`docs/DECISIONS.md` D-048/D-049).
 - User package choices live separately in `package-settings.json`; package content itself is not copied into that settings file.
 - Personal hotstrings normally win conflicts unless the user explicitly gives a package item priority.
 - Editing/saving a package item creates a full personal copy with stable ID/origin metadata.

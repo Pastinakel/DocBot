@@ -51,3 +51,38 @@ jobs:
             Write-Error "AutoHotkey v2-syntaxvalidatie mislukt (exit $($proc.ExitCode))"
             exit 1
           }
+
+      - name: Migratie-zelftests uitvoeren
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path ahk -Recurse -Filter "AutoHotkey64.exe" | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $exe) {
+            Write-Error "AutoHotkey64.exe niet gevonden na uitpakken van de portable zip"
+            exit 1
+          }
+          $logPath = Join-Path $env:TEMP "docbot-selftest-results.txt"
+          if (Test-Path $logPath) {
+            Remove-Item $logPath -Force
+          }
+          $proc = Start-Process -FilePath $exe -ArgumentList '/ErrorStdOut', 'DocBot.ahk', '--selftest' -PassThru -NoNewWindow
+          $finished = $proc.WaitForExit(60000)
+          if (-not $finished) {
+            Write-Host "AutoHotkey reageert niet binnen 60 seconden (waarschijnlijk een blokkerend foutdialoogvenster). Proces wordt afgebroken."
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            Write-Error "Zelftests mislukt: proces reageerde niet binnen de tijdslimiet"
+            exit 1
+          }
+          # Het resultatenbestand is de primaire, betrouwbare uitvoer (zie
+          # docs/DECISIONS.md D-053) — DocBot.ahk --selftest schrijft dit zelf
+          # weg naar %TEMP%, onafhankelijk van of stdout-omleiding werkt voor
+          # deze GUI-subsysteem-executable.
+          if (Test-Path $logPath) {
+            Get-Content $logPath | Write-Host
+          } else {
+            Write-Host "Waarschuwing: $logPath niet gevonden; zie tests/SelfTests.ahk."
+          }
+          Write-Host "Exitcode: $($proc.ExitCode)"
+          if ($proc.ExitCode -ne 0) {
+            Write-Error "Migratie-zelftests mislukt (exit $($proc.ExitCode)) — zie tests/SelfTests.ahk en docs/MIGRATIONS.md"
+            exit 1
+          }

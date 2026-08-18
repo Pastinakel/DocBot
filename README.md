@@ -490,6 +490,16 @@ Changelog
   dan wordt hij gevuld vanuit de huidige checkout; bestaat hij al, dan
   vraagt de batch eerst of hij met de nieuwste versie mag worden vervangen
   (`docs/DECISIONS.md` D-052).
+- Schemamigraties (hotstrings, snelkiesnummers, pakketten,
+  pakketkeuzes) zijn gedocumenteerd in het nieuwe `docs/MIGRATIONS.md`, en
+  de vijf schemaVersion-controles delen nu twee kleine gezamenlijke
+  functies (`ReadSchemaVersion()`, `RejectNewerSchemaVersion()`) in plaats
+  van vijfmaal losstaande code — dit wijzigt het gedrag niet, alleen de
+  exacte bewoording van de zeldzame "bestand is nieuwer dan deze
+  DocBot-versie"-foutmelding. Een nieuwe, standaard onzichtbare
+  `--selftest`-opstartmodus (`DocBot.ahk --selftest`) draait losstaande
+  zelftests voor deze migratielogica en is nu ook in de CI-syntaxcontrole
+  opgenomen (`docs/DECISIONS.md` D-053).
 - Nieuwe gebruikersinstructie voor veilige hotstring-inhoud: een vijfde
   Help-sectie ("Wat mag ik wel en niet in een hotstring zetten?") en een
   bijbehorende, altijd zichtbare hint op de Tekstvervanging-pagina. De
