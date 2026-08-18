@@ -429,6 +429,11 @@ Changelog
   bijbehorende, altijd zichtbare hint op de Tekstvervanging-pagina. De
   kaarten op Hotstrings, Telefonie en Over sluiten daarbij nu onderaan op
   dezelfde hoogte af (`docs/DECISIONS.md` D-045).
+- De verticale scrollbalk van een afgeronde tekstbox (zoals de Help-
+  accordeontekst en het Over-scherm) werd altijd onzichtbaar afgeknipt,
+  ook wanneer er wel degelijk meer te scrollen was. `RoundControl()`
+  gebruikt nu `GetWindowRect` in plaats van `GetClientRect`, zodat de
+  scrollbalk binnen de afgeronde regio valt (`docs/DECISIONS.md` D-045).
 - Telefonie en SMS vereisen nu een HTTPS-URL: `ValidateLocalConfiguration()`
   weigert een niet-HTTPS `Telephony.BaseUrl` en `ValidateSmsCallActionItem()`
   weigert een niet-HTTPS `SmsCallAction.Url`, beide al bij het opstarten

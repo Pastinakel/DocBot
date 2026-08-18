@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-hotstring-instructie.3"
+global AppVersion := "2.3-hotstring-instructie.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -8235,13 +8235,22 @@ ApplyRoundedControls(visibleOnly := false) {
 }
 
 RoundControl(control, radius := 12) {
+    ; SetWindowRgn shapes de hele vensterrechthoek van het control, niet
+    ; alleen het clientgebied. GetClientRect sluit een scrollbalk echter per
+    ; definitie uit (MSDN: "the client area... not including... scroll
+    ; bars"), dus een regio op basis van GetClientRect viel eerder net te
+    ; smal uit voor elk control met WS_VSCROLL (bodyEdit in de Help-
+    ; accordeon, aboutEdit op de Over-pagina): de scrollbalkstrook viel
+    ; buiten de regio en werd daardoor onzichtbaar geknipt, ook wanneer er
+    ; wel degelijk meer te scrollen was. GetWindowRect neemt de scrollbalk
+    ; wel mee.
     rect := Buffer(16, 0)
 
-    if !DllCall("GetClientRect", "ptr", control.Hwnd, "ptr", rect, "int")
+    if !DllCall("GetWindowRect", "ptr", control.Hwnd, "ptr", rect, "int")
         return
 
-    width := NumGet(rect, 8, "int")
-    height := NumGet(rect, 12, "int")
+    width := NumGet(rect, 8, "int") - NumGet(rect, 0, "int")
+    height := NumGet(rect, 12, "int") - NumGet(rect, 4, "int")
 
     if width <= 0 || height <= 0
         return

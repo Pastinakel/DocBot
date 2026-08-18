@@ -961,6 +961,24 @@ the project owner; there is, for now, deliberately no separate
 organizational-onboarding text — the in-product instruction (Help +
 README) is intended to cover this on its own.
 
+Screenshots of the new accordion body and the enlarged Over page surfaced
+an unrelated, pre-existing bug in `RoundControl()` (the shared helper
+behind `AddRound()`, used to give many controls rounded corners via
+`SetWindowRgn`): it built the rounded region from `GetClientRect`, which
+by definition excludes any scroll bar, then applied that undersized region
+to the whole control window via `SetWindowRgn` — whose region coordinates
+are window-relative, not client-relative. The result: the vertical
+scroll bar strip fell outside the region and was clipped away entirely,
+on any rounded control that has one. Across all `AddRound()` call sites,
+that is exactly `bodyEdit` (the Help accordion's RichEdit body, `AddRound`
+radius 8) and `aboutEdit` (the Over page's edit control, radius 10) — the
+two controls the project owner reported as having no visible way to tell
+that scrolling was possible. `RoundControl()` now measures with
+`GetWindowRect` instead, which includes the scroll bar. This is a general
+fix to a shared helper, not something specific to this decision's own
+controls, but it was found and is fixed in the same change because it
+directly affects the readability of the Help section added here.
+
 **Rejected alternatives:** a technical content filter on the `Replacement`
 field that tries to detect patient-identifying text — rejected because
 free text cannot be reliably classified this way (the instruction itself
@@ -984,7 +1002,11 @@ requirement.
   `HotPrivacyHint` and `githubLink` centered in the space below it (or
   explicitly record why they diverge), independently of the
   Overzicht/Telefonie footer row at y=672.
+- The `RoundControl()` fix applies to every current and future
+  `AddRound()` target with a scroll bar, not only `bodyEdit`/`aboutEdit`;
+  any control that gains both in the future gets a working scroll bar for
+  free instead of needing its own fix.
 - Implemented on branch `claude/hotstring-user-instruction-hcv2jw`
-  (`AppVersion 2.3-hotstring-instructie.3`); not yet validated on a
+  (`AppVersion 2.3-hotstring-instructie.4`); not yet validated on a
   compiled build on Windows (see D-037) — layout math was verified by hand
   against the fixed 1000×700 window size, not by rendering the GUI.
