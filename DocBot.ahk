@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-hotstring-instructie.1"
+global AppVersion := "2.3-hotstring-instructie.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -525,15 +525,16 @@ BuildMainGui() {
     HotSaveButton := AddFlatButton("tekstvervanging", 808, 602, 148, 36, "💾  Opslaan", SaveHotstringFromForm, true)
     ApplyHotReplacementEditorState()
 
-    ; Onderaan de pagina, op dezelfde y=654 als de GitHub-link op de
-    ; Over-pagina en de knop "Probleem melden..." op de Help-pagina. Als
-    ; paginabreed element (geen kaartinhoud) blijft de melding zichtbaar in
-    ; zowel de compacte als de uitgeklapte weergave van de hotstringeditor.
+    ; Onderaan de pagina, op dezelfde y=672 als de footer "Sluiten verbergt
+    ; DocBot in het systeemvak" op Overzicht/Telefonie. Zelfde tekstgrootte
+    ; (s10) als de GitHub-link op de Over-pagina. Als paginabreed element
+    ; (geen kaartinhoud) blijft de melding zichtbaar in zowel de compacte
+    ; als de uitgeklapte weergave van de hotstringeditor.
     HotPrivacyHint := MainGui.AddLink(
-        "x260 y654 w650 h20 Background" C["Window"],
-        'Zet geen patiëntgegevens in hotstrings. Bekijk de richtlijn op de <a href="help">Help</a>-pagina.'
+        "x260 y672 w650 h22 Background" C["Window"],
+        'ℹ️  Zet geen patiëntgegevens in hotstrings. Bekijk de richtlijn op de <a href="help">Help</a>-pagina.'
     )
-    HotPrivacyHint.SetFont("s9 c" C["Muted"], "Segoe UI")
+    HotPrivacyHint.SetFont("s10 c" C["Muted"], "Segoe UI")
     HotPrivacyHint.OnEvent("Click", ShowPage.Bind("help"))
     AddPageControl("tekstvervanging", HotPrivacyHint)
 
@@ -696,7 +697,7 @@ BuildMainGui() {
 
     ; Kaarthoogte 556 (i.p.v. voorheen 500) laat deze kaart, net als
     ; Hotstrings en Telefonie, op y=648 eindigen. De GitHub-link hieronder
-    ; stond al op de gedeelde y=654 en hoeft niet te verschuiven.
+    ; staat op de gedeelde footerhoogte y=672.
     AddCard("over", 236, 92, 736, 556)
 
     aboutShell := MainGui.AddText("x260 y116 w688 h508 Background" C["Border"], "")
@@ -711,11 +712,12 @@ BuildMainGui() {
     AddRound(aboutEdit, 10)
     AddPageControl("over", aboutEdit)
 
-    ; Zelfde y=654 als de "Probleem melden..."-knop op de Help-pagina en de
-    ; privacymelding op de Tekstvervanging-pagina, vlak onder de kaart erboven
-    ; die (net als Hotstrings en Telefonie) op y=648 eindigt.
+    ; Zelfde y=672 als de footer "Sluiten verbergt DocBot in het
+    ; systeemvak" op Overzicht/Telefonie en de privacymelding op de
+    ; Tekstvervanging-pagina. Hoogte verkleind van 34 naar 24: bij y=672
+    ; zou 34 tot y=706 reiken, voorbij het venster van 700 hoog.
     githubLink := MainGui.AddLink(
-        "x262 y654 w300 h34",
+        "x262 y672 w300 h24",
         'Bekijk DocBot op <a href="https://github.com/Pastinakel/DocBot">GitHub</a>'
     )
     githubLink.SetFont("s10 c" C["Text"], "Segoe UI")

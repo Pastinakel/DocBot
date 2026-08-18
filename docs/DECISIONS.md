@@ -905,24 +905,23 @@ and organizational policy, while no such instruction actually existed yet
 The instruction is implemented as a fifth `AddHelpAccordionSection()` entry
 on the Help page ("Wat mag ik wel en niet in een hotstring zetten?"),
 matching the style of the existing four sections, plus a short, always-
-visible hint (`HotPrivacyHint`) at a fixed position (x260 y654) on the
-Tekstvervanging page that links to that Help section. The hint sits outside
-both `HotEditorCompactCard` and `HotEditorExpandedCard`, so it is visible
-in both the compact and the expanded hotstring editor, not only one of
-them. `README.md` (Hotstrings section) carries a shorter, consistent
-summary for users reading the bundled documentation instead of the
-in-product Help page.
+visible hint (`HotPrivacyHint`) on the Tekstvervanging page that links to
+that Help section, prefixed with an ℹ️ glyph. The hint sits outside both
+`HotEditorCompactCard` and `HotEditorExpandedCard`, so it is visible in
+both the compact and the expanded hotstring editor, not only one of them.
+`README.md` (Hotstrings section) carries a shorter, consistent summary for
+users reading the bundled documentation instead of the in-product Help
+page.
 
 Fitting a fifth accordion section required reducing
 `RefreshHelpAccordion()`'s `collapsedHeight` from 64 to 54 (and the
 matching `AddCard()` height inside `AddHelpAccordionSection()`) so that the
 worst case — one section expanded (258) plus four collapsed (4×54) plus
 five 12px gaps — still ends at y=638, 16px above the "Probleem melden..."
-button at y=654.
+button at y=654 (unchanged).
 
-Placing the new hint at the same y=654 used by the "Probleem melden..."
-button (Help) and the GitHub link (Over) required the Tekstvervanging
-page's hotstring-editor cards to stop extending past y=648 in their
+Fitting the new hint below the hotstring-editor cards required the
+Tekstvervanging page's editor cards to stop extending past y=648 in their
 expanded state. `HotEditorExpandedCard` shrank from height 230 to 196
 (matching `HotEditorCompactCard`), `HotReplacementMultiGroup`'s height
 from 70 to 56, and `HotSaveButton` moved from two conditional positions
@@ -935,6 +934,18 @@ Telefonie and Over now share the same bottom edge, at the project owner's
 request. The Help page and other non-full-height pages were deliberately
 left out of this alignment, since they are not designed to fill the
 window.
+
+The hint and the Over page's GitHub link were first placed at y=654 (the
+row already used by the Help page's "Probleem melden..." button), then
+moved to y=672 at the project owner's request, to match the y-position of
+the "Sluiten verbergt DocBot in het systeemvak" footer on Overzicht and
+Telefonie instead. `githubLink`'s height shrank from 34 to 24 in the same
+change — at y=672 the original 34px height would have reached y=706, past
+the fixed 700px-tall window. `HotPrivacyHint`'s font grew from s9 to s10,
+matching `githubLink`'s size, per the same request; its color stays
+`C["Muted"]` (only size was asked to match, not color). The Help page's
+"Probleem melden..." button was deliberately left at y=654 — the request
+only covered the Hotstrings and Over footers.
 
 Ownership of the instruction's content and its periodic review sits with
 the project owner; there is, for now, deliberately no separate
@@ -960,9 +971,10 @@ requirement.
   unchanged from before this decision, and consistent with the rejected
   alternative above.
 - Any future change to the Tekstvervanging, Telefonie or Over page layout
-  that moves a card's bottom edge away from y=648, or moves the y=654 row,
-  should keep the other two in sync or explicitly record why they diverge.
+  that moves a card's bottom edge away from y=648, or moves the shared
+  y=672 footer row, should keep the others in sync or explicitly record
+  why they diverge.
 - Implemented on branch `claude/hotstring-user-instruction-hcv2jw`
-  (`AppVersion 2.3-hotstring-instructie.1`); not yet validated on a
+  (`AppVersion 2.3-hotstring-instructie.2`); not yet validated on a
   compiled build on Windows (see D-037) — layout math was verified by hand
   against the fixed 1000×700 window size, not by rendering the GUI.
