@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.3-dev.6"
+global AppVersion := "2.3-sms-standaardtekst.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -615,20 +615,24 @@ BuildMainGui() {
         "Deze pagina wordt gebruikt bij de belactie 'Bellen of sms kiezen'.",
         "s9 c" C["Muted"]
     )
-    smsAvailabilityText := smsActionTitles.Length = 1
-        ? "1 SMS-pagina beschikbaar via lokale configuratie."
-        : smsActionTitles.Length " SMS-pagina's beschikbaar via lokale configuratie."
-    if smsActionTitles.Length = 0
-        smsAvailabilityText := "Geen SMS-pagina beschikbaar; de bijbehorende belactie is uitgeschakeld."
-    AddCardLabel("instellingen", 260, 462, 688, 20, smsAvailabilityText, "s9 c" C["Muted"])
 
     ; Standaardtekst per SMS-pagina: meerregelig, harde enters toegestaan
     ; (zelfde Multi/VScroll-opzet als het hotstring-Replacement-veld
-    ; hierboven, dat WantReturn al niet nodig blijkt te hebben).
-    AddCardLabel("instellingen", 260, 488, 400, 18, "Standaardtekst voor deze pagina", "s10 c" C["Muted"])
-    smsDefaultTextGroup := AddRoundedEditGroup("instellingen", 260, 506, 688, 58, "", true, 6)
+    ; hierboven, dat WantReturn al niet nodig blijkt te hebben). Label en
+    ; toelichting staan samen op één regel om ruimte te winnen voor het
+    ; tekstveld zelf; de losse "N SMS-pagina('s) beschikbaar"-regel is
+    ; geschrapt omdat de dropdown daarboven dat al laat zien.
+    AddCardLabel(
+        "instellingen",
+        260, 460, 688, 34,
+        "Standaardtekst (wordt samen met het telefoonnummer ingevuld in het berichtveld van deze SMS-pagina):",
+        "s10 c" C["Muted"]
+    )
+    smsDefaultTextGroup := AddRoundedEditGroup("instellingen", 260, 494, 688, 100, "", true, 6)
     smsDefaultTextEdit := smsDefaultTextGroup["Edit"]
-    smsDefaultTextHint := AddCardLabel("instellingen", 260, 568, 688, 34, "", "s9 c" C["Muted"])
+    ; Blijft leeg zolang de standaardtekst gewoon bruikbaar is; toont anders
+    ; waarom het veld is uitgeschakeld (zie ApplySmsDefaultTextFieldState()).
+    smsDefaultTextHint := AddCardLabel("instellingen", 260, 598, 688, 16, "", "s9 c" C["Muted"])
 
     ; Niet-opgeslagen tekst blijft per SMS-pagina in het geheugen staan
     ; zolang de Instellingen-pagina open is, ook als tussendoor van
@@ -8192,7 +8196,9 @@ ApplySmsDefaultTextFieldState(smsActionDropDown, smsDefaultTextEdit, smsDefaultT
         ? pendingSmsDefaultTexts[key]
         : GetSmsDefaultText(title)
     smsDefaultTextEdit.Enabled := true
-    smsDefaultTextHint.Text := "Wordt samen met het telefoonnummer ingevuld in het berichtveld van deze SMS-pagina."
+    ; De toelichting staat al in het label boven het veld; hier blijft de
+    ; regel dus leeg zolang er niets mis is.
+    smsDefaultTextHint.Text := ""
 }
 
 ; Bewaart de nog niet opgeslagen tekst van de vorige selectie in het geheugen
