@@ -18,6 +18,8 @@ DocBot is een AutoHotkey v2-hulpmiddel voor medewerkers met twee hoofdfuncties:
 - `ThirdParty/ColorButton/ColorButton.ahk` — knopbibliotheek (Nikola Perovic, MIT).
 - `ThirdParty/UIA-v2/UIA.ahk` — UI Automation-library voor interactie met Edge.
 - `ThirdParty/<library>/LICENSE` — oorspronkelijke licentie van de betreffende externe library.
+- `tests/SelfTests.ahk` — opt-in zelftests voor pure migratielogica, gestart met `DocBot.ahk --selftest`; zie `tests/README.md` en `docs/DECISIONS.md` D-046.
+- `docs/MIGRATIONS.md` — register per opslagformaat: welke schemaversie welk veld/standaardwaarde toevoegde.
 - `README.md` — volledige documentatie over installatie, functionaliteit, telefonie, diagnostiek en wijzigingen.
 - Voeg verwijderde legacybestanden niet opnieuw toe aan actieve branches.
 

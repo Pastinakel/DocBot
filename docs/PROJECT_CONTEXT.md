@@ -29,11 +29,18 @@ Current top-level structure:
 - `ThirdParty/ColorButton/` — button library and original license.
 - `ThirdParty/JXON/` — JSON library and original license.
 - `ThirdParty/UIA-v2/` — UI Automation library and original license.
+- `tests/SelfTests.ahk` — opt-in self-test suite for pure migration-support logic, run via `DocBot.ahk --selftest`; see `tests/README.md` and `docs/DECISIONS.md` D-046.
 - `README.md` — end-user/developer documentation and the only maintained changelog.
 - `AGENTS.md` and `CLAUDE.md` — repository workflow rules for coding agents.
 - `LICENSE` — DocBot's own license.
 
-There is currently no conventional `tests/` directory and no `migrations/` directory. Data migrations are implemented in application code through schema-version logic. Functional validation is therefore still heavily dependent on running AutoHotkey v2 on Windows.
+There is no `migrations/` directory; data migrations are implemented in
+application code through schema-version logic, documented in
+`docs/MIGRATIONS.md`. There is no conventional test-runner-based `tests/`
+directory either — `tests/SelfTests.ahk` is a narrow, opt-in exception
+(pure logic only, see D-046), not a general test harness. Functional
+validation is therefore still heavily dependent on running AutoHotkey v2 on
+Windows.
 
 ## 3. Branch and release status at handover
 

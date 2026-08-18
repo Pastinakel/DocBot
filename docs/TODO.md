@@ -477,13 +477,26 @@ branch from the then-current `develop` and update the branch-specific
 
 ## P2 — Introduce targeted automated tests where practical
 
-There is currently no conventional `tests/` directory. High-value testable areas that do not require a live hospital environment include:
+There is now a `tests/` directory, but only for what is practical without a
+live hospital environment or a code module split (see `docs/DECISIONS.md`
+D-046). High-value testable areas:
 
 - [ ] stable/non-stable + compiled/noncompiled -> user-profile selection;
 - [ ] telephone-number normalization;
 - [ ] hotstring execution-mode selection;
 - [ ] dynamic token expansion;
-- [ ] JSON migration/default-addition idempotency;
+- [x] JSON migration/default-addition idempotency. Implemented as
+  `tests/SelfTests.ahk`, run via `DocBot.ahk --selftest` and wired into
+  `.github/workflows/ahk-syntax-check.yml` as a second step. Covers
+  `ReadSchemaVersion()`/`RejectNewerSchemaVersion()` and the idempotency of
+  `AddMissingDefaultHotstrings()`/`AddMissingDefaultSpeedDials()`/
+  `NormalizeHotstringItem()`. Does not cover the file I/O, `.bak`/temp-file
+  write path, or GUI-refresh side of the four loaders — see
+  `tests/README.md` for the exact boundary. Implemented on
+  `claude/schema-migrations-setup-waiigd` (`AppVersion
+  2.3-schema-migraties.1`); not yet validated on a compiled build on Windows
+  (D-037) — confirm `--selftest` exits with the expected code from the
+  compiled `.exe` and that the CI step's stdout capture actually works.
 - [ ] package conflict resolution and status calculation;
 - [ ] telemetry payload serialization/redaction boundaries;
 - [ ] telemetry InstallationId persistence state machine using controlled file conditions;
@@ -493,17 +506,25 @@ Keep live telephony/Edge/UIA tests as integration/manual tests unless a realisti
 
 ---
 
-## P2 — Make migration behavior easier to inspect
+## P2 — Make migration behavior easier to inspect (done)
 
 There is no `migrations/` directory; migrations are embedded in `DocBot.ahk` and keyed by schema versions.
 
-Without changing behavior immediately, consider documenting or extracting a clearer migration registry so an engineer can answer:
+- [x] Document which schema version added which field/default, which old
+  filenames/formats are still supported, and the shared
+  `ReadSchemaVersion()`/`RejectNewerSchemaVersion()` helpers used by all
+  four loaders: `docs/MIGRATIONS.md`, added on
+  `claude/schema-migrations-setup-waiigd` (`AppVersion
+  2.3-schema-migraties.1`; see `docs/DECISIONS.md` D-046).
+- [ ] "Which migrations are safe to remove only after a defined
+  compatibility window" is not yet answered — `docs/MIGRATIONS.md` records
+  current behavior, not a removal/deprecation policy. Revisit if a schema
+  ever needs an old migration branch retired.
 
-- which schema version added which field/default;
-- which old filenames/formats are still supported;
-- which migrations are safe to remove only after a defined compatibility window.
-
-Do not move migration code during the 2.2 release just for cleanliness.
+Migration code itself was deliberately **not** moved to a separate file for
+this change — see the rejected alternative in D-046. Do not move it later
+just for cleanliness; only as part of the broader, non-casual modularization
+already tracked below ("Consider gradual modularization after 2.2").
 
 ---
 

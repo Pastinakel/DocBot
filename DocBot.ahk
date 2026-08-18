@@ -6,6 +6,9 @@ Persistent true
 #Include Telemetry.ahk
 #Include ThirdParty\UIA-v2\UIA.ahk
 #Include ThirdParty\UIA-v2\UIA_Browser.ahk
+; Alleen functiedefinities; wordt pas uitgevoerd via de --selftest-poort
+; hieronder, ná geldige lokale configuratie. Zie docs/MIGRATIONS.md.
+#Include tests\SelfTests.ahk
 
 ; De echte lokale configuratie wordt bewust niet door Git gevolgd. Tijdens
 ; compilatie neemt Ahk2Exe dit include-bestand wel in de executable op.
@@ -24,7 +27,18 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-dev.4"
+; Poort voor het losstaande zelftestpakket (tests/SelfTests.ahk): alleen
+; actief met het expliciete argument --selftest, ná geldige lokale
+; configuratie maar vóór elke GUI-, netwerk- of gebruikersdatatoegang. Een
+; normale start (dubbelklik of de gecompileerde executable zonder
+; argumenten) bereikt deze tak nooit. Zie docs/MIGRATIONS.md en
+; tests/README.md.
+if HasCommandLineArgument("--selftest") {
+    exitCode := RunSelfTests()
+    ExitApp(exitCode)
+}
+
+global AppVersion := "2.3-schema-migraties.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -6484,6 +6498,28 @@ InstallBundledPackageFiles(packageDir) {
     }
 }
 
+; Schema migraties: gedeelde bouwstenen voor het lezen en afwijzen van
+; schemaVersion-waarden, gebruikt door alle vier de opslagformaten
+; (pakketmanifest, pakketbestanden, package-settings.json, hotstrings.json,
+; speeddial.json). Zie docs/MIGRATIONS.md voor het volledige overzicht per
+; formaat: welke versie welk veld/standaardwaarde toevoegde en welke oude
+; bestandsnamen/formaten nog worden ondersteund.
+ReadSchemaVersion(document) {
+    return document.Has("schemaVersion") ? (document["schemaVersion"] + 0) : 1
+}
+
+RejectNewerSchemaVersion(schemaVersion, currentVersion, subject) {
+    if schemaVersion > currentVersion
+        throw Error(
+            Format(
+                "{1} gebruikt schemaVersion {2}, maar deze DocBot-versie ondersteunt maximaal versie {3}.",
+                subject,
+                schemaVersion,
+                currentVersion
+            )
+        )
+}
+
 InitializeBundledPackages() {
     global BundledPackageDir, BundledPackages, BundledPackageSchemaVersion
 
@@ -6495,19 +6531,8 @@ InitializeBundledPackages() {
         if !(manifest is Map)
             throw Error("Het pakketmanifest moet een JSON-object zijn.")
 
-        schemaVersion := manifest.Has("schemaVersion")
-            ? (manifest["schemaVersion"] + 0)
-            : 1
-
-        if schemaVersion > BundledPackageSchemaVersion {
-            throw Error(
-                Format(
-                    "Het pakketmanifest gebruikt schemaVersion {1}, maar deze DocBot-versie ondersteunt maximaal versie {2}.",
-                    schemaVersion,
-                    BundledPackageSchemaVersion
-                )
-            )
-        }
+        schemaVersion := ReadSchemaVersion(manifest)
+        RejectNewerSchemaVersion(schemaVersion, BundledPackageSchemaVersion, "Het pakketmanifest")
 
         if !manifest.Has("packages") || !(manifest["packages"] is Array)
             throw Error("Het veld 'packages' ontbreekt in het pakketmanifest.")
@@ -6570,20 +6595,8 @@ LoadBundledPackageFile(path) {
     if !(package is Map)
         throw Error("Een hotstringpakket moet een JSON-object zijn: " path)
 
-    schemaVersion := package.Has("schemaVersion")
-        ? (package["schemaVersion"] + 0)
-        : 1
-
-    if schemaVersion > BundledPackageSchemaVersion {
-        throw Error(
-            Format(
-                "Pakket {1} gebruikt schemaVersion {2}, maximaal ondersteund is {3}.",
-                path,
-                schemaVersion,
-                BundledPackageSchemaVersion
-            )
-        )
-    }
+    schemaVersion := ReadSchemaVersion(package)
+    RejectNewerSchemaVersion(schemaVersion, BundledPackageSchemaVersion, "Pakket " path)
 
     for _, requiredField in ["id", "name", "version", "items"] {
         if !package.Has(requiredField)
@@ -6681,11 +6694,8 @@ ReconcilePackageSettings(document) {
     if !(document is Map)
         throw Error("package-settings.json moet een JSON-object zijn.")
 
-    schemaVersion := document.Has("schemaVersion")
-        ? (document["schemaVersion"] + 0)
-        : 1
-    if schemaVersion > PackageSettingsSchemaVersion
-        throw Error("Deze versie van package-settings.json wordt nog niet ondersteund.")
+    schemaVersion := ReadSchemaVersion(document)
+    RejectNewerSchemaVersion(schemaVersion, PackageSettingsSchemaVersion, "package-settings.json")
 
     result := DefaultPackageSettings()
     result["schemaVersion"] := PackageSettingsSchemaVersion
@@ -7208,19 +7218,8 @@ LoadHotstringsFromJson(path, showMessage := false) {
         if !(document is Map)
             throw Error("De JSON-hoofdstructuur moet een object zijn.")
 
-        schemaVersion := document.Has("schemaVersion")
-            ? (document["schemaVersion"] + 0)
-            : 1
-
-        if schemaVersion > HotstringSchemaVersion {
-            throw Error(
-                Format(
-                    "Dit bestand gebruikt schemaVersion {1}, maar deze DocBot-versie ondersteunt maximaal versie {2}.",
-                    schemaVersion,
-                    HotstringSchemaVersion
-                )
-            )
-        }
+        schemaVersion := ReadSchemaVersion(document)
+        RejectNewerSchemaVersion(schemaVersion, HotstringSchemaVersion, "Dit bestand")
 
         if !document.Has("hotstrings") || !(document["hotstrings"] is Array)
             throw Error("Het veld 'hotstrings' ontbreekt of is geen lijst.")
@@ -7501,19 +7500,8 @@ LoadSpeedDialFromJson(path, showMessage := false) {
         if !(document is Map)
             throw Error("De JSON-hoofdstructuur moet een object zijn.")
 
-        schemaVersion := document.Has("schemaVersion")
-            ? (document["schemaVersion"] + 0)
-            : 1
-
-        if schemaVersion > SpeedDialSchemaVersion {
-            throw Error(
-                Format(
-                    "Dit bestand gebruikt schemaVersion {1}, maar deze DocBot-versie ondersteunt maximaal versie {2}.",
-                    schemaVersion,
-                    SpeedDialSchemaVersion
-                )
-            )
-        }
+        schemaVersion := ReadSchemaVersion(document)
+        RejectNewerSchemaVersion(schemaVersion, SpeedDialSchemaVersion, "Dit bestand")
 
         if !document.Has("entries") || !(document["entries"] is Array)
             throw Error("Het veld 'entries' ontbreekt of is geen lijst.")

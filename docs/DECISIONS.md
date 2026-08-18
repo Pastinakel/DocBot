@@ -1086,3 +1086,141 @@ requirement.
   (`AppVersion 2.3-hotstring-instructie.6`); not yet validated on a
   compiled build on Windows (see D-037) — layout math was verified by hand
   against the fixed 1000×700 window size, not by rendering the GUI.
+
+---
+
+## D-046 — Document the migration registry and add an opt-in self-test entry point, without a code module split
+
+**Status:** Provisional; implemented on `claude/schema-migrations-setup-waiigd`
+(`AppVersion 2.3-schema-migraties.1`), not yet validated on a compiled build
+on Windows (see D-037).
+
+Requested directly by the project owner ahead of the next feature: "get
+schema migrations in order first." `docs/TODO.md` already carried two
+relevant P2 items — "Make migration behavior easier to inspect" and, within
+"Introduce targeted automated tests where practical", "JSON
+migration/default-addition idempotency."
+
+**What this covers:**
+
+1. `docs/MIGRATIONS.md` — a new registry documenting, per storage format
+   (`hotstrings.json`, `speeddial.json`, `packages/*.json` +
+   `manifest.json`, `package-settings.json`), which schema version added
+   which field/default, the functional key used, which legacy
+   filenames/formats are still read, and a checklist for adding a future
+   migration. Explicitly records that hotstring schema versions 2–4 have no
+   dedicated migration block in the current code rather than guessing at
+   invented history.
+2. Two small shared helpers in `DocBot.ahk`, `ReadSchemaVersion(document)`
+   and `RejectNewerSchemaVersion(schemaVersion, currentVersion, subject)`,
+   defined once immediately before `InitializeBundledPackages()` and used by
+   all five schema-version-parsing/rejection call sites (hotstrings, speed
+   dial, package manifest, package file, package settings). This is a
+   behavior-preserving extraction of duplicated code, not a new migration
+   engine.
+3. An opt-in, argument-gated self-test entry point:
+   `if HasCommandLineArgument("--selftest")`, reusing the existing
+   command-line-argument scanner already used for
+   `GetRequestedStartupWindowState()` rather than inventing a second,
+   positional way to read `A_Args`. Placed immediately after
+   `ValidateLocalConfiguration()` succeeds and before `global AppVersion` —
+   i.e. before any GUI, user-data, or network access. It calls
+   `RunSelfTests()` from the new `tests/SelfTests.ahk` (`#Include`d as
+   function definitions only, so it changes nothing during a normal start)
+   and then `ExitApp()`s with a pass/fail exit code. `tests/SelfTests.ahk`
+   covers the two new helpers plus the idempotency of
+   `AddMissingDefaultHotstrings()`, `AddMissingDefaultSpeedDials()`, and
+   `NormalizeHotstringItem()`, temporarily substituting `global LocalConfig`
+   with a small fixture so the test is deterministic regardless of the
+   developer's real `DocBot.local.ahk` contents (which, per D-003, is never
+   committed and may have empty `DefaultHotstrings`/`DefaultSpeedDials`).
+   `RunSelfTests()` runs each test case through a small wrapper
+   (`RunSelfTestCase()`) that catches any unexpected exception and records it
+   as one FAIL line rather than letting it escape uncaught — the same class
+   of risk D-040 already had to defend against for `/Validate` (an
+   AutoHotkey process can show a blocking error dialog a headless CI runner
+   never dismisses instead of exiting with a clear failure).
+4. `.github/workflows/ahk-syntax-check.yml` runs `AutoHotkey64.exe
+   DocBot.ahk --selftest` as a second step in the same job, immediately
+   after the existing `/Validate` step, reusing the same
+   no-`-Wait`/`WaitForExit(60000)`/force-kill pattern from D-040 because a
+   real AutoHotkey process can hang a CI runner on a blocking dialog the
+   same way `/Validate` could. The pass/fail signal is the process exit
+   code (`RunSelfTests()`'s return value via `ExitApp(exitCode)`), not
+   captured stdout: `AutoHotkey64.exe` is a GUI-subsystem executable, and
+   whether `FileAppend(text, "*")` reliably reaches a redirected stdout for
+   such a process is not proven anywhere else in this codebase (no existing
+   call site uses it). `RunSelfTests()` therefore writes its human-readable
+   result lines to a fixed file,
+   `%TEMP%\docbot-selftest-results.txt` (overwritten every run,
+   `SelfTestLogPath()`), mirroring the existing `%TEMP%`-based diagnostic
+   artifact convention (D-041/D-044) rather than the network/GUI-coupled
+   rest of the app; the workflow step reads that file for the CI log after
+   `WaitForExit` succeeds, and degrades to a warning (not a failure) if the
+   file is missing. It still also attempts `FileAppend(text, "*")` as a
+   best-effort convenience for someone running `--selftest` interactively
+   from a normal console, but nothing depends on that path working.
+5. Message-wording unification: the five schema-version-ceiling error
+   messages (previously worded slightly differently, and in
+   `ReconcilePackageSettings()`'s case not even including the version
+   numbers) now share one template via `RejectNewerSchemaVersion()`. This
+   changes the exact Dutch wording shown in the rare "file is newer than
+   this DocBot build" error dialog; it does not change control flow, and
+   these strings are not among the stable product-facing names protected
+   elsewhere (D-015's package-status names, D-030's telemetry disclosure).
+
+**Rejected alternative:** moving the pure hotstring/speed-dial
+item-construction functions (`CreateHotstringItem`, `NormalizeHotstringItem`,
+`AddMissingDefaultHotstrings`, `CreateSpeedDialEntry`,
+`AddMissingDefaultSpeedDials`, etc.) into their own included file (mirroring
+the existing `Telemetry.ahk` module boundary), which would have let a
+separate test script `#Include` just that file without triggering
+`DocBot.ahk`'s auto-execute section at all. Rejected for now because these
+functions are called from many other subsystems throughout the file
+(hotstring editor save, package conflict resolution) and relocating
+core, frequently-called logic cannot be validated by this agent (no Windows
+runtime available, D-037) — `docs/TODO.md` P2 "Consider gradual
+modularization after 2.2" already flags exactly this kind of move as
+non-casual, future work requiring careful accounting of AHK v2 top-level
+init order and callback/global coupling. The chosen design (self-test
+gated by a CLI argument inside the existing monolith) gets equivalent test
+coverage of the pure logic without moving any existing call site's file
+location.
+
+**Rejected alternative:** a generic, config-driven "migration engine"
+(e.g. a table of `{schema, version, migrationFn}` triggered by a shared
+loader). Rejected because the four schemas' per-item loops, default-source
+functions (`DefaultPersonalHotstrings()` vs `DefaultSpeedDialEntries()`),
+and save paths are different enough that a generic engine would mostly be
+indirection around four things that are still, in practice, bespoke; the
+project's own P2 backlog item asked to document/extract "without changing
+behavior immediately," not to build new abstraction.
+
+**Consequences**
+
+- `docs/MIGRATIONS.md` closes `docs/TODO.md` P2 "Make migration behavior
+  easier to inspect."
+- The "JSON migration/default-addition idempotency" bullet under P2
+  "Introduce targeted automated tests where practical" is now covered for
+  the pure normalization/default-merge functions; the other bullets in that
+  same TODO item (number normalization, execution-mode selection, package
+  conflict resolution, telemetry payload/redaction, manifest parsing) remain
+  open and are not addressed by this change.
+- A future fifth schema (or a fifth storage format) should reuse
+  `ReadSchemaVersion()`/`RejectNewerSchemaVersion()` and add both a
+  `docs/MIGRATIONS.md` row and a `tests/SelfTests.ahk` case in the same
+  change, per the checklist in `docs/MIGRATIONS.md`.
+- `tests/SelfTests.ahk` ships inside the compiled executable (it is
+  `#Include`d unconditionally, like `Telemetry.ahk`) but is fully inert
+  without the `--selftest` argument, which no normal end-user launch path
+  supplies; this mirrors already-shipped dev-only code gated by other
+  conditions (e.g. `IsDevMode`).
+- Not yet confirmed on a compiled build on Windows: that `--selftest`
+  actually exits cleanly with the expected exit code from a compiled `.exe`
+  (only interpreter-level reasoning and the CI runner's use of the portable
+  interpreter support this so far), and that
+  `%TEMP%\docbot-selftest-results.txt` is actually written and readable by
+  the CI step in that environment. The exit code is the load-bearing signal
+  either way — the log file is diagnostics only, and its absence degrades to
+  a warning, not a failed step. If either mechanism turns out not to work as
+  expected on Windows, fix it rather than removing the gate.

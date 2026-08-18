@@ -225,6 +225,14 @@ Rules for migrations/default additions:
 
 When adding a new default through local configuration, advance the relevant schema and make the addition conditional on the functional key not already existing.
 
+`docs/MIGRATIONS.md` is the detailed registry: which schema version added
+which field/default per storage format, which legacy filenames are still
+read, and how to add a new migration. `ReadSchemaVersion()` and
+`RejectNewerSchemaVersion()`, defined once in `DocBot.ahk` immediately
+before `InitializeBundledPackages()`, are the shared version-parsing/
+version-ceiling helpers all four loaders use; add a new schema by following
+the same pair of calls rather than reimplementing the check inline.
+
 ## 9. Hotstring runtime architecture
 
 ### 9.1 Sources
@@ -578,6 +586,23 @@ AutoHotkey to exit on its own. This is a reusable pattern for any future
 CI step that shells out to a Windows GUI executable.
 
 For changes touching internal telephony, SMS/UIA, managed-Windows rendering, build/deployment, or OneDrive behavior, static inspection is not enough.
+
+A second gate, added alongside the schema-migration registry
+(`docs/MIGRATIONS.md`), runs in the same job right after the syntax check:
+`AutoHotkey64.exe DocBot.ahk --selftest`. `tests/SelfTests.ahk` (`#Include`d
+from `DocBot.ahk`, inert unless started with that exact argument) exercises
+pure migration-support logic — `ReadSchemaVersion()`/
+`RejectNewerSchemaVersion()` and the idempotency of
+`AddMissingDefaultHotstrings()`/`AddMissingDefaultSpeedDials()`/
+`NormalizeHotstringItem()` — without touching file I/O, the GUI, or the
+network. This is deliberately narrow: AutoHotkey v2's top-level
+execution-order constraint (§3) means a script that `#Include`s `DocBot.ahk`
+runs its full auto-execute section, so genuine unit-test isolation for
+GUI-/storage-coupled code is not practical without the kind of
+modularization `docs/TODO.md` P2 "Consider gradual modularization after
+2.2" explicitly treats as future, non-casual work. See `tests/README.md` for
+what is and is not covered, and D-037 for why this still does not replace
+manual/Windows functional validation.
 
 ## 20. Safe extension guidelines
 
