@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-hotstring-instructie.5"
+global AppVersion := "2.3-hotstring-instructie.6"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -1163,12 +1163,44 @@ RefreshHelpAccordion() {
         if isOpen {
             section["Body"].Move(260, y + 58, 672, 184)
             section["Body"].Opt("-Hidden")
+            ClearHelpBodySelection(section["Body"])
+            ; Directe aanroep is niet altijd genoeg: bij navigatie vanaf een
+            ; andere control (zoals de hint op Tekstvervanging) komt de
+            ; ongewenste selectie soms pas iets later binnen, via een
+            ; bericht dat nog in de wachtrij stond op het moment van deze
+            ; aanroep. Een eenmalige herhaling na de huidige berichtenronde
+            ; wint dan alsnog van dat late bericht.
+            SetTimer(ClearHelpBodySelection.Bind(section["Body"]), -50)
         } else {
             section["Body"].Opt("+Hidden")
         }
 
         y += (isOpen ? expandedHeight : collapsedHeight) + gap
     }
+}
+
+; FormatHelpBody() al collapt zijn eigen opmaakselectie na het vet maken
+; van termen/links, maar dat gebeurt eenmalig bij het bouwen van de GUI.
+; Een sectie die via OpenHotstringHelpSection() wordt geopend terwijl de
+; klik nog op een ándere control (de link op Tekstvervanging) plaatsvond,
+; kan de hele hoofdtekst blauw geselecteerd tonen zodra het RichEdit-veld
+; zichtbaar wordt en onverwacht focus krijgt — vermoedelijk doordat Windows
+; automatisch focus verplaatst naar de nu zichtbare RichEdit wanneer de
+; eerder gefocuste linkcontrol wegvalt, gecombineerd met een leftover
+; muisstatus van die klik. Deze selectie blijft dan zichtbaar staan tot de
+; volgende gebruikersinteractie. Dit wist elke keer dat een sectie
+; opengaat expliciet de selectie, ongeacht de precieze oorzaak.
+ClearHelpBodySelection(bodyCtrl) {
+    static EM_SETSEL := 0x00B1
+
+    DllCall(
+        "SendMessageW",
+        "Ptr", bodyCtrl.Hwnd,
+        "UInt", EM_SETSEL,
+        "Ptr", 0,
+        "Ptr", 0,
+        "Ptr"
+    )
 }
 
 ; Geen navigatiepagina — dit sluit de hele applicatie af, inclusief het

@@ -1010,6 +1010,35 @@ from `RegisterHelpLinkControl()`'s subclass-install code, now shared via
 `InstallHelpRichEditSubclass()`), so the fix applies regardless of whether
 a given section has links.
 
+That fix covered clicks landing directly on a body's own text, but the
+project owner then found a second, related selection bug specific to
+`OpenHotstringHelpSection()`: clicking "Help" on the hint (on the
+Tekstvervanging page) navigates to Help and opens the fifth section, and
+its entire body text appeared selected once shown — not just a small
+range. `FormatHelpBody()` already collapses its own formatting selection,
+but only once, at GUI build time; this happens later, at navigation time.
+The likely mechanism: the click originates on a different control
+(`HotPrivacyHint`, a SysLink) on a different page; once that control is
+hidden by the page switch, Windows appears to hand keyboard focus to the
+now-visible RichEdit body, combined with leftover mouse state from the
+originating click, which RichEdit interprets as a drag-select from
+position 0 to wherever that state maps on screen — far below the body's
+visible text, which clamps to "select to end of document." `RefreshHelpAccordion()`
+now calls a new `ClearHelpBodySelection()` (`EM_SETSEL` to `0,0`, the same
+one-line technique already used in `FormatHelpBody()`) on a section's body
+immediately when it becomes the open one — covering the normal
+click-a-header-to-toggle path too, not only navigation from the hint.
+Because the project owner also observed the selection surviving until a
+later, unrelated interaction (double-click, switch windows, switch back),
+suggesting whatever sets it can still arrive slightly after this point in
+the message queue on the cross-page-navigation path, `RefreshHelpAccordion()`
+additionally schedules one deferred re-clear 50ms later via
+`SetTimer(ClearHelpBodySelection.Bind(...), -50)`, so a delayed message
+doesn't win the race. The exact Windows-internal cause was not confirmed
+through live debugging (not available from this environment); the fix is
+deliberately unconditional and applied at every section-open, so it holds
+regardless of which precise mechanism causes it.
+
 **Rejected alternatives:** a technical content filter on the `Replacement`
 field that tries to detect patient-identifying text — rejected because
 free text cannot be reliably classified this way (the instruction itself
@@ -1045,7 +1074,15 @@ requirement.
   future `AddHelpAccordionSection()` call automatically gets both the
   link-click handling and the no-selection behavior, with no per-call
   opt-in required.
+- `ClearHelpBodySelection()` runs on every section open, from any entry
+  point (header click, `OpenHotstringHelpSection()`, or any future
+  "open Help at section N" caller), so a future caller does not need to
+  remember to clear the selection itself.
+- If a compiled test build still shows the selection despite this fix, the
+  50ms deferred re-clear's delay may need to increase, or the actual
+  Windows-internal cause should be identified rather than tuning the delay
+  further blind.
 - Implemented on branch `claude/hotstring-user-instruction-hcv2jw`
-  (`AppVersion 2.3-hotstring-instructie.5`); not yet validated on a
+  (`AppVersion 2.3-hotstring-instructie.6`); not yet validated on a
   compiled build on Windows (see D-037) — layout math was verified by hand
   against the fixed 1000×700 window size, not by rendering the GUI.

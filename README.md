@@ -439,7 +439,11 @@ Changelog
   alleen naar de Help-pagina te navigeren. Een klik of dubbelklik in een
   Help-accordeontekst laat ook geen blauwe tekstselectie meer achter — dat
   is nu, net als een klik op een link, een no-op in plaats van RichEdit's
-  standaard selectiegedrag (`docs/DECISIONS.md` D-045).
+  standaard selectiegedrag. Ook het openen van een sectie via die Help-link
+  kon de hele hoofdtekst blauw geselecteerd tonen; elke sectie wist nu bij
+  het openen expliciet zijn eigen selectie, met een korte herhaling om een
+  laat binnenkomend bericht niet te laten winnen (`docs/DECISIONS.md`
+  D-045).
 - Telefonie en SMS vereisen nu een HTTPS-URL: `ValidateLocalConfiguration()`
   weigert een niet-HTTPS `Telephony.BaseUrl` en `ValidateSmsCallActionItem()`
   weigert een niet-HTTPS `SmsCallAction.Url`, beide al bij het opstarten
