@@ -1153,7 +1153,20 @@ original, hard-to-diagnose report.
 
 ## D-047 — Bundled-package file set is dynamic in both the dev and compiled build
 
-**Status:** Accepted
+**Status:** Superseded by D-048
+
+D-048, agreed the same day, replaces this decision's compiled-build half
+(build-time zip + `FileInstall` + `Shell.Application` extraction into a
+local cache) with reading package files directly from a network share at
+every startup — once the project owner pointed out that the compiled
+`DocBot.exe` itself already runs from a network share, so a share outage
+already stops DocBot entirely and a separate embedded/local fallback for
+packages specifically adds no practical resilience. D-048 also drops this
+decision's dev-build local-cache copy step entirely: the dev build now
+reads `*.json` files under `packages/` in place instead of copying them to
+`%LocalAppData%\DocBot-dev\packages` first. This entry is kept for the
+reasoning trail — the `FileInstall`-cannot-embed-a-wildcard constraint
+below still holds and still shaped D-048's compiled-build design.
 
 D-046's new per-file logging immediately surfaced the project owner's real
 problem: a custom package (`anest.json`) was correctly listed in a locally
@@ -1239,3 +1252,124 @@ in place.
   validation matters more here than for most recent decisions.
 - Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
   (`AppVersion 2.3-pakket-logging.2`).
+
+---
+
+## D-048 — Bundled packages are read live from their source, no embedding or local cache
+
+**Status:** Accepted
+
+Before D-047's build-time zip/`FileInstall`/`Shell.Application` approach was
+implemented against real machine behavior, the project owner asked whether
+package JSON could instead be read "remote" for both build types — from the
+`packages/` subdirectory next to the script for the dev build, and from a
+fixed network share for the compiled build — with an eye toward later
+refreshing that content dynamically. Asked what should happen if that share
+is unreachable at startup, the project owner pointed out the deciding fact:
+the compiled `DocBot.exe` itself is already distributed and run from a
+network share (see `Build-EPD_Machine.bat`'s deploy step), so a share
+outage already means DocBot does not run at all. A separate embedded or
+locally cached fallback specifically for package content would therefore
+not add practical resilience — it can only ever help in the narrow window
+where DocBot has already started but the share drops before a later
+restart, not the far more common "share down, DocBot never starts" case.
+
+This removes the need for D-047's entire build/embed/extract machinery.
+`GetBundledPackageDirectory()` now only resolves *where* to read from, and
+`InitializeBundledPackages()` (D-046) reads `manifest.json` and every
+package file directly from that location on every start — no copy step, no
+local cache, nothing embedded in the executable:
+
+- **Uncompiled/dev build:** `A_ScriptDir "\packages"` — unchanged in
+  spirit from before D-047, but now read in place instead of copied to
+  `%LocalAppData%\DocBot-dev\packages` first.
+- **Compiled build:** `LocalConfig["Packages"]["ShareDir"]` from
+  `DocBot.local.ahk`, a UNC path with `manifest.json` and the package files
+  directly in it. Real internal paths never belong in Git, so this follows
+  the same `DocBot.local.ahk`/`DocBot.local.example.ahk` split already used
+  for `Telephony.BaseUrl` and `SmsCallAction.Url` (D-003). Unlike those two,
+  `Packages` is an optional `LocalConfig` section:
+  `ValidateLocalConfiguration()` only checks `ShareDir`'s shape (non-empty,
+  starts with `\\`) when the section is present, and does not require the
+  section to exist at all. A missing section, or a configured share that is
+  unreachable when `InitializeBundledPackages()` actually tries to read it,
+  is reported and logged the same way as any other package load failure
+  (D-046) — DocBot simply loads no bundled packages that session rather
+  than refusing to start. Personal hotstrings, telephony, and every other
+  feature are unaffected either way; only the optional bundled-package
+  catalogue depends on this share.
+
+Because every start re-reads the source directly, editing a package file on
+the share (or, for developers, under `packages/`) is visible to users at
+their next DocBot restart — no rebuild, no recompiling, no redeploying the
+executable. This is a stronger and simpler answer to "dynamically
+refreshable" than D-047's approach, which still required a full
+build-and-redistribute cycle for every package change.
+
+D-047's `Build-EPD_Machine.bat` changes (the `Compress-Archive` step and its
+pre-flight checks) and the `/packages.zip` `.gitignore` entry are reverted
+in full as part of this decision; the batch script and `.gitignore` are back
+to their pre-D-047 state.
+
+**Rejected alternatives:** keeping D-047's embedded default catalogue as a
+fallback layer that the share then overlays/refreshes — rejected per the
+project owner's own reasoning above: it only covers a narrow, rare failure
+window and would keep all of D-047's build/extraction complexity (and its
+unvalidated `Shell.Application`/`Compress-Archive` risk, see D-047's
+consequences) for that narrow benefit; a local cache of the last
+successfully read packages, refreshed opportunistically — rejected for the
+same reason, plus it reintroduces a staleness question (how old is "too
+old" for cached content) that reading live from the source avoids entirely;
+refreshing packages during a running DocBot session, not only at startup —
+not rejected outright but deliberately out of scope here (not asked for by
+the project owner beyond the initial question, and it would need
+re-indexing of active hotstrings/conflicts and the Package Manager UI while
+potentially open); can be revisited later without changing this decision's
+core read-live-from-source model.
+
+**Consequences**
+
+- Adding, editing, or removing a package file at the source is visible to
+  every DocBot instance at their next restart, for both build types, with
+  no `DocBot.ahk` change and no compiled-build redistribution — a
+  meaningfully stronger property than D-047 delivered.
+- `Build-EPD_Machine.bat` no longer has a packaging step; it is back to
+  compiling `DocBot.exe` directly, same as before D-047.
+- `DocBot.local.example.ahk` gained an optional `Packages.ShareDir` entry
+  and `ValidateLocalConfiguration()` gained `ValidatePackagesConfiguration()`
+  to check its shape when present. Existing `DocBot.local.ahk` files
+  without a `Packages` section keep working unchanged (packages simply
+  don't load until the section is added) — this was a deliberate choice to
+  avoid retroactively breaking every existing local configuration the way
+  making it a required section (like `Telephony`) would have.
+  `DocBot.local.ahk` itself is never committed (D-003); only the project
+  owner needs to add the real share path there. `Packages` joins
+  CLAUDE.md's/AGENTS.md's "Lokale configuratie" list of values that live
+  only in `DocBot.local.ahk`.
+- No package content is embedded in the executable, at all. DocBot's
+  bundled-package catalogue for a given user session now depends entirely
+  on the configured share being reachable at startup — acceptable per the
+  project owner's stated reasoning, but worth restating plainly: an
+  otherwise-running DocBot with a since-dropped share connection keeps
+  whichever packages it already loaded at its last successful start (they
+  live in memory in `BundledPackages`, not re-read mid-session) until the
+  next restart, at which point a still-down share means no packages that
+  session, logged per D-046.
+- `EnvGet("LocalAppData")`-based caching, `SplitPath`-derived cache roots,
+  and every other piece of D-047's local-cache-directory logic are gone;
+  `BundledPackageDir` can now be either a local path or a UNC path, and
+  every downstream consumer (already only doing ordinary string
+  concatenation and `FileRead`/`FileExist`, both UNC-transparent on
+  Windows) needed no further changes.
+- Windows' SMB timeout behavior for a genuinely unreachable (not merely
+  empty) UNC path has not been characterized here; if it turns out to
+  block `FileExist`/`FileRead` for many seconds on a dropped share, a
+  restart attempt during that specific failure mode could feel like a hang
+  rather than a fast, clean "no packages" outcome. Not addressed in this
+  decision — flagged for compiled-build validation.
+- Not yet validated on a compiled build on Windows (see D-037) — reading
+  package JSON from an actual UNC path (permissions, SMB timeout behavior
+  on an unreachable share, `ValidatePackagesConfiguration()`'s regex) has
+  only been reviewed as source, not run.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.3`).

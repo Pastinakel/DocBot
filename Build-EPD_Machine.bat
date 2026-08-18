@@ -9,8 +9,6 @@ set "SOURCE=%~dp0DocBot.ahk"
 set "OUTPUT=%~dp0DocBot.exe"
 set "ICON=%~dp0DocBot.ico"
 set "BASE=C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
-set "PACKAGES_DIR=%~dp0packages"
-set "PACKAGES_ZIP=%~dp0packages.zip"
 
 rem De uitvoernaam wordt afgeleid van de bovenliggende applicatiemap.
 rem De gecompileerde DocBot.exe blijft in de bronmap; de kopie erboven krijgt
@@ -44,43 +42,14 @@ if not exist "%BASE%" (
     goto :failed
 )
 
-if not exist "%PACKAGES_DIR%\" (
-    echo FOUT: De pakketmap is niet gevonden:
-    echo "%PACKAGES_DIR%"
-    goto :failed
-)
-
-rem DocBot.ahk embedt via FileInstall één letterlijk bestand, packages.zip.
-rem De inhoud van packages\ mag daardoor volledig dynamisch zijn: een nieuw
-rem of verwijderd pakketbestand vereist geen wijziging in DocBot.ahk, alleen
-rem een herbouw. Dit archief wordt na een geslaagde build weer opgeruimd.
-echo packages\ inpakken naar packages.zip...
-if exist "%PACKAGES_ZIP%" del /f /q "%PACKAGES_ZIP%"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path (Join-Path $env:PACKAGES_DIR '*') -DestinationPath $env:PACKAGES_ZIP -Force"
-
-if errorlevel 1 (
-    echo.
-    echo FOUT: Inpakken van packages\ naar packages.zip is mislukt.
-    goto :failed
-)
-
-if not exist "%PACKAGES_ZIP%" (
-    echo.
-    echo FOUT: packages.zip is niet aangemaakt.
-    goto :failed
-)
-
 echo DocBot compileren naar DocBot.exe...
 "%AHK2EXE%" /in "%SOURCE%" /out "%OUTPUT%" /icon "%ICON%" /base "%BASE%" /compress 0
 
 if errorlevel 1 (
     echo.
     echo FOUT: Compileren is mislukt.
-    del /f /q "%PACKAGES_ZIP%" >nul 2>&1
     goto :failed
 )
-
-del /f /q "%PACKAGES_ZIP%" >nul 2>&1
 
 echo.
 echo Build gereed:

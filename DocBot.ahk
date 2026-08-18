@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-pakket-logging.2"
+global AppVersion := "2.3-pakket-logging.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -6435,103 +6435,38 @@ ManualSaveHotstrings(pathEdit, *) {
 ; MEEGELEVERDE HOTSTRINGPAKKETTEN
 ; =============================================================================
 
+; Levert de map waaruit pakketbestanden rechtstreeks worden gelezen —
+; geen lokale kopie, geen inbakken in de executable. DocBot leest bij
+; iedere start live vanaf deze locatie, zodat een wijziging op de bron
+; (nieuw, aangepast of verwijderd pakketbestand) direct meekomt bij de
+; volgende start, zonder herbouw of herdistributie van de executable
+; (`docs/DECISIONS.md` D-048).
 GetBundledPackageDirectory() {
-    localAppData := EnvGet("LocalAppData")
-    if localAppData = ""
-        throw Error("De Windows-map LocalAppData kon niet worden gevonden.")
-
-    ; Ongecompileerde tests blijven strikt gescheiden van de productcache.
-    cacheName := A_IsCompiled ? "DocBot" : "DocBot-dev"
-    packageDir := localAppData "\\" cacheName "\\packages"
-
-    if !DirExist(packageDir)
-        DirCreate(packageDir)
-
-    InstallBundledPackageFiles(packageDir)
-    return packageDir
-}
-
-InstallBundledPackageFiles(packageDir) {
-    ; Eerst leegmaken: zo verdwijnt een pakketbestand dat in een latere
-    ; versie is hernoemd of verwijderd ook echt uit de cache, en telt de
-    ; wachtlus in ExtractBundledPackagesZip() nooit een bestand mee dat al
-    ; van een vorige run in packageDir stond.
-    Loop Files, packageDir "\*.*" {
-        try FileDelete(A_LoopFileFullPath)
-    }
+    global LocalConfig
 
     if A_IsCompiled {
-        ; Ahk2Exe kan alleen letterlijke, individuele FileInstall-bronnen
-        ; embedden — geen wildcard of dynamische lijst. Daarom wordt hier één
-        ; vast archief ingebakken; de inhoud daarvan mag wel volledig
-        ; dynamisch zijn. Build-EPD_Machine.bat pakt packages\ vlak vóór het
-        ; compileren in als packages.zip, zodat een nieuw pakketbestand geen
-        ; wijziging in deze functie vereist.
-        SplitPath(packageDir, , &cacheRoot)
-        zipPath := cacheRoot "\packages-bundle.zip"
-        FileInstall "packages.zip", zipPath, true
+        ; De gecompileerde DocBot.exe draait zelf al vanaf een netwerkshare
+        ; (zie Build-EPD_Machine.bat); als die share onbereikbaar is, draait
+        ; DocBot sowieso niet. Een aparte lokale/ingebakken noodvoorraad
+        ; pakketten voegt daarom geen praktische robuustheid toe.
+        shareDir := ""
+        if IsSet(LocalConfig) && LocalConfig is Map && LocalConfig.Has("Packages")
+            && LocalConfig["Packages"] is Map && LocalConfig["Packages"].Has("ShareDir")
+            shareDir := Trim(LocalConfig["Packages"]["ShareDir"])
 
-        try {
-            ExtractBundledPackagesZip(zipPath, packageDir)
-        } finally {
-            try FileDelete(zipPath)
-        }
-        return
+        if shareDir = ""
+            throw Error(
+                "Geen netwerkshare voor hotstringpakketten geconfigureerd "
+                "(LocalConfig['Packages']['ShareDir'] in DocBot.local.ahk)."
+            )
+
+        return shareDir
     }
 
-    ; Tijdens ontwikkeling wordt elk *.json-bestand rechtstreeks vanuit de
-    ; broncode-map packages\ naar een aparte cache gekopieerd. Nieuwe
-    ; pakketbestanden komen zo automatisch mee, zonder dat deze functie moet
-    ; worden aangepast.
-    Loop Files, A_ScriptDir "\packages\*.json" {
-        FileCopy(A_LoopFileFullPath, packageDir "\" A_LoopFileName, true)
-    }
-}
-
-; Pakt een als FileInstall meegeleverd zip-archief met pakketbestanden uit
-; naar packageDir via Verkenners Shell.Application-COM-object, zonder externe
-; afhankelijkheden zoals PowerShell op de clientmachine. CopyHere() is
-; asynchroon: deze functie wacht daarom actief tot het aantal bestanden in
-; packageDir het aantal in het archief bereikt, met een tijdslimiet zodat een
-; vastgelopen of onvolledige uitpakactie een duidelijke fout oplevert in
-; plaats van dat InitializeBundledPackages() daarna een leeg/half manifest
-; leest.
-ExtractBundledPackagesZip(zipPath, packageDir) {
-    if !FileExist(zipPath)
-        throw Error("Pakketarchief niet gevonden: " zipPath)
-
-    shell := ComObject("Shell.Application")
-    zipFolder := shell.Namespace(zipPath)
-    if !IsObject(zipFolder)
-        throw Error("Kan het pakketarchief niet openen: " zipPath)
-
-    destFolder := shell.Namespace(packageDir)
-    if !IsObject(destFolder)
-        throw Error("Kan de pakketcache niet openen: " packageDir)
-
-    expectedCount := zipFolder.Items().Count
-    if expectedCount = 0
-        throw Error("Het pakketarchief is leeg: " zipPath)
-
-    ; Vlaggen: 4 = geen voortgangsvenster, 16 = overschrijven zonder vragen.
-    destFolder.CopyHere(zipFolder.Items(), 4 | 16)
-
-    deadline := A_TickCount + 10000
-    while A_TickCount < deadline {
-        actualCount := 0
-        try actualCount := destFolder.Items().Count
-        if actualCount >= expectedCount
-            return
-        Sleep(100)
-    }
-
-    throw Error(
-        Format(
-            "Uitpakken van het pakketarchief duurde te lang of is onvolledig: {1} (doel: {2})",
-            zipPath,
-            packageDir
-        )
-    )
+    ; Ontwikkelversie leest rechtstreeks uit de broncode-map, zodat een
+    ; lokaal toegevoegd of gewijzigd pakketbestand direct meekomt bij de
+    ; volgende start.
+    return A_ScriptDir "\packages"
 }
 
 InitializeBundledPackages() {
@@ -7778,6 +7713,7 @@ ValidateLocalConfiguration() {
 
     Telemetry_ValidateConfiguration(LocalConfig)
     ValidateSmsCallActionsConfiguration(LocalConfig)
+    ValidatePackagesConfiguration(LocalConfig)
 
     if !(LocalConfig["DefaultSpeedDials"] is Array)
         throw Error("DefaultSpeedDials moet een Array zijn.")
@@ -7835,6 +7771,27 @@ ValidateSmsCallActionItem(item, index) {
     }
     if !RegExMatch(Trim(item["Url"]), "i)^https://")
         throw Error("SmsCallAction item " index " ('" item["Title"] "'): Url moet een HTTPS-URL zijn (http:// wordt niet geaccepteerd).")
+}
+
+; De sectie 'Packages' is optioneel: alleen de gecompileerde applicatie leest
+; er iets uit (zie GetBundledPackageDirectory()), en ontbreekt de sectie
+; volledig, dan laadt DocBot bewust gewoon geen meegeleverde pakketten die
+; sessie in plaats van de hele opstart te blokkeren. Staat de sectie er wel,
+; dan moet ShareDir wél een ingevuld, geldig UNC-pad zijn — dat vangt een
+; vergeten placeholderwaarde af.
+ValidatePackagesConfiguration(config) {
+    if !config.Has("Packages")
+        return
+
+    packages := config["Packages"]
+    if !(packages is Map)
+        throw Error("LocalConfig['Packages'] moet een Map zijn.")
+
+    if !packages.Has("ShareDir") || Trim(packages["ShareDir"]) = ""
+        throw Error("Packages mist een ingevulde waarde voor 'ShareDir'.")
+
+    if !RegExMatch(Trim(packages["ShareDir"]), "^\\\\")
+        throw Error("Packages.ShareDir moet een netwerkpad zijn dat begint met \\ (UNC-pad).")
 }
 
 GetConfiguredSmsCallActions() {

@@ -12,6 +12,17 @@ global LocalConfig := Map(
         "DialEndpoint", "VUL-HIER-HET-BEL-ENDPOINT-IN"
     ),
 
+    ; Alleen gebruikt door de gecompileerde applicatie: DocBot leest
+    ; meegeleverde hotstringpakketten bij iedere start rechtstreeks van deze
+    ; netwerkshare (manifest.json + pakketbestanden direct in deze map, geen
+    ; submap). De ongecompileerde ontwikkelversie gebruikt in plaats daarvan
+    ; altijd de map packages\ naast DocBot.ahk en heeft dit veld niet nodig.
+    ; Ontbreekt deze share of is die niet bereikbaar, dan laadt DocBot die
+    ; sessie geen pakketten; persoonlijke hotstrings blijven gewoon werken.
+    "Packages", Map(
+        "ShareDir", "\\VUL-HIER-DE-NETWERKSHARE-VOOR-PAKKETTEN-IN\packages"
+    ),
+
     ; Configuratie voor de eerste CallAction/SMS-proof-of-concept.
     ; De echte interne URL blijft uitsluitend in DocBot.local.ahk.
     ; Voeg voor iedere extra SMS-pagina een nieuw Map-item toe aan deze Array,

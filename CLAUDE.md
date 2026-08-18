@@ -294,8 +294,10 @@ terug te draaien dan een gewone commit.
 
 ## Lokale configuratie
 
-Interne telefonieadressen, endpointnamen, standaard-snelkiesnummers en
-standaard-hotstrings staan uitsluitend in `DocBot.local.ahk`. Dit bestand
-wordt door Git genegeerd en mag nooit worden gecommit. Gebruik
+Interne telefonieadressen, endpointnamen, standaard-snelkiesnummers,
+standaard-hotstrings en het UNC-pad van de netwerkshare met meegeleverde
+hotstringpakketten (`LocalConfig["Packages"]["ShareDir"]`, alleen gebruikt
+door de gecompileerde applicatie) staan uitsluitend in `DocBot.local.ahk`.
+Dit bestand wordt door Git genegeerd en mag nooit worden gecommit. Gebruik
 `DocBot.local.example.ahk` als veilige structuurtemplate zonder echte
 waarden. Ahk2Exe neemt de lokale include tijdens compilatie op.

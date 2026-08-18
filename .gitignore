@@ -3,6 +3,3 @@
 .vscode/
 # Lokale telefonie- en standaardconfiguratie; bevat interne waarden.
 DocBot.local.ahk
-# Build-artefact: Build-EPD_Machine.bat pakt packages\ hierin in vlak vóór
-# het compileren en ruimt het na een geslaagde build weer op.
-/packages.zip

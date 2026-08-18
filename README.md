@@ -66,10 +66,9 @@ Bij de eerste start maakt het script zelf een gebruikersmap aan (zie hieronder)
 voor instellingen en hotstrings — daar is verder niets voor te installeren of 
 te configureren.
 
-`Build-EPD_Machine.bat` pakt eerst de map `packages` in als `packages.zip`
-(zie "Meegeleverde hotstringpakketten" hieronder), compileert daarna in de
-bronmap `DocBot.exe` en plaatst vervolgens een kopie in de bovenliggende
-applicatiemap, met de naam van die map. Wanneer het script een centrale `-dev`-versie bevat en de
+`Build-EPD_Machine.bat` compileert in de bronmap eerst `DocBot.exe` en
+plaatst vervolgens een kopie in de bovenliggende applicatiemap, met de naam
+van die map. Wanneer het script een centrale `-dev`-versie bevat en de
 batch vanuit een directe submap van `DocBot` draait, kan optioneel ook
 `EPD_Machine.exe` in de naastgelegen applicatiemap worden bijgewerkt. Voor
 iedere gekozen doelmap plaatst de batch tijdelijk `ALL:update` in het
@@ -147,21 +146,22 @@ de map `packages`, met `manifest.json` als index. Momenteel bevat de
 catalogus Nederlandse taal, Medisch algemeen, Controles, Veelgebruikte
 spelfouten en Gynaecologie & obstetrie, samen 1.596 pakketitems.
 
-`Build-EPD_Machine.bat` pakt de map `packages` vlak vóór het compileren in
-als `packages.zip`; Ahk2Exe embedt dat ene archief via `FileInstall` in de
-executable (Ahk2Exe kan geen wildcard of dynamische bestandenlijst
-embedden, wel de inhoud van één vast archief). De gecompileerde applicatie
-pakt het archief bij het opstarten uit naar `%LocalAppData%\DocBot\packages`
-via Verkenners Shell.Application-COM-object, zonder externe
-afhankelijkheden. Een ongecompileerde ontwikkelversie kopieert in plaats
-daarvan elk `*.json`-bestand rechtstreeks vanuit de bronmap `packages` naar
-`%LocalAppData%\DocBot-dev\packages`, zodat tests de productiecache nooit
-overschrijven. In beide gevallen wordt de doelmap eerst leeggemaakt, zodat
-een verwijderd of hernoemd pakketbestand niet blijft hangen; een nieuw
-pakketbestand in `packages` komt na een herbouw vanzelf mee, zonder dat
-`DocBot.ahk` hoeft te worden aangepast. Deze laag valideert manifest,
-schema, pakket-ID's, itemaantallen en dubbele triggers, en logt per
-pakketbestand of het laden is gelukt.
+Pakketten worden niet in de executable ingebakken en ook niet lokaal
+gecached: DocBot leest ze bij iedere start rechtstreeks van de bron. Een
+ongecompileerde ontwikkelversie leest daarvoor de bronmap `packages` naast
+`DocBot.ahk`. De gecompileerde applicatie leest in plaats daarvan van een
+netwerkshare, geconfigureerd als `LocalConfig["Packages"]["ShareDir"]` in
+`DocBot.local.ahk` (een UNC-pad met `manifest.json` en de pakketbestanden
+direct erin, geen submap) — dezelfde share waar de gecompileerde `DocBot.exe`
+zelf al vanaf draait. Een pakketbestand toevoegen, wijzigen of verwijderen op
+die bron is voor gebruikers direct zichtbaar bij hun eerstvolgende
+DocBot-herstart, zonder dat `DocBot.ahk` hoeft te worden aangepast of
+opnieuw gecompileerd. Is de share niet geconfigureerd of niet bereikbaar,
+dan laadt DocBot die sessie bewust gewoon geen pakketten in plaats van de
+hele opstart te blokkeren; persoonlijke hotstrings blijven altijd werken.
+Deze laag valideert manifest, schema, pakket-ID's, itemaantallen en dubbele
+triggers, en logt per pakketbestand of het laden is gelukt
+(`docs/DECISIONS.md` D-046, D-048).
 
 Pakketkeuzes worden apart en atomisch opgeslagen in
 `package-settings.json`. Dat bestand bevat uitsluitend ingeschakelde
@@ -440,12 +440,14 @@ Changelog
   schrijft elke opslagfout (pakketten, hotstrings, instellingen,
   snelkiesnummers) voortaan ook naar het standaardlog, ook wanneer alleen
   een tray-melding wordt getoond.
-- Een nieuw of verwijderd bestand in `packages` vereist niet langer een
-  wijziging in `DocBot.ahk`: de ongecompileerde versie kopieert voortaan elk
-  `*.json`-bestand in die map automatisch, en `Build-EPD_Machine.bat` pakt
-  de map vlak vóór het compileren in als één archief dat de gecompileerde
-  applicatie bij het opstarten zelf weer uitpakt (`docs/DECISIONS.md`
-  D-047).
+- Meegeleverde hotstringpakketten worden niet meer in de executable
+  ingebakken. De ongecompileerde versie leest ze rechtstreeks uit de
+  bronmap `packages`; de gecompileerde applicatie leest ze bij iedere start
+  rechtstreeks van een geconfigureerde netwerkshare
+  (`LocalConfig["Packages"]["ShareDir"]` in `DocBot.local.ahk`). Een
+  pakketbestand toevoegen, wijzigen of verwijderen op de bron is zo
+  zichtbaar bij de eerstvolgende DocBot-herstart, zonder wijziging aan of
+  herbouw van `DocBot.ahk` (`docs/DECISIONS.md` D-048, dat D-047 vervangt).
 - Nieuwe gebruikersinstructie voor veilige hotstring-inhoud: een vijfde
   Help-sectie ("Wat mag ik wel en niet in een hotstring zetten?") en een
   bijbehorende, altijd zichtbare hint op de Tekstvervanging-pagina. De

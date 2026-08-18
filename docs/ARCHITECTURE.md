@@ -258,29 +258,34 @@ Hotstring execution must never copy replacement text through the Windows clipboa
 
 `packages/manifest.json` declares the package catalogue. Package files contain stable IDs and items.
 
-Bundling/extraction (`InstallBundledPackageFiles()`, `ExtractBundledPackagesZip()`):
+Source resolution (`GetBundledPackageDirectory()`) — no local cache, no
+build-time embedding; `InitializeBundledPackages()` reads `manifest.json`
+and every package file directly from the resolved directory on each start:
 
-- **Compiled build:** `Build-EPD_Machine.bat` zips `packages/` into a single
-  `packages.zip` immediately before invoking Ahk2Exe. `DocBot.ahk` embeds
-  that one literal file via `FileInstall` — Ahk2Exe can only embed literal,
-  individual source paths, not a wildcard or a dynamically generated list —
-  so the *build step* is what makes the package set dynamic, not the
-  `FileInstall` call itself. At startup the compiled app extracts the
-  archive into `%LocalAppData%\DocBot\packages` via the `Shell.Application`
-  COM object (`Namespace(...).CopyHere()`), with no external dependency
-  (no PowerShell/`Expand-Archive` subprocess on the client). `CopyHere()` is
-  asynchronous, so extraction polls the destination's item count against
-  the archive's item count (10s timeout) before returning.
-- **Uncompiled/dev build:** every `*.json` file directly under the source
-  `packages/` directory is copied to `%LocalAppData%\DocBot-dev\packages`.
-  No file list is hardcoded on either path — adding, renaming, or removing
-  a package file under `packages/` needs no change to `DocBot.ahk`.
-- Both paths first clear the target `packages` cache directory, so a file
-  removed or renamed upstream does not linger in the cache.
+- **Uncompiled/dev build:** the source `packages/` directory next to
+  `DocBot.ahk` (`A_ScriptDir "\packages"`).
+- **Compiled build:** a network share, configured as
+  `LocalConfig["Packages"]["ShareDir"]` in `DocBot.local.ahk` (a UNC path;
+  `manifest.json` and the package files sit directly in it, no subfolder).
+  This is the same share the compiled `DocBot.exe` itself already runs
+  from, so a share that is unreachable already prevents DocBot from
+  starting at all — there is deliberately no separate local/embedded
+  fallback package set, since it would not add practical resilience.
+  `ValidateLocalConfiguration()` checks the `ShareDir` value's shape (must
+  be a non-empty UNC path) at startup if the `Packages` section is present,
+  but the section itself is optional: if it is absent, or the share is
+  unreachable at package-load time, DocBot logs this and simply loads no
+  bundled packages that session rather than blocking startup — personal
+  hotstrings are unaffected either way.
+- Either way, a package file added, edited, or removed at the source is
+  visible on DocBot's next start, with no `DocBot.ahk` change and no
+  rebuild/redistribution of the compiled executable
+  (`docs/DECISIONS.md` D-048, superseding D-047's build-time
+  zip-and-embed approach).
 - Each package file's load attempt, success (name/version/item count), or
-  failure is written to the standard log; one invalid package file no
-  longer prevents the other, valid packages from loading
-  (`docs/DECISIONS.md` D-046, D-047).
+  failure is written to the standard log; one invalid or unreachable
+  package file no longer prevents the other, valid packages from loading
+  (`docs/DECISIONS.md` D-046).
 - manifest and package structure are validated;
 - duplicate triggers/item counts/schema consistency are checked;
 - effective conflicts are indexed;
