@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "anest",
+  "name": "Anesthesiologie & pijngeneeskunde",
+  "version": "1.0.0",
+  "description": "Afkortingen en termen voor anesthesiologie en pijngeneeskunde.",
+  "itemCount": 2,
+  "categories": [
+    {
+      "id": "algemeen",
+      "name": "Algemeen",
+      "itemCount": 2
+    }
+  ],
+  "items": [
+    {
+      "id": "anest-0001",
+      "trigger": "eda",
+      "replacement": "epiduraal durante partu",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "anest-0002",
+      "trigger": "dsqa",
+      "replacement": "Dentitie status quo ante; zorgvuldig en voorzichtig geintubeerd met aandacht voor het vermijden van gebitsletsel. Na intubatie geen schade zichtbaar.",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    }
+  ]
+}
