@@ -154,7 +154,15 @@ Meegeleverde hotstringpakketten
 De bronbestanden voor meegeleverde hotstrings staan als versieerbare JSON in
 de map `packages`, met `manifest.json` als index. Momenteel bevat de
 catalogus Nederlandse taal, Medisch algemeen, Controles, Veelgebruikte
-spelfouten en Gynaecologie & obstetrie, samen 1.596 pakketitems.
+spelfouten, Gynaecologie & obstetrie en Anesthesiologie & pijngeneeskunde,
+samen 1.598 pakketitems.
+
+Een `manifest.json`-vermelding bevat uitsluitend `id` en `file`: DocBot leest
+verder niets anders uit het manifest. Alle inhoudelijke metadata — naam,
+versie, beschrijving en optioneel `owner` (vrije tekst: wie dit pakket
+aanmaakt of onderhoudt, zichtbaar in het venster **Pakketten** zodra een
+item wordt bekeken) — staat uitsluitend in het pakketbestand zelf, nooit ook
+in het manifest (`docs/DECISIONS.md` D-054).
 
 Pakketten worden niet in de executable ingebakken en ook niet lokaal
 gecached: DocBot leest ze bij iedere start rechtstreeks van de bron. Een
@@ -456,6 +464,12 @@ Changelog
 ---------
 
 ### 2.3 — In ontwikkeling
+- `manifest.json`-vermeldingen bevatten voortaan uitsluitend `id` en `file`;
+  `name`, `version` en `description` stonden daar ongebruikt gedupliceerd
+  (niets in de code las ze) en zijn verwijderd. Pakketbestanden ondersteunen
+  nu ook een optioneel `owner`-veld (vrije tekst), zichtbaar in het venster
+  **Pakketten** naast de pakketnaam zodra een item wordt bekeken
+  (`docs/DECISIONS.md` D-054).
 - Het laden van meegeleverde hotstringpakketten logt nu per bestand naar het
   standaardlog: welk bestand wordt geprobeerd, of dat lukt (met naam, versie
   en itemaantal) en zo niet, waarom. Eén ongeldig pakketbestand blokkeert

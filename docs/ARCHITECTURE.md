@@ -264,7 +264,10 @@ Hotstring execution must never copy replacement text through the Windows clipboa
 
 ## 10. Bundled package architecture
 
-`packages/manifest.json` declares the package catalogue. Package files contain stable IDs and items.
+`packages/manifest.json` declares the package catalogue as a pure `id`/`file`
+index — no other field is read from a manifest entry. Package files are the
+single source of truth for their own metadata (`id`, `name`, `version`,
+`description`, optional free-text `owner`) plus their `items` (D-054).
 
 Source resolution (`GetBundledPackageDirectory()`) — no local cache, no
 build-time embedding; `InitializeBundledPackages()` reads `manifest.json`

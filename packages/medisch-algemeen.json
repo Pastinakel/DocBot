@@ -4,6 +4,7 @@
   "name": "Medisch algemeen",
   "version": "1.0.0",
   "description": "Algemene medische termen, vaste teksten en veelgebruikte klinische afkortingen.",
+  "owner": "",
   "itemCount": 32,
   "categories": [
     {

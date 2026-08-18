@@ -1791,3 +1791,91 @@ behavior immediately," not to build new abstraction.
   either way — the log file is diagnostics only, and its absence degrades to
   a warning, not a failed step. If either mechanism turns out not to work as
   expected on Windows, fix it rather than removing the gate.
+
+---
+
+## D-054 — Package manifest entries hold only `id`/`file`; package files gain an optional free-text `owner`
+
+**Status:** Accepted
+
+The project owner asked for package ownership to be visible in the
+structure (motivated directly by `packages/anest.json`, added on this
+branch by hand, and the earlier compiled-build testing that made clear
+custom packages can now come from multiple people once D-048 moved package
+loading to a live-read-from-a-share model). While deciding where an
+`owner` field should live, a related question came up: `manifest.json`
+entries already duplicate `name`, `version`, and `description` from each
+package file's own top-level fields. Checked directly against the code
+(`grep "packageEntry\["`): only `packageEntry["id"]` and
+`packageEntry["file"]` are ever read anywhere. The other three fields in
+every manifest entry are, and always were, dead data — never validated,
+never displayed, never cross-checked against the package file's own
+values. Adding a fourth duplicated field (`owner`) to both places would
+have repeated that mistake going forward instead of fixing it.
+
+**What changed:**
+
+- `packages/manifest.json`: every entry trimmed to `id` + `file` only, both
+  in the repository's own copy and in the description of what
+  `InitializeBundledPackages()` expects. This did not require a code
+  change — the existing validation
+  (`if !packageEntry.Has("id") || !packageEntry.Has("file")`) never
+  required the other fields either, so removing them from the data breaks
+  nothing.
+- `owner` (optional free text — who creates/maintains this package) added
+  to all six current package files (`nl-taal`, `spelfouten-wikipedia`,
+  `medisch-algemeen`, `controles`, `gyn-obst`, `anest`), each as an empty
+  `""` placeholder rather than a guessed name — this agent has no reliable
+  way to know who actually owns each one, and D-045's own precedent (never
+  overwrite/guess user-owned content) applies here too. Filling in the real
+  names is left to the project owner.
+  `LoadBundledPackageFile()` validates only that, if present, `owner` is
+  not an object (a JSON array/nested object there would break later string
+  use); it is not required, and adding it did not bump
+  `BundledPackageSchemaVersion` — see `docs/MIGRATIONS.md`'s package
+  section for why that ceiling exists.
+- `owner` is deliberately package-level only, not per-item: items within
+  one package file are consistently authored/maintained as a single unit
+  (exactly how `anest.json` was just added), so a per-item field would add
+  structure without a real use case.
+- Surfaced in **Pakketten**: `RefreshPackageManagerItemDetails()`'s status
+  line now reads `"<name> (eigenaar: <owner>) · <status>"` (owner segment
+  omitted when blank) instead of just `"<name> · <status>"`. This reuses
+  the existing dynamic status text rather than adding a new control or
+  ListView column — deliberately, to avoid the kind of untested pixel
+  layout risk flagged repeatedly elsewhere in this log (D-037, D-045):
+  `PackageManagerPackageLV`'s four columns already fill its `w326`, so a
+  fifth visible "Eigenaar" column would need shrinking existing columns or
+  widening the whole window, neither of which can be checked without
+  Windows.
+
+**Rejected alternatives:** keeping `owner` in `manifest.json` instead of
+(or in addition to) the package file — rejected because it would recreate
+the exact dead-duplication problem this decision otherwise fixes; guessing
+real owner names for the six existing packages from context (e.g. crediting
+the project owner for the original five) — rejected, an empty placeholder
+that is visibly blank is more honest than a plausible-looking guess a
+reader might trust as accurate; a dedicated package-details panel/column in
+the Package Manager window instead of reusing the status text — not
+rejected outright, just deferred as unnecessary complexity/layout risk for
+what the status-text change already delivers.
+
+**Consequences**
+
+- Adding a new package (as the project owner already did for `anest.json`)
+  now only requires an `id`/`file` pair in the manifest — one less pair of
+  fields to keep in sync with the package file's own metadata.
+- All six current package files ship with an empty `"owner": ""` needing to
+  be filled in; nothing in the code requires this, so an unfilled owner is
+  a silent gap, not an error — worth a manual pass by the project owner
+  rather than assuming it will get noticed on its own.
+- A future package-settings or manifest schema bump for an unrelated reason
+  should not reintroduce name/version/description into manifest entries
+  "for convenience" without re-checking whether something new actually
+  reads them by then.
+- Not yet validated on a compiled build on Windows (see D-037) — the
+  `IsObject()` guard on `owner`, the status-text change, and the trimmed
+  `manifest.json` have only been reviewed as source and checked with a
+  local JSON parser, not run through DocBot itself.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.8`).

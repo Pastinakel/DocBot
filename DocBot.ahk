@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.3-pakket-logging.7"
+global AppVersion := "2.3-pakket-logging.8"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -5297,7 +5297,9 @@ RefreshPackageManagerItemDetails(*) {
     conflict := FindPackageItemConflict(packageId, itemId)
 
     status := GetPackageItemStatus(packageId, itemId)
-    detail := package["name"] " · " status
+    packageOwner := package.Has("owner") ? Trim(package["owner"] "") : ""
+    ownerSuffix := packageOwner != "" ? " (eigenaar: " packageOwner ")" : ""
+    detail := package["name"] ownerSuffix " · " status
 
     switch status {
         case "Inactief":
@@ -6658,6 +6660,12 @@ LoadBundledPackageFile(path) {
         if !package.Has(requiredField)
             throw Error("Pakket mist verplicht veld '" requiredField "': " path)
     }
+
+    ; 'owner' is optioneel vrije tekst: wie dit pakket aanmaakt of onderhoudt.
+    ; Geen schemaVersion-eis, geen manifest-kopie — het pakketbestand zelf is
+    ; de enige plek waar dit staat (`docs/DECISIONS.md` D-054).
+    if package.Has("owner") && IsObject(package["owner"])
+        throw Error("Pakket " package["id"] ": 'owner' moet tekst zijn, geen object: " path)
 
     if !(package["items"] is Array)
         throw Error("Het veld 'items' moet een lijst zijn: " path)

@@ -119,6 +119,12 @@ exists yet — the schema has never moved past 1. `InitializeBundledPackages()`
 ceiling check via `RejectNewerSchemaVersion()`, plus structural validation
 (required fields, duplicate id/trigger detection, `itemCount` consistency).
 
+A manifest entry is a pure `id`/`file` index — nothing else is read from it.
+`name`, `version`, `description` and the optional free-text `owner` (who
+created/maintains the package) live only in the package file itself; adding
+`owner` did not need a schema bump since it is optional and unvalidated
+beyond "not an object" (D-054).
+
 These files are not embedded in the application and not user data either:
 `InitializeBundledPackages()` reads them live from an external source on
 every start — the dev build's own `packages/` directory, or, for the
