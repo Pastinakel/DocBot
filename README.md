@@ -434,6 +434,12 @@ Changelog
   ook wanneer er wel degelijk meer te scrollen was. `RoundControl()`
   gebruikt nu `GetWindowRect` in plaats van `GetClientRect`, zodat de
   scrollbalk binnen de afgeronde regio valt (`docs/DECISIONS.md` D-045).
+- De Help-link bij de hotstring-privacyhint op Tekstvervanging opent nu
+  direct de bijbehorende, al opengeklapte accordeonsectie in plaats van
+  alleen naar de Help-pagina te navigeren. Een klik of dubbelklik in een
+  Help-accordeontekst laat ook geen blauwe tekstselectie meer achter — dat
+  is nu, net als een klik op een link, een no-op in plaats van RichEdit's
+  standaard selectiegedrag (`docs/DECISIONS.md` D-045).
 - Telefonie en SMS vereisen nu een HTTPS-URL: `ValidateLocalConfiguration()`
   weigert een niet-HTTPS `Telephony.BaseUrl` en `ValidateSmsCallActionItem()`
   weigert een niet-HTTPS `SmsCallAction.Url`, beide al bij het opstarten

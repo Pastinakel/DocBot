@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-hotstring-instructie.4"
+global AppVersion := "2.3-hotstring-instructie.5"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -126,6 +126,12 @@ global Pages := Map("overzicht", [], "telefonie", [], "tekstvervanging", [], "in
 global CurrentPage := ""
 global HelpSections := []
 global HelpOpenSection := 1
+; Index binnen HelpSections van "Wat mag ik wel en niet in een hotstring
+; zetten?", gezet in BuildMainGui() direct na die AddHelpAccordionSection()-
+; aanroep. Gebruikt door OpenHotstringHelpSection() zodat de link bij de
+; hint op Tekstvervanging altijd naar de juiste, actuele sectie-index
+; verwijst, ook als de volgorde van accordeonsecties ooit verandert.
+global HotstringHelpSectionIndex := 0
 global HelpLinkControls := Map()
 global NavButtons := Map()
 global NavBars := Map()
@@ -290,6 +296,7 @@ BuildMainGui() {
     global HotEditorCompactCard, HotEditorExpandedCard, HotSaveButton
     global SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText
     global SpeedDialLV, SpeedDialEnabledCheck, SpeedDialNameEdit, SpeedDialNumberEdit
+    global HelpSections, HotstringHelpSectionIndex
 
     MainGui := Gui("-MaximizeBox", "DocBot")
     MainGui.BackColor := C["Window"]
@@ -536,7 +543,9 @@ BuildMainGui() {
         'ℹ️  Zet geen patiëntgegevens in hotstrings. Bekijk de richtlijn op de <a href="help">Help</a>-pagina.'
     )
     HotPrivacyHint.SetFont("s10 c" C["Muted"], "Segoe UI")
-    HotPrivacyHint.OnEvent("Click", ShowPage.Bind("help"))
+    ; Opent Help mét de bijbehorende accordeonsectie al uitgeklapt, in
+    ; plaats van alleen naar de Help-pagina te navigeren.
+    HotPrivacyHint.OnEvent("Click", OpenHotstringHelpSection)
     AddPageControl("tekstvervanging", HotPrivacyHint)
 
     ; -------------------------------------------------------------------------
@@ -678,6 +687,7 @@ BuildMainGui() {
         ],
         Map("Hotstrings", "tekstvervanging")
     )
+    HotstringHelpSectionIndex := HelpSections.Length
     RefreshHelpAccordion()
 
     ; De bestaande footer wordt volledig vervangen door een herkenbare
@@ -822,6 +832,10 @@ AddHelpAccordionSection(title, bodyText, boldTerms := [], linkTargets := 0) {
     )
     bodyEdit.SetFont("s10 c" C["Text"], "Segoe UI")
     FormatHelpBody(bodyEdit, bodyText, boldTerms, linkTargets)
+    ; Ook zonder linkTargets moet HelpRichEditSubclass() klikken kunnen
+    ; afvangen, anders zou zo'n sectie alsnog een blauwe tekstselectie
+    ; kunnen tonen (zie EnsureHelpRichEditSubclass()).
+    EnsureHelpRichEditSubclass(bodyEdit)
     AddRound(bodyEdit, 8)
     bodyEdit.Opt("+Hidden")
     AddPageControl("help", bodyEdit)
@@ -983,7 +997,29 @@ RegisterHelpLinkControl(bodyCtrl, linkRanges) {
         "Control", bodyCtrl,
         "Ranges", linkRanges
     )
+    InstallHelpRichEditSubclass(bodyCtrl)
+}
 
+; Zorgt dat ook een accordeonsectie zónder linkTargets de subclass krijgt
+; die HelpRichEditSubclass() gebruikt om iedere klik/dubbelklik af te
+; vangen (zie daar). Zonder deze aanroep zou zo'n sectie geen entry in
+; HelpLinkControls hebben en zou een klik alsnog RichEdit's standaard
+; tekstselectie starten. Idempotent: doet niets als RegisterHelpLinkControl
+; deze hwnd al heeft geregistreerd.
+EnsureHelpRichEditSubclass(bodyCtrl) {
+    global HelpLinkControls
+
+    if HelpLinkControls.Has(bodyCtrl.Hwnd)
+        return
+
+    HelpLinkControls[bodyCtrl.Hwnd] := Map(
+        "Control", bodyCtrl,
+        "Ranges", []
+    )
+    InstallHelpRichEditSubclass(bodyCtrl)
+}
+
+InstallHelpRichEditSubclass(bodyCtrl) {
     ; Subclass het RichEdit-venster zelf. Daarmee komt WM_LBUTTONDOWN altijd
     ; langs onze handler, onafhankelijk van EN_LINK/EN_MSGFILTER.
     static subclassCallback := 0
@@ -998,7 +1034,7 @@ RegisterHelpLinkControl(bodyCtrl, linkRanges) {
         "Ptr", 0,
         "Int"
     )
-        throw Error("De navigatielinks in Help konden niet worden geactiveerd.")
+        throw Error("De klikafhandeling in Help kon niet worden geactiveerd.")
 }
 
 HelpRichEditSubclass(
@@ -1012,9 +1048,15 @@ HelpRichEditSubclass(
     global HelpLinkControls
 
     static WM_LBUTTONDOWN := 0x0201
+    static WM_LBUTTONDBLCLK := 0x0203
     static WM_NCDESTROY := 0x0082
     static EM_CHARFROMPOS := 0x00D7
 
+    ; De hulptekst is alleen-lezen uitlegtekst, geen invoerveld: een klik of
+    ; dubbelklik mag nooit een blauwe tekstselectie achterlaten. Alleen een
+    ; klik op een geregistreerde linktekst wordt doorgelaten (als navigatie,
+    ; niet als selectie); elke andere klik/dubbelklik wordt hier volledig
+    ; afgevangen zodat RichEdit's standaard selectiegedrag nooit start.
     if message = WM_LBUTTONDOWN
         && IsSet(HelpLinkControls)
         && IsObject(HelpLinkControls)
@@ -1045,7 +1087,15 @@ HelpRichEditSubclass(
                 return 0
             }
         }
+
+        return 0
     }
+
+    if message = WM_LBUTTONDBLCLK
+        && IsSet(HelpLinkControls)
+        && IsObject(HelpLinkControls)
+        && HelpLinkControls.Has(hwnd)
+        return 0
 
     if message = WM_NCDESTROY
         && IsSet(HelpLinkControls)
@@ -1070,6 +1120,18 @@ ToggleHelpSection(sectionIndex, *) {
     RefreshHelpAccordion()
     ApplyRoundedControls(true)
     RedrawMainGui()
+}
+
+; Klikhandler voor de hint op de Tekstvervanging-pagina: navigeert naar
+; Help en klapt meteen de bijbehorende accordeonsectie open, in plaats van
+; de gebruiker die zelf te laten zoeken/aanklikken. ShowPage("help") ververst
+; de accordeon en de afgeronde hoeken zelf al, dus dat hoeft hier niet nog
+; eens.
+OpenHotstringHelpSection(*) {
+    global HelpOpenSection, HotstringHelpSectionIndex
+
+    HelpOpenSection := HotstringHelpSectionIndex
+    ShowPage("help")
 }
 
 RefreshHelpAccordion() {

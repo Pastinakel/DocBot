@@ -979,6 +979,37 @@ fix to a shared helper, not something specific to this decision's own
 controls, but it was found and is fixed in the same change because it
 directly affects the readability of the Help section added here.
 
+The `HotPrivacyHint` link ("Bekijk de richtlijn op de Help-pagina") only
+switched to the Help page, leaving `HelpOpenSection` (which section is
+expanded) untouched — the user would still have to find and open the right
+accordion section by hand. A new `OpenHotstringHelpSection()` handler now
+sets `HelpOpenSection` to `HotstringHelpSectionIndex` (captured as
+`HelpSections.Length` right after that section's `AddHelpAccordionSection()`
+call, so it tracks the section's position even if sections are reordered
+later) before calling `ShowPage("help")`, which already refreshes the
+accordion layout and redraws — no separate refresh/redraw call was needed
+in the new handler.
+
+The project owner also reported the accordion body sometimes showing a
+blue text selection. `FormatHelpBody()` already collapsed its own
+formatting selection at the end, so that wasn't the cause; the real cause
+is that a plain click or double-click inside a read-only RichEdit is
+still, by default, a normal text-selection gesture. `HelpRichEditSubclass()`
+already intercepted `WM_LBUTTONDOWN` to detect link clicks, but let every
+non-link click fall through to `DefSubclassProc`, which started RichEdit's
+normal caret/selection handling. It now returns 0 (swallows the message)
+for every `WM_LBUTTONDOWN` and `WM_LBUTTONDBLCLK` on a registered help
+body, whether or not the click landed on a link — a link click still
+navigates, everything else is now a no-op instead of a selection. This
+only covered bodies already registered in `HelpLinkControls`, which
+`RegisterHelpLinkControl()` only populated when a section had
+`linkTargets`; a future section without any links would have kept the
+selection bug. `AddHelpAccordionSection()` now calls the new, idempotent
+`EnsureHelpRichEditSubclass()` for every body unconditionally (extracted
+from `RegisterHelpLinkControl()`'s subclass-install code, now shared via
+`InstallHelpRichEditSubclass()`), so the fix applies regardless of whether
+a given section has links.
+
 **Rejected alternatives:** a technical content filter on the `Replacement`
 field that tries to detect patient-identifying text — rejected because
 free text cannot be reliably classified this way (the instruction itself
@@ -1006,7 +1037,15 @@ requirement.
   `AddRound()` target with a scroll bar, not only `bodyEdit`/`aboutEdit`;
   any control that gains both in the future gets a working scroll bar for
   free instead of needing its own fix.
+- `HotstringHelpSectionIndex` and `OpenHotstringHelpSection()` only cover
+  the one hint on Tekstvervanging; a future "jump straight to an open
+  accordion section" link elsewhere would need its own index variable and
+  handler, or a small generalization of this pattern.
+- `EnsureHelpRichEditSubclass()`/`InstallHelpRichEditSubclass()` mean every
+  future `AddHelpAccordionSection()` call automatically gets both the
+  link-click handling and the no-selection behavior, with no per-call
+  opt-in required.
 - Implemented on branch `claude/hotstring-user-instruction-hcv2jw`
-  (`AppVersion 2.3-hotstring-instructie.4`); not yet validated on a
+  (`AppVersion 2.3-hotstring-instructie.5`); not yet validated on a
   compiled build on Windows (see D-037) — layout math was verified by hand
   against the fixed 1000×700 window size, not by rendering the GUI.
