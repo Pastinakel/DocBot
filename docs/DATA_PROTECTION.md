@@ -60,6 +60,7 @@ Afhankelijk van het releasekanaal staan deze bestanden onder
 | `hotstrings.json` | Persoonlijke afkortingen en vervangteksten | Mogelijke persoonsgegevens van de medewerker, zoals naam, telefoonnummer of e-mailadres; klinische tekst is generiek en niet patiëntgebonden |
 | `package-settings.json` | Pakketstatussen en conflictkeuzes | Normaal geen directe persoonsgegevens |
 | `speeddial.json` | Namen, nummers en actiefstatus | Persoons-, medewerker- of organisatienummers |
+| `sms-default-texts.json` | Door de medewerker ingestelde standaardtekst per SMS-pagina | Vrije tekst; kan persoonsgegevens van de medewerker bevatten (zoals naam of contactgegevens in een vaste afsluiting), niet bedoeld voor patiëntidentificerende inhoud (zie §3.3) |
 
 Schrijfroutines gebruiken waar geïmplementeerd tijdelijke bestanden,
 validatie en `.bak`-back-ups. DocBot richt geen eigen versleuteling of
@@ -177,9 +178,17 @@ SMS-webpagina invullen.
 
 DocBot activeert of opent een lokaal geconfigureerde Edge-pagina, zoekt het
 telefoonveld via UI Automation en vult het nummer in. JavaScript is een
-fallback. DocBot maakt en verzendt zelf geen SMS-bericht.
+fallback. Is voor de gekozen pagina ook een tekstveld geconfigureerd
+(`TextFieldId`) en heeft de medewerker daar zelf een standaardtekst voor
+ingesteld, dan vult DocBot na het telefoonnummer op dezelfde manier
+best-effort ook dat berichtveld. DocBot maakt en verzendt zelf geen
+SMS-bericht; het vullen van het berichtveld is nog steeds alleen een
+vooraf ingevulde suggestie die de medewerker zelf controleert en al dan niet
+verzendt.
 
-**Gegevens:** mobiel telefoonnummer, technische paginatitel, URL en veld-ID.
+**Gegevens:** mobiel telefoonnummer, technische paginatitel, URL, veld-ID en,
+indien ingesteld, de door de medewerker zelf opgestelde standaardtekst voor
+het berichtveld.
 
 **Ontvanger:** de geconfigureerde SMS-webapplicatie en de organisatie of
 leverancier die deze beheert.
@@ -189,8 +198,17 @@ D-043 elke `SmsCallAction.Url` die niet met `https://` begint al bij het
 opstarten van DocBot. Een lokaal geconfigureerde HTTP-pagina kan daardoor niet
 meer worden geopend of met een telefoonnummer worden gevuld.
 
-**Bewaring door DocBot:** geen afzonderlijke persistente SMS-opslag. Bij
-uitgebreide logging kunnen nummer- of technische foutdetails tijdelijk worden
+**Bewaring door DocBot:** het telefoonnummer zelf krijgt geen afzonderlijke
+persistente SMS-opslag (zie hierboven). De optionele standaardtekst voor het
+berichtveld is wél persistent: die staat, per SMS-pagina, in
+`sms-default-texts.json` in het gebruikersprofiel (§2.2), tot de medewerker
+die zelf wijzigt of verwijdert. Dat bestand is functioneel vergelijkbaar met
+`hotstrings.json`: net als bij hotstrings (§3.4, D-045) is patiëntidentificerende
+of patiëntspecifieke inhoud niet beoogd als standaardtekst en controleert
+DocBot de inhoud van het vrije tekstveld niet automatisch; de medewerker
+blijft zelf verantwoordelijk voor wat daar wordt opgeslagen. Bij uitgebreide
+logging kunnen nummer- of technische foutdetails, en bij een mislukte
+tekstinvulling ook technische details over die mislukking, tijdelijk worden
 vastgelegd.
 
 **Naam en rol leverancier:** de SMS-webapplicatie wordt geleverd als
@@ -625,6 +643,7 @@ eventuele back-up- of securitydienstverleners.
 | SMS-webappgegevens | Buiten repository | OPENSTAAND |
 | Persoonlijke hotstrings | Tot wijziging/verwijdering/profielbeheer; `.bak` kan vorige versie bevatten | OPENSTAAND |
 | Snelkiesnummers en instellingen | Tot wijziging/verwijdering/profielbeheer | OPENSTAAND |
+| SMS-standaardtekst per pagina | Tot wijziging/verwijdering/profielbeheer; geen automatische reconciliatie/verwijdering bij een gewijzigde paginaconfiguratie | OPENSTAAND |
 | Standaardlog | Actief plus één geroteerd bestand; rotatie bij circa 2 MB; regels ouder dan zeven dagen worden automatisch verwijderd (D-044) | Maximale termijn zeven dagen — geïmplementeerd en op een beheerde Windows-werkplek gevalideerd |
 | Uitgebreid log | Tijdelijk gedurende rapportsessie; volgens sessielogica verwijderd, met sinds D-044 een vangnet van uiterlijk zeven dagen voor een bestand dat door een crash/geforceerd afsluiten wordt achtergelaten | Geïmplementeerd en op een beheerde Windows-werkplek gevalideerd |
 | Probleemrapportmap | Verwijderd na geverifieerde Outlook-bijlage of expliciete bevestiging bij de handmatige fallback; anders uiterlijk na zeven dagen automatisch opgeruimd (D-044) | Geïmplementeerd en op een beheerde Windows-werkplek/compiled build gevalideerd |

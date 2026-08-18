@@ -118,6 +118,9 @@ Deze bestanden staan niet in de repository:
 
 - Hotstrings: `%MyDocuments%\DocBot\hotstrings.json`
 - Instellingen: `%MyDocuments%\DocBot\settings.ini`
+- Pakketstatussen: `%MyDocuments%\DocBot\package-settings.json`
+- Snelkiesnummers: `%MyDocuments%\DocBot\speeddial.json`
+- SMS-standaardtekst per pagina: `%MyDocuments%\DocBot\sms-default-texts.json`
 - Debug-log: `%LocalAppData%\DocBot\debug.log`
 
 ## Gebruikersprofielen per releasekanaal

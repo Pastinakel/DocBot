@@ -96,16 +96,17 @@ The current startup flow in `DocBot.ahk` is approximately:
 8. initialize personal hotstring storage/migrations;
 9. initialize package settings/migrations;
 10. initialize speed-dial storage/migrations;
-11. register/reload runtime hotstrings;
-12. initialize telemetry;
-13. process update-restart command-line state if present;
-14. build the main GUI and tray menu;
-15. register Windows messages and exit handler;
-16. show GUI and apply custom visual rendering;
-17. start clipboard polling;
-18. start registration-button countdown timer;
-19. request telephony registration and start chained event polling;
-20. start/check `signal.txt` update/shutdown coordination.
+11. initialize SMS default-text storage (`sms-default-texts.json`);
+12. register/reload runtime hotstrings;
+13. initialize telemetry;
+14. process update-restart command-line state if present;
+15. build the main GUI and tray menu;
+16. register Windows messages and exit handler;
+17. show GUI and apply custom visual rendering;
+18. start clipboard polling;
+19. start registration-button countdown timer;
+20. request telephony registration and start chained event polling;
+21. start/check `signal.txt` update/shutdown coordination.
 
 Changing this order can have user-data, UI, or network side effects. Treat initialization order as behavior, not formatting.
 
@@ -191,6 +192,7 @@ settings.ini             application settings + telemetry ID/counters
 hotstrings.json          personal hotstrings
 package-settings.json    package enabled/disabled/conflict choices
 speeddial.json           speed-dial entries
+sms-default-texts.json   default SMS message text per configured SMS page
 ```
 
 Storage routines use defensive patterns such as `.bak`, temporary files, validation, and replacement where implemented.
@@ -213,7 +215,8 @@ Current global schema concepts include:
 - personal hotstring schema;
 - bundled-package schema;
 - package-settings schema;
-- speed-dial schema.
+- speed-dial schema;
+- SMS default-text schema.
 
 Rules for migrations/default additions:
 
@@ -405,7 +408,11 @@ Configuration per SMS action includes user-facing and technical fields such as:
 - `Title`;
 - `WindowTitle`;
 - target URL;
-- target field `AutomationId` / field identifier.
+- target field `AutomationId` / field identifier (`FieldId`, the telephone
+  field);
+- optional target field `AutomationId` for a second, message-body field
+  (`TextFieldId`) — absent by default; without it, the default-text feature
+  below is simply unavailable for that SMS page.
 
 Flow:
 
@@ -416,9 +423,38 @@ Flow:
 5. if it does not exist, open the configured URL;
 6. locate the telephone input through UIA and fill it;
 7. JavaScript fallback may be used if UIA cannot complete the field operation;
-8. stop: the user reviews and sends manually.
+8. if `TextFieldId` is configured for this page and a non-empty default text
+   is stored for its `Title` in `sms-default-texts.json`, best-effort fill
+   that field the same way (UIA first, JavaScript fallback); a failure here
+   never turns an already-successful phone-number fill into a failed SMS
+   action, it is only logged;
+9. stop: the user reviews and sends manually.
 
-This preserves a deliberate human-in-the-loop safety boundary.
+This preserves a deliberate human-in-the-loop safety boundary — the
+default-text fill only pre-populates a field, it never submits anything.
+
+### 12.1 SMS default text (`sms-default-texts.json`)
+
+The end user, not the local-configuration owner, sets the default message
+text per SMS page, on the Instellingen page next to the existing SMS-page
+selector. Storage follows the same pattern as `speeddial.json` (§7.2,
+`docs/MIGRATIONS.md`): a `schemaVersion` plus an array of
+`{Title, DefaultText}` items, keyed by `Title` (case-insensitive, matching
+`FindSmsCallActionIndexByTitle()`). Unlike `package-settings.json`, loading
+never silently prunes an item whose `Title` no longer matches a currently
+configured SMS page — the GUI simply does not surface it, but the value is
+kept in case the page's configuration returns (e.g. after a temporary
+misconfiguration).
+
+While the Instellingen page is open, switching the SMS-page dropdown keeps
+any not-yet-saved text for every page visited in that session in memory
+(never written to disk); the existing single "Opslaan" button is what
+persists everything to `sms-default-texts.json`, consistent with how the
+rest of that page already behaves (no per-field autosave).
+
+The multiline field itself reuses the existing `AddRoundedEditGroup(...,
+multiline := true, ...)` control already used for the hotstring Replacement
+editor — real newlines already work there without needing `WantReturn`.
 
 ## 13. GUI and rendering
 
