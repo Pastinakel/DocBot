@@ -4,7 +4,7 @@
   "name": "Veelgemaakte spelfouten",
   "version": "1.0.0",
   "description": "Correcties voor veelvoorkomende Nederlandse spelfouten, gebaseerd op de aangeleverde Wikipedia-lijst.",
-  "owner": "",
+  "owner": "Steven Giesbers",
   "itemCount": 1393,
   "categories": [
     {
