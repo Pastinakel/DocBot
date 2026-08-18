@@ -284,10 +284,15 @@ tag telt pas als gereed wanneer die op `origin` zichtbaar is.
 
 ## Lokale configuratie
 
-Interne telefonieadressen, endpointnamen, standaard-snelkiesnummers,
-standaard-hotstrings en het UNC-pad van de netwerkshare met meegeleverde
-hotstringpakketten (`LocalConfig["Packages"]["ShareDir"]`, alleen gebruikt
-door de gecompileerde applicatie) staan uitsluitend in `DocBot.local.ahk`.
-Dit bestand wordt door Git genegeerd en mag nooit worden gecommit. Gebruik
-`DocBot.local.example.ahk` als veilige structuurtemplate zonder echte
-waarden. Ahk2Exe neemt de lokale include tijdens compilatie op.
+Interne telefonieadressen, endpointnamen, standaard-snelkiesnummers en
+standaard-hotstrings staan uitsluitend in `DocBot.local.ahk`. Hetzelfde
+geldt voor het optionele UNC-pad van de netwerkshare met meegeleverde
+hotstringpakketten (`LocalConfig["Packages"]["ShareDir"]`): de
+gecompileerde applicatie leidt die locatie standaard automatisch af uit
+`A_ScriptDir` (de map naast de draaiende executable) en heeft dit veld dus
+alleen nodig als expliciete override, bijvoorbeeld wanneer een launcher een
+lokale kopie van de executable start in plaats van rechtstreeks vanaf de
+netwerklocatie. `DocBot.local.ahk` wordt door Git genegeerd en mag nooit
+worden gecommit. Gebruik `DocBot.local.example.ahk` als veilige
+structuurtemplate zonder echte waarden. Ahk2Exe neemt de lokale include
+tijdens compilatie op.

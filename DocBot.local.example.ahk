@@ -12,16 +12,23 @@ global LocalConfig := Map(
         "DialEndpoint", "VUL-HIER-HET-BEL-ENDPOINT-IN"
     ),
 
-    ; Alleen gebruikt door de gecompileerde applicatie: DocBot leest
-    ; meegeleverde hotstringpakketten bij iedere start rechtstreeks van deze
-    ; netwerkshare (manifest.json + pakketbestanden direct in deze map, geen
-    ; submap). De ongecompileerde ontwikkelversie gebruikt in plaats daarvan
-    ; altijd de map packages\ naast DocBot.ahk en heeft dit veld niet nodig.
-    ; Ontbreekt deze share of is die niet bereikbaar, dan laadt DocBot die
-    ; sessie geen pakketten; persoonlijke hotstrings blijven gewoon werken.
-    "Packages", Map(
-        "ShareDir", "\\VUL-HIER-DE-NETWERKSHARE-VOOR-PAKKETTEN-IN\packages"
-    ),
+    ; Optioneel en alleen gebruikt door de gecompileerde applicatie. Zonder
+    ; deze sectie leest DocBot meegeleverde hotstringpakketten automatisch
+    ; uit een map "packages" naast de draaiende executable zelf
+    ; (A_ScriptDir) — logisch als DocBot.exe al rechtstreeks vanaf de juiste
+    ; netwerklocatie wordt gestart (bijv. via een launcher als Ivanti die
+    ; "vanaf de bron" start, niet een lokale gecachete kopie). Start de
+    ; launcher in plaats daarvan een lokale kopie van de executable, dan
+    ; wijst A_ScriptDir naar die lokale map in plaats van de share; vul dan
+    ; hieronder het echte UNC-pad in als expliciete override (manifest.json
+    ; + pakketbestanden direct in die map, geen submap). Ontbreekt deze
+    ; sectie of is de uiteindelijke locatie niet bereikbaar, dan laadt
+    ; DocBot die sessie gewoon geen pakketten; persoonlijke hotstrings
+    ; blijven altijd werken.
+    ;
+    ; "Packages", Map(
+    ;     "ShareDir", "\\VUL-HIER-DE-NETWERKSHARE-VOOR-PAKKETTEN-IN\packages"
+    ; ),
 
     ; Configuratie voor de eerste CallAction/SMS-proof-of-concept.
     ; De echte interne URL blijft uitsluitend in DocBot.local.ahk.

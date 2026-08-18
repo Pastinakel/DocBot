@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-pakket-logging.3"
+global AppVersion := "2.3-pakket-logging.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -6435,32 +6435,41 @@ ManualSaveHotstrings(pathEdit, *) {
 ; MEEGELEVERDE HOTSTRINGPAKKETTEN
 ; =============================================================================
 
-; Levert de map waaruit pakketbestanden rechtstreeks worden gelezen —
-; geen lokale kopie, geen inbakken in de executable. DocBot leest bij
-; iedere start live vanaf deze locatie, zodat een wijziging op de bron
-; (nieuw, aangepast of verwijderd pakketbestand) direct meekomt bij de
-; volgende start, zonder herbouw of herdistributie van de executable
-; (`docs/DECISIONS.md` D-048).
+; Levert de map waaruit pakketbestanden rechtstreeks worden gelezen — geen
+; lokale kopie, geen inbakken in de executable. DocBot leest bij iedere
+; start live vanaf deze locatie, zodat een wijziging op de bron (nieuw,
+; aangepast of verwijderd pakketbestand) direct meekomt bij de volgende
+; start, zonder herbouw of herdistributie van de executable.
+;
+; Voor de gecompileerde versie geldt, als die is ingevuld, eerst
+; Packages.ShareDir uit DocBot.local.ahk. Zonder die expliciete override
+; neemt DocBot aan dat de executable zelf al rechtstreeks vanaf de juiste
+; netwerklocatie draait (bijvoorbeeld via een launcher als Ivanti die "vanaf
+; de bron" start, niet een lokale gecachete kopie) en leest packages\ naast
+; zichzelf, af te leiden uit A_ScriptDir — vandaar dat die hieronder altijd
+; wordt gelogd. Start de launcher in plaats daarvan een lokale kopie van de
+; executable, dan wijst A_ScriptDir naar die lokale map in plaats van de
+; share; zet dan Packages.ShareDir expliciet (`docs/DECISIONS.md` D-048,
+; D-049).
 GetBundledPackageDirectory() {
     global LocalConfig
 
+    DebugLog("i", "Pakketten bron", "A_ScriptDir: " A_ScriptDir)
+
     if A_IsCompiled {
-        ; De gecompileerde DocBot.exe draait zelf al vanaf een netwerkshare
-        ; (zie Build-EPD_Machine.bat); als die share onbereikbaar is, draait
-        ; DocBot sowieso niet. Een aparte lokale/ingebakken noodvoorraad
-        ; pakketten voegt daarom geen praktische robuustheid toe.
         shareDir := ""
         if IsSet(LocalConfig) && LocalConfig is Map && LocalConfig.Has("Packages")
             && LocalConfig["Packages"] is Map && LocalConfig["Packages"].Has("ShareDir")
             shareDir := Trim(LocalConfig["Packages"]["ShareDir"])
 
-        if shareDir = ""
-            throw Error(
-                "Geen netwerkshare voor hotstringpakketten geconfigureerd "
-                "(LocalConfig['Packages']['ShareDir'] in DocBot.local.ahk)."
-            )
+        if shareDir != "" {
+            DebugLog("i", "Pakketten bron", "Handmatig geconfigureerd (Packages.ShareDir): " shareDir)
+            return shareDir
+        }
 
-        return shareDir
+        autoDir := A_ScriptDir "\packages"
+        DebugLog("i", "Pakketten bron", "Automatisch afgeleid van A_ScriptDir: " autoDir)
+        return autoDir
     }
 
     ; Ontwikkelversie leest rechtstreeks uit de broncode-map, zodat een
@@ -7773,12 +7782,14 @@ ValidateSmsCallActionItem(item, index) {
         throw Error("SmsCallAction item " index " ('" item["Title"] "'): Url moet een HTTPS-URL zijn (http:// wordt niet geaccepteerd).")
 }
 
-; De sectie 'Packages' is optioneel: alleen de gecompileerde applicatie leest
-; er iets uit (zie GetBundledPackageDirectory()), en ontbreekt de sectie
-; volledig, dan laadt DocBot bewust gewoon geen meegeleverde pakketten die
-; sessie in plaats van de hele opstart te blokkeren. Staat de sectie er wel,
-; dan moet ShareDir wél een ingevuld, geldig UNC-pad zijn — dat vangt een
-; vergeten placeholderwaarde af.
+; De sectie 'Packages' is optioneel: zonder haar leidt de gecompileerde
+; applicatie de pakketlocatie automatisch af uit A_ScriptDir (zie
+; GetBundledPackageDirectory()) en blokkeert een ontbrekende sectie de
+; opstart dus nooit. Staat de sectie er wel — als expliciete override, bijv.
+; omdat een launcher zoals Ivanti een lokale kopie start in plaats van de
+; executable rechtstreeks vanaf de netwerklocatie — dan moet ShareDir wél
+; een ingevuld, geldig UNC-pad zijn; dat vangt een vergeten
+; placeholderwaarde af.
 ValidatePackagesConfiguration(config) {
     if !config.Has("Packages")
         return

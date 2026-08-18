@@ -262,25 +262,38 @@ Source resolution (`GetBundledPackageDirectory()`) — no local cache, no
 build-time embedding; `InitializeBundledPackages()` reads `manifest.json`
 and every package file directly from the resolved directory on each start:
 
-- **Uncompiled/dev build:** the source `packages/` directory next to
+- **Uncompiled/dev build:** always the source `packages/` directory next to
   `DocBot.ahk` (`A_ScriptDir "\packages"`).
-- **Compiled build:** a network share, configured as
-  `LocalConfig["Packages"]["ShareDir"]` in `DocBot.local.ahk` (a UNC path;
-  `manifest.json` and the package files sit directly in it, no subfolder).
-  This is the same share the compiled `DocBot.exe` itself already runs
-  from, so a share that is unreachable already prevents DocBot from
-  starting at all — there is deliberately no separate local/embedded
-  fallback package set, since it would not add practical resilience.
-  `ValidateLocalConfiguration()` checks the `ShareDir` value's shape (must
-  be a non-empty UNC path) at startup if the `Packages` section is present,
-  but the section itself is optional: if it is absent, or the share is
-  unreachable at package-load time, DocBot logs this and simply loads no
-  bundled packages that session rather than blocking startup — personal
-  hotstrings are unaffected either way.
+- **Compiled build, auto-detected (default):** also `A_ScriptDir "\packages"`
+  — a `packages` folder next to the running `DocBot.exe`. This resolves to
+  the correct network location automatically when the executable is
+  launched directly from there (e.g. by a launcher such as Ivanti configured
+  to "run from source" rather than staging a local copy first). `A_ScriptDir`
+  is written to the standard log on every start specifically so this can be
+  verified against how the app is actually launched (D-049).
+- **Compiled build, explicit override:** `LocalConfig["Packages"]["ShareDir"]`
+  in `DocBot.local.ahk` (a UNC path; `manifest.json` and the package files
+  sit directly in it, no subfolder), used instead of the auto-detected path
+  whenever it is set. Needed if the launcher runs a locally staged copy of
+  the executable, in which case `A_ScriptDir` would resolve to that local
+  copy's directory instead of the real share.
+  `ValidateLocalConfiguration()` checks `ShareDir`'s shape (must be a
+  non-empty UNC path) at startup if the `Packages` section is present, but
+  the section itself is optional — the compiled build works without it via
+  auto-detection.
+- Whichever compiled-build source applies: this is the same share the
+  compiled `DocBot.exe` itself already runs from (auto-detected case) or a
+  path the project owner has confirmed is reachable (explicit-override
+  case), so an unreachable source already means DocBot could not have
+  started — there is deliberately no separate local/embedded fallback
+  package set, since it would not add practical resilience. If the source
+  is unreachable anyway (e.g. dropped mid-session, or a stale override),
+  DocBot logs this and simply loads no bundled packages that session rather
+  than blocking startup — personal hotstrings are unaffected either way.
 - Either way, a package file added, edited, or removed at the source is
   visible on DocBot's next start, with no `DocBot.ahk` change and no
   rebuild/redistribution of the compiled executable
-  (`docs/DECISIONS.md` D-048, superseding D-047's build-time
+  (`docs/DECISIONS.md` D-048/D-049, superseding D-047's build-time
   zip-and-embed approach).
 - Each package file's load attempt, success (name/version/item count), or
   failure is written to the standard log; one invalid or unreachable

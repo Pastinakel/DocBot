@@ -1373,3 +1373,82 @@ core read-live-from-source model.
   only been reviewed as source, not run.
 - Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
   (`AppVersion 2.3-pakket-logging.3`).
+
+---
+
+## D-049 — Compiled build auto-detects its package source via A_ScriptDir; `Packages.ShareDir` becomes an override
+
+**Status:** Accepted
+
+D-048 required every compiled deployment to set
+`LocalConfig["Packages"]["ShareDir"]` explicitly. The project owner then
+asked whether DocBot could determine that network path itself when launched
+via Ivanti (a software-deployment/launch tool). The relevant fact: DocBot's
+compiled build already reads `A_ScriptDir` for other purposes and — for a
+compiled AutoHotkey v2 script — `A_ScriptDir` resolves to the directory
+containing the running `.exe`. If a launcher such as Ivanti starts
+`DocBot.exe` directly from its network location ("run from source"), rather
+than staging a local copy first and running that, `A_ScriptDir` already
+equals that network share, with no separate configuration needed at all —
+mirroring exactly how the dev build already resolves its own `packages/`
+directory.
+
+The failure mode this can't rule out from source alone: some
+deployment-tool configurations copy the executable to a local (often
+temporary) folder before running it. In that case `A_ScriptDir` resolves to
+the local copy's directory, not the share, and a `packages` subfolder would
+not exist there. Since this depends entirely on how the project owner's
+specific Ivanti Application is configured — information not available from
+this environment — the fix combines both pieces the project owner asked
+for instead of guessing:
+
+1. `GetBundledPackageDirectory()` now writes `A_ScriptDir`'s value to the
+   standard log unconditionally, on every start (dev and compiled alike),
+   specifically so a real Ivanti-launched run can be checked against
+   `debug.log` to see what DocBot actually sees itself running from.
+2. The compiled build tries `LocalConfig["Packages"]["ShareDir"]` first, if
+   set; only when that is absent does it fall back to the auto-detected
+   `A_ScriptDir "\packages"`. Both branches log which one was used and the
+   resulting path (`"i", "Pakketten bron", ...`). `ValidatePackagesConfiguration()`
+   (D-048) is unchanged — `Packages` stays an optional `LocalConfig`
+   section, now explicitly framed as an override rather than the only way
+   to configure this.
+
+This means a correctly "run from source" Ivanti deployment needs zero
+`DocBot.local.ahk` configuration for packages at all; a deployment that
+turns out to stage a local copy can be fixed by setting `ShareDir`
+explicitly, discoverable from the same `A_ScriptDir` log line without
+needing to guess or experiment blindly.
+
+**Rejected alternatives:** requiring `Packages.ShareDir` unconditionally
+(D-048's original shape) — superseded here specifically because it forces
+manual configuration even in the common case where auto-detection already
+works, and because keeping the deploy location and the configured
+`ShareDir` in two separate places invites them silently drifting apart;
+detecting "was this copied locally" some other way (e.g. comparing
+`A_ScriptDir` against a known-share-prefix pattern) — rejected as more
+complex and less reliable than simply letting an explicit override win when
+one is present, which handles the "auto-detection guessed wrong" case
+without DocBot needing to guess *why* it guessed wrong.
+
+**Consequences**
+
+- No `DocBot.local.ahk` changes are needed for packages at all, for a
+  compiled deployment that runs directly from its network location — the
+  common case this was built for.
+- The `A_ScriptDir` log line is unconditional and cheap (one `DebugLog`
+  call), so it costs nothing on installs that never need it, while being
+  the exact piece of evidence needed to diagnose the one case that does
+  (local-copy launch).
+- `Packages.ShareDir`'s meaning changes from "the only way to configure
+  this" (D-048) to "override when auto-detection would be wrong" — existing
+  `DocBot.local.ahk` files that already set it keep working identically,
+  since an explicit value still always wins.
+- Still not yet validated on a compiled build on Windows, and specifically
+  not yet validated against an actual Ivanti-launched run (see D-037,
+  D-048) — whether the project owner's Ivanti Application configuration
+  runs `DocBot.exe` from source or from a local staged copy is exactly the
+  open question the new `A_ScriptDir` log line exists to answer, and is not
+  yet answered.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.4`).
