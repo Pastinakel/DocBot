@@ -81,6 +81,16 @@ de beschikbare executable opnieuw met dezelfde vensterstatus — actief, op de
 achtergrond of geminimaliseerd — en wordt na een geslaagde herstart door
 DocBot weer verwijderd.
 
+Voor iedere doelmap zorgt de batch na een geslaagde plaatsing van de
+executable ook voor een gevulde `packages`-submap ernaast — dat is de map
+waaruit de gecompileerde applicatie standaard leest (zie "Meegeleverde
+hotstringpakketten" hieronder). Ontbreekt die submap nog, dan wordt hij
+zonder te vragen gevuld vanuit de huidige checkout. Bestaat hij al, dan
+vraagt de batch interactief of hij met de nieuwste versie uit de checkout
+mag worden vervangen; bij "Nee" blijft een eventueel handmatig aangepaste
+inhoud (bijvoorbeeld een pakket dat rechtstreeks op de doellocatie is
+toegevoegd) ongemoeid (`docs/DECISIONS.md` D-052).
+
 Functionaliteit — Hotstrings
 -----------------------------
 - Hotstrings worden opgeslagen als JSON. Standaardlocatie is
@@ -167,7 +177,7 @@ bereikbaar, dan laadt DocBot die sessie bewust gewoon geen pakketten in
 plaats van de hele opstart te blokkeren; persoonlijke hotstrings blijven
 altijd werken. Deze laag valideert manifest, schema, pakket-ID's,
 itemaantallen en dubbele triggers, en logt per pakketbestand of het laden
-is gelukt (`docs/DECISIONS.md` D-046, D-048, D-049).
+is gelukt (`docs/DECISIONS.md` D-046, D-048, D-049, D-052).
 
 Het standaardlog schermt lokale en netwerkpaden altijd af (zie
 "Probleem melden en diagnostiek" hieronder) — een gelogde pakketbron toont
@@ -474,6 +484,12 @@ Changelog
   `RefreshPackageManagerItemDetails()` controleert nu vlak vóór iedere
   schrijfactie opnieuw of de statusregel nog bestaat, in plaats van alleen
   bij binnenkomst (`docs/DECISIONS.md` D-051).
+- `Build-EPD_Machine.bat` zorgt nu voor elke doelmap ook voor een gevulde
+  `packages`-submap naast de geplaatste executable — de locatie waaruit de
+  gecompileerde applicatie sinds D-049 standaard leest. Ontbreekt de submap,
+  dan wordt hij gevuld vanuit de huidige checkout; bestaat hij al, dan
+  vraagt de batch eerst of hij met de nieuwste versie mag worden vervangen
+  (`docs/DECISIONS.md` D-052).
 - Nieuwe gebruikersinstructie voor veilige hotstring-inhoud: een vijfde
   Help-sectie ("Wat mag ik wel en niet in een hotstring zetten?") en een
   bijbehorende, altijd zichtbare hint op de Tekstvervanging-pagina. De

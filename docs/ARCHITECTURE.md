@@ -270,7 +270,14 @@ and every package file directly from the resolved directory on each start:
   launched directly from there (e.g. by a launcher such as Ivanti configured
   to "run from source" rather than staging a local copy first). `A_ScriptDir`
   is written to the standard log on every start specifically so this can be
-  verified against how the app is actually launched (D-049).
+  verified against how the app is actually launched (D-049). That folder
+  does not appear by itself, though: `Build-EPD_Machine.bat`'s `:deploy`
+  places the compiled executable one directory *above* the git checkout
+  (`PARENT_DIR\APP_NAME.exe`, pre-dating this branch), so `A_ScriptDir` for
+  the running deployed copy is `PARENT_DIR`, not the checkout — `:deploy`
+  therefore also calls `:sync_packages` for every deploy target, populating
+  (or, with confirmation, replacing) `PARENT_DIR\packages` from the
+  checkout's own `packages/` (D-052).
 - **Compiled build, explicit override:** `LocalConfig["Packages"]["ShareDir"]`
   in `DocBot.local.ahk` (a UNC path; `manifest.json` and the package files
   sit directly in it, no subfolder), used instead of the auto-detected path

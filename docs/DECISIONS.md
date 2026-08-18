@@ -1582,3 +1582,71 @@ one write its now-stale result).
   the fix itself has only been reviewed as source.
 - Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
   (`AppVersion 2.3-pakket-logging.6`).
+
+---
+
+## D-052 — `Build-EPD_Machine.bat` populates each deploy target's `packages` folder
+
+**Status:** Accepted
+
+D-049's auto-detection (`A_ScriptDir "\packages"`) assumed the compiled
+`DocBot.exe` and a populated `packages/` folder would end up side by side.
+The project owner pointed out the real deploy layout doesn't match that
+assumption on its own: `Build-EPD_Machine.bat` compiles `DocBot.exe` next to
+`DocBot.ahk` (inside the git checkout), then deploys a *copy* one directory
+above it, to `PARENT_DIR\APP_NAME.exe` (the `:deploy` subroutine, already
+existing before this branch). `A_ScriptDir` for that deployed, running copy
+therefore resolves to `PARENT_DIR` — one level above the checkout that
+actually contains `packages/`. Without this decision, D-049's auto-detected
+path would reliably point at a `packages` folder that never gets created,
+making the "auto" half of D-049 non-functional for the project's own real
+deployment shape, not just a hypothetical Ivanti edge case.
+
+`:deploy` now calls a new `:sync_packages` subroutine right after an
+executable is successfully placed and verified, once per deploy target
+(so both the main `DocBot`/`DocBot-test`/`DocBot-dev` target and the
+optional sibling `EPD_Machine` target get their own `packages` folder).
+Per the project owner's own two-step reasoning during this conversation —
+first proposed as "check whether populated, copy if not, else install the
+newest version," then revised to the simpler final shape — the logic is:
+
+- `PARENT_DIR\packages` does not exist yet → copy it fresh from this
+  checkout's own `packages\`, no prompt (nothing to lose).
+- `PARENT_DIR\packages` already exists → ask interactively (`choice /C JN`,
+  the same pattern already used for the EPD_Machine copy question) whether
+  to replace it with this checkout's current `packages\`. A "no" leaves it
+  untouched — deliberately, so a deploy-target `packages` folder a project
+  owner has hand-edited (e.g. added a custom package directly on the share)
+  is never silently clobbered by a routine rebuild. A "yes" deletes the
+  existing folder and copies fresh, rather than merging, so a package
+  removed or renamed in the checkout actually disappears from the deploy
+  target too instead of lingering alongside the new set.
+
+**Rejected alternatives:** always overwriting without asking — rejected
+because it would silently destroy any package added directly on a deploy
+share outside the normal `packages/`-in-git workflow (the project owner's
+own `anest.json` experiment, from earlier in this conversation, is exactly
+such a case); merging instead of replacing on overwrite — rejected because
+a merge can't express "this package was intentionally removed," which
+matters just as much here as it did for `InitializeBundledPackages()`'s own
+now-removed local-cache-clearing logic (D-048).
+
+**Consequences**
+
+- D-049's auto-detected path now actually resolves to a real, populated
+  folder after a normal `Build-EPD_Machine.bat` run, for every deploy
+  target the script knows about — closing the gap this decision exists to
+  fix.
+- Running `Build-EPD_Machine.bat` against a deploy target that already has
+  a hand-edited `packages` folder now pauses for a yes/no prompt every
+  time, unless answered "yes" to accept the checkout's version once and for
+  all going forward (there is no "always overwrite" or "never ask again"
+  option here — every run asks again if the folder still exists).
+- This is `Build-EPD_Machine.bat`-only; it does not touch `DocBot.ahk`, so
+  per the branch-versioning rules in `CLAUDE.md`/`AGENTS.md` this commit
+  does not bump `global AppVersion`.
+- Not yet validated on a compiled build on Windows (see D-037) — the batch
+  logic (`xcopy`/`rd`/`choice` interplay, `errorlevel` propagation through
+  `:sync_packages`'s own `setlocal`) has only been reviewed as source, not
+  run.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`.
