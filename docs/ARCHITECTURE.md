@@ -225,6 +225,14 @@ Rules for migrations/default additions:
 
 When adding a new default through local configuration, advance the relevant schema and make the addition conditional on the functional key not already existing.
 
+`docs/MIGRATIONS.md` is the detailed registry: which schema version added
+which field/default per storage format, which legacy filenames are still
+read, and how to add a new migration. `ReadSchemaVersion()` and
+`RejectNewerSchemaVersion()`, defined once in `DocBot.ahk` immediately
+before `InitializeBundledPackages()`, are the shared version-parsing/
+version-ceiling helpers all four loaders use; add a new schema by following
+the same pair of calls rather than reimplementing the check inline.
+
 ## 9. Hotstring runtime architecture
 
 ### 9.1 Sources
@@ -256,11 +264,59 @@ Hotstring execution must never copy replacement text through the Windows clipboa
 
 ## 10. Bundled package architecture
 
-`packages/manifest.json` declares the package catalogue. Package files contain stable IDs and items.
+`packages/manifest.json` declares the package catalogue as a pure `id`/`file`
+index — no other field is read from a manifest entry. Package files are the
+single source of truth for their own metadata (`id`, `name`, `version`,
+`description`, optional free-text `owner`) plus their `items` (D-054).
 
-At runtime/build:
+Source resolution (`GetBundledPackageDirectory()`) — no local cache, no
+build-time embedding; `InitializeBundledPackages()` reads `manifest.json`
+and every package file directly from the resolved directory on each start:
 
-- package files are bundled/extracted;
+- **Uncompiled/dev build:** always the source `packages/` directory next to
+  `DocBot.ahk` (`A_ScriptDir "\packages"`).
+- **Compiled build, auto-detected (default):** also `A_ScriptDir "\packages"`
+  — a `packages` folder next to the running `DocBot.exe`. This resolves to
+  the correct network location automatically when the executable is
+  launched directly from there (e.g. by a launcher such as Ivanti configured
+  to "run from source" rather than staging a local copy first). `A_ScriptDir`
+  is written to the standard log on every start specifically so this can be
+  verified against how the app is actually launched (D-049). That folder
+  does not appear by itself, though: `Build-EPD_Machine.bat`'s `:deploy`
+  places the compiled executable one directory *above* the git checkout
+  (`PARENT_DIR\APP_NAME.exe`, pre-dating this branch), so `A_ScriptDir` for
+  the running deployed copy is `PARENT_DIR`, not the checkout — `:deploy`
+  therefore also calls `:sync_packages` for every deploy target, populating
+  (or, with confirmation, replacing) `PARENT_DIR\packages` from the
+  checkout's own `packages/` (D-052).
+- **Compiled build, explicit override:** `LocalConfig["Packages"]["ShareDir"]`
+  in `DocBot.local.ahk` (a UNC path; `manifest.json` and the package files
+  sit directly in it, no subfolder), used instead of the auto-detected path
+  whenever it is set. Needed if the launcher runs a locally staged copy of
+  the executable, in which case `A_ScriptDir` would resolve to that local
+  copy's directory instead of the real share.
+  `ValidateLocalConfiguration()` checks `ShareDir`'s shape (must be a
+  non-empty UNC path) at startup if the `Packages` section is present, but
+  the section itself is optional — the compiled build works without it via
+  auto-detection.
+- Whichever compiled-build source applies: this is the same share the
+  compiled `DocBot.exe` itself already runs from (auto-detected case) or a
+  path the project owner has confirmed is reachable (explicit-override
+  case), so an unreachable source already means DocBot could not have
+  started — there is deliberately no separate local/embedded fallback
+  package set, since it would not add practical resilience. If the source
+  is unreachable anyway (e.g. dropped mid-session, or a stale override),
+  DocBot logs this and simply loads no bundled packages that session rather
+  than blocking startup — personal hotstrings are unaffected either way.
+- Either way, a package file added, edited, or removed at the source is
+  visible on DocBot's next start, with no `DocBot.ahk` change and no
+  rebuild/redistribution of the compiled executable
+  (`docs/DECISIONS.md` D-048/D-049, superseding D-047's build-time
+  zip-and-embed approach).
+- Each package file's load attempt, success (name/version/item count), or
+  failure is written to the standard log; one invalid or unreachable
+  package file no longer prevents the other, valid packages from loading
+  (`docs/DECISIONS.md` D-046).
 - manifest and package structure are validated;
 - duplicate triggers/item counts/schema consistency are checked;
 - effective conflicts are indexed;
@@ -578,6 +634,23 @@ AutoHotkey to exit on its own. This is a reusable pattern for any future
 CI step that shells out to a Windows GUI executable.
 
 For changes touching internal telephony, SMS/UIA, managed-Windows rendering, build/deployment, or OneDrive behavior, static inspection is not enough.
+
+A second gate, added alongside the schema-migration registry
+(`docs/MIGRATIONS.md`), runs in the same job right after the syntax check:
+`AutoHotkey64.exe DocBot.ahk --selftest`. `tests/SelfTests.ahk` (`#Include`d
+from `DocBot.ahk`, inert unless started with that exact argument) exercises
+pure migration-support logic — `ReadSchemaVersion()`/
+`RejectNewerSchemaVersion()` and the idempotency of
+`AddMissingDefaultHotstrings()`/`AddMissingDefaultSpeedDials()`/
+`NormalizeHotstringItem()` — without touching file I/O, the GUI, or the
+network. This is deliberately narrow: AutoHotkey v2's top-level
+execution-order constraint (§3) means a script that `#Include`s `DocBot.ahk`
+runs its full auto-execute section, so genuine unit-test isolation for
+GUI-/storage-coupled code is not practical without the kind of
+modularization `docs/TODO.md` P2 "Consider gradual modularization after
+2.2" explicitly treats as future, non-casual work. See `tests/README.md` for
+what is and is not covered, and D-037 for why this still does not replace
+manual/Windows functional validation.
 
 ## 20. Safe extension guidelines
 

@@ -4,6 +4,7 @@
   "name": "Controles",
   "version": "1.0.0",
   "description": "Veelgebruikte vervolg- en controletermijnen.",
+  "owner": "Steven Giesbers",
   "itemCount": 11,
   "categories": [
     {

@@ -1,6 +1,6 @@
 # DocBot — Decisions
 
-_Last updated: 2026-08-17. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
+_Last updated: 2026-08-18. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
 
 ## How to read this file
 
@@ -1086,3 +1086,796 @@ requirement.
   (`AppVersion 2.3-hotstring-instructie.6`); not yet validated on a
   compiled build on Windows (see D-037) — layout math was verified by hand
   against the fixed 1000×700 window size, not by rendering the GUI.
+
+---
+
+## D-046 — Log bundled-package load outcomes per file; route every storage error through the standard log
+
+**Status:** Accepted
+
+The project owner built a custom bundled hotstring package that failed to
+load, with no way to tell which file was at fault: `InitializeBundledPackages()`
+wrapped manifest parsing and every package file in one `try`/`catch`, so a
+single bad file discarded `BundledPackages` entirely (silently dropping any
+already-valid packages too) and surfaced only one generic message via
+`ReportStorageError()`. `ReportStorageError()` itself never wrote to the
+standard log (`DebugLog()`) — it only showed a `MsgBox` or a tray
+notification — so the failure, and its message, left no trace in
+`debug.log` at all.
+
+`InitializeBundledPackages()` now logs the manifest path before parsing it,
+then tries each manifest-listed package file in its own inner
+`try`/`catch`: a `DebugLog("→", "Pakket laden", ...)` line before the
+attempt, a `DebugLog("✓", "Pakket geladen", ...)` line with name, id,
+version and item count on success, and — on failure — the file is skipped
+(not the whole run) and the error goes through `ReportStorageError()`,
+prefixed with the failing file name. A summary line
+(`DebugLog("i"/"!", "Pakketten geladen", ...)`) reports how many packages
+loaded and how many failed. Manifest-level problems (missing/invalid
+manifest, unsupported manifest `schemaVersion`, a malformed `packages`
+entry) stay fatal for the whole batch, since they are infrastructure the
+per-file packages depend on, not a property of one file.
+
+`ReportStorageError()` now always calls `DebugLog("✕", "Opslagfout", message)`
+before showing the `MsgBox` or tray notification, so every caller across the
+codebase (bundled packages, `hotstrings.json`, `settings.ini`/JSON blobs,
+speed dials) gets its error text into the standard log automatically,
+without touching each call site. Two `LoadBundledPackageFile()` error
+messages that previously omitted the file path (`Pakketitem N mist veld ...`
+and `... bevat een lege id, trigger of vervanging`) now include it, matching
+every other error message in that function.
+
+**Rejected alternatives:** adding a manual `DebugLog()` call next to every
+existing `ReportStorageError()` call site instead of logging inside
+`ReportStorageError()` itself — rejected as repetitive and easy to miss on
+a future call site; leaving package-file failures fatal for the whole
+manifest — rejected because it means one broken custom package also takes
+down every bundled package that loaded fine, which is what produced the
+original, hard-to-diagnose report.
+
+**Consequences**
+
+- A broken custom or bundled package file no longer silently empties
+  `BundledPackages`; only that package is missing, and `debug.log` names
+  the exact file and reason.
+- Any future `ReportStorageError()` caller gets standard-log coverage for
+  free; no call site needs its own `DebugLog()` call for that purpose.
+- `InitializeBundledPackages()`'s return value now reflects whether *any*
+  package failed (`failedCount = 0`), not only whether the manifest itself
+  parsed; the return value is currently unused by its one call site.
+- Not yet validated on a compiled build on Windows (see D-037) — the
+  control-flow change (inner `try`/`catch` per package file) was verified
+  by source review only.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.1`).
+
+---
+
+## D-047 — Bundled-package file set is dynamic in both the dev and compiled build
+
+**Status:** Superseded by D-048
+
+D-048, agreed the same day, replaces this decision's compiled-build half
+(build-time zip + `FileInstall` + `Shell.Application` extraction into a
+local cache) with reading package files directly from a network share at
+every startup — once the project owner pointed out that the compiled
+`DocBot.exe` itself already runs from a network share, so a share outage
+already stops DocBot entirely and a separate embedded/local fallback for
+packages specifically adds no practical resilience. D-048 also drops this
+decision's dev-build local-cache copy step entirely: the dev build now
+reads `*.json` files under `packages/` in place instead of copying them to
+`%LocalAppData%\DocBot-dev\packages` first. This entry is kept for the
+reasoning trail — the `FileInstall`-cannot-embed-a-wildcard constraint
+below still holds and still shaped D-048's compiled-build design.
+
+D-046's new per-file logging immediately surfaced the project owner's real
+problem: a custom package (`anest.json`) was correctly listed in a locally
+edited `packages/manifest.json`, but `InitializeBundledPackages()` reported
+"Pakketbestand niet gevonden" for it. The cause was not, as first suspected,
+that the uncompiled dev build skips copying packages to a local cache — it
+does copy them. The actual cause was `InstallBundledPackageFiles()`
+hardcoding the bundled file set in two places that both had to be kept in
+sync by hand with `packages/manifest.json`: a `packageFiles` array (used for
+`FileCopy` in dev) and one literal `FileInstall` line per file (used for the
+compiled build). A new package file added to `packages/` and to the manifest
+but not to this array/list silently never reached
+`%LocalAppData%\...\packages`, in either build — the dev case is exactly
+what the project owner hit.
+
+`InstallBundledPackageFiles()` now derives the file set dynamically on both
+paths instead of maintaining a hardcoded list:
+
+- **Dev/uncompiled:** `Loop Files, A_ScriptDir "\packages\*.json"` copies
+  every `*.json` file under the source `packages/` directory. No list to
+  maintain; any file dropped into `packages/` is picked up on the next
+  start.
+- **Compiled:** Ahk2Exe's `FileInstall` fundamentally cannot embed a
+  wildcard or a dynamically generated list — only literal, individual
+  source paths, a hard constraint of the compiler, not a choice made here
+  (already noted in the pre-existing code comment this decision replaces).
+  The fix moves the dynamism to *build time* instead: `Build-EPD_Machine.bat`
+  zips `packages/` into one `packages.zip` immediately before invoking
+  Ahk2Exe; `DocBot.ahk` embeds that single, always-literal file via one
+  `FileInstall` call. At startup, the compiled app extracts the archive into
+  the packages cache using the `Shell.Application` COM object
+  (`Namespace(...).CopyHere()`), which ships with Windows and adds no
+  external dependency (no PowerShell/`Expand-Archive` subprocess on the
+  client machine, unlike `Build-EPD_Machine.bat`'s own build-time use of
+  PowerShell, which only runs on the build machine). `CopyHere()` is
+  asynchronous, so `ExtractBundledPackagesZip()` polls the destination
+  directory's item count against the archive's item count, with a 10-second
+  timeout that raises a clear error (through `ReportStorageError()` /
+  `debug.log`, per D-046) instead of `InitializeBundledPackages()` silently
+  reading a half-extracted directory.
+
+Both paths now also clear the target `packages` cache directory before
+(re)installing, so a package file removed or renamed in a later version does
+not linger in the cache indefinitely — a pre-existing gap neither the old
+`FileCopy` loop nor the old `FileInstall` lines closed, fixed here because
+the rewrite already touches this exact code path. Clearing first also makes
+`ExtractBundledPackagesZip()`'s item-count wait unambiguous: without it, a
+cache already populated by a previous run could satisfy the expected count
+before the new `CopyHere()` had actually finished writing, on a build where
+the file count happens not to change.
+
+**Rejected alternatives:** manually adding `anest.json` to the existing
+hardcoded lists — rejected because it fixes this one report but leaves the
+same silent-drop trap for the next custom or bundled package; keeping the
+per-file `FileInstall` lines and only fixing the dev-side array — rejected
+because the project owner explicitly asked for both build types to be
+dynamic, and the compiled build is what end users actually run, so leaving
+it manually maintained would leave the more consequential half of the bug
+in place.
+
+**Consequences**
+
+- Adding, renaming, or removing a package file under `packages/` (plus its
+  `manifest.json` entry) never requires a `DocBot.ahk` change again, in
+  either build type — only a rebuild.
+- `Build-EPD_Machine.bat` gained a build step and a new failure mode
+  (`Compress-Archive` failing, or producing no `packages.zip`), both
+  checked explicitly and both abort the build with a clear message before
+  Ahk2Exe runs, matching the script's existing pre-flight-check style.
+  `packages.zip` is a build artifact: written next to `DocBot.ahk`,
+  `.gitignore`d, and deleted again after a successful (or failed) compile.
+- The compiled app now depends on the Windows Shell's zip-folder
+  functionality (`Shell.Application` opening a `.zip` as a `Namespace`),
+  built into Windows since XP but in principle disableable by policy in a
+  locked-down managed environment; this has not been confirmed against the
+  hospital's actual machine policy.
+- Not yet validated on a compiled build on Windows (see D-037) — neither
+  the `Compress-Archive` build step, the `FileInstall`-of-a-zip path, nor
+  the `Shell.Application` extraction and its polling wait have been
+  exercised outside source review. This decision carries more startup-path
+  risk than D-046 alone (a failed or slow extraction now sits before every
+  other startup step that depends on `BundledPackages`), so compiled-build
+  validation matters more here than for most recent decisions.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.2`).
+
+---
+
+## D-048 — Bundled packages are read live from their source, no embedding or local cache
+
+**Status:** Accepted
+
+Before D-047's build-time zip/`FileInstall`/`Shell.Application` approach was
+implemented against real machine behavior, the project owner asked whether
+package JSON could instead be read "remote" for both build types — from the
+`packages/` subdirectory next to the script for the dev build, and from a
+fixed network share for the compiled build — with an eye toward later
+refreshing that content dynamically. Asked what should happen if that share
+is unreachable at startup, the project owner pointed out the deciding fact:
+the compiled `DocBot.exe` itself is already distributed and run from a
+network share (see `Build-EPD_Machine.bat`'s deploy step), so a share
+outage already means DocBot does not run at all. A separate embedded or
+locally cached fallback specifically for package content would therefore
+not add practical resilience — it can only ever help in the narrow window
+where DocBot has already started but the share drops before a later
+restart, not the far more common "share down, DocBot never starts" case.
+
+This removes the need for D-047's entire build/embed/extract machinery.
+`GetBundledPackageDirectory()` now only resolves *where* to read from, and
+`InitializeBundledPackages()` (D-046) reads `manifest.json` and every
+package file directly from that location on every start — no copy step, no
+local cache, nothing embedded in the executable:
+
+- **Uncompiled/dev build:** `A_ScriptDir "\packages"` — unchanged in
+  spirit from before D-047, but now read in place instead of copied to
+  `%LocalAppData%\DocBot-dev\packages` first.
+- **Compiled build:** `LocalConfig["Packages"]["ShareDir"]` from
+  `DocBot.local.ahk`, a UNC path with `manifest.json` and the package files
+  directly in it. Real internal paths never belong in Git, so this follows
+  the same `DocBot.local.ahk`/`DocBot.local.example.ahk` split already used
+  for `Telephony.BaseUrl` and `SmsCallAction.Url` (D-003). Unlike those two,
+  `Packages` is an optional `LocalConfig` section:
+  `ValidateLocalConfiguration()` only checks `ShareDir`'s shape (non-empty,
+  starts with `\\`) when the section is present, and does not require the
+  section to exist at all. A missing section, or a configured share that is
+  unreachable when `InitializeBundledPackages()` actually tries to read it,
+  is reported and logged the same way as any other package load failure
+  (D-046) — DocBot simply loads no bundled packages that session rather
+  than refusing to start. Personal hotstrings, telephony, and every other
+  feature are unaffected either way; only the optional bundled-package
+  catalogue depends on this share.
+
+Because every start re-reads the source directly, editing a package file on
+the share (or, for developers, under `packages/`) is visible to users at
+their next DocBot restart — no rebuild, no recompiling, no redeploying the
+executable. This is a stronger and simpler answer to "dynamically
+refreshable" than D-047's approach, which still required a full
+build-and-redistribute cycle for every package change.
+
+D-047's `Build-EPD_Machine.bat` changes (the `Compress-Archive` step and its
+pre-flight checks) and the `/packages.zip` `.gitignore` entry are reverted
+in full as part of this decision; the batch script and `.gitignore` are back
+to their pre-D-047 state.
+
+**Rejected alternatives:** keeping D-047's embedded default catalogue as a
+fallback layer that the share then overlays/refreshes — rejected per the
+project owner's own reasoning above: it only covers a narrow, rare failure
+window and would keep all of D-047's build/extraction complexity (and its
+unvalidated `Shell.Application`/`Compress-Archive` risk, see D-047's
+consequences) for that narrow benefit; a local cache of the last
+successfully read packages, refreshed opportunistically — rejected for the
+same reason, plus it reintroduces a staleness question (how old is "too
+old" for cached content) that reading live from the source avoids entirely;
+refreshing packages during a running DocBot session, not only at startup —
+not rejected outright but deliberately out of scope here (not asked for by
+the project owner beyond the initial question, and it would need
+re-indexing of active hotstrings/conflicts and the Package Manager UI while
+potentially open); can be revisited later without changing this decision's
+core read-live-from-source model.
+
+**Consequences**
+
+- Adding, editing, or removing a package file at the source is visible to
+  every DocBot instance at their next restart, for both build types, with
+  no `DocBot.ahk` change and no compiled-build redistribution — a
+  meaningfully stronger property than D-047 delivered.
+- `Build-EPD_Machine.bat` no longer has a packaging step; it is back to
+  compiling `DocBot.exe` directly, same as before D-047.
+- `DocBot.local.example.ahk` gained an optional `Packages.ShareDir` entry
+  and `ValidateLocalConfiguration()` gained `ValidatePackagesConfiguration()`
+  to check its shape when present. Existing `DocBot.local.ahk` files
+  without a `Packages` section keep working unchanged (packages simply
+  don't load until the section is added) — this was a deliberate choice to
+  avoid retroactively breaking every existing local configuration the way
+  making it a required section (like `Telephony`) would have.
+  `DocBot.local.ahk` itself is never committed (D-003); only the project
+  owner needs to add the real share path there. `Packages` joins
+  CLAUDE.md's/AGENTS.md's "Lokale configuratie" list of values that live
+  only in `DocBot.local.ahk`.
+- No package content is embedded in the executable, at all. DocBot's
+  bundled-package catalogue for a given user session now depends entirely
+  on the configured share being reachable at startup — acceptable per the
+  project owner's stated reasoning, but worth restating plainly: an
+  otherwise-running DocBot with a since-dropped share connection keeps
+  whichever packages it already loaded at its last successful start (they
+  live in memory in `BundledPackages`, not re-read mid-session) until the
+  next restart, at which point a still-down share means no packages that
+  session, logged per D-046.
+- `EnvGet("LocalAppData")`-based caching, `SplitPath`-derived cache roots,
+  and every other piece of D-047's local-cache-directory logic are gone;
+  `BundledPackageDir` can now be either a local path or a UNC path, and
+  every downstream consumer (already only doing ordinary string
+  concatenation and `FileRead`/`FileExist`, both UNC-transparent on
+  Windows) needed no further changes.
+- Windows' SMB timeout behavior for a genuinely unreachable (not merely
+  empty) UNC path has not been characterized here; if it turns out to
+  block `FileExist`/`FileRead` for many seconds on a dropped share, a
+  restart attempt during that specific failure mode could feel like a hang
+  rather than a fast, clean "no packages" outcome. Not addressed in this
+  decision — flagged for compiled-build validation.
+- Not yet validated on a compiled build on Windows (see D-037) — reading
+  package JSON from an actual UNC path (permissions, SMB timeout behavior
+  on an unreachable share, `ValidatePackagesConfiguration()`'s regex) has
+  only been reviewed as source, not run.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.3`).
+
+---
+
+## D-049 — Compiled build auto-detects its package source via A_ScriptDir; `Packages.ShareDir` becomes an override
+
+**Status:** Accepted
+
+D-048 required every compiled deployment to set
+`LocalConfig["Packages"]["ShareDir"]` explicitly. The project owner then
+asked whether DocBot could determine that network path itself when launched
+via Ivanti (a software-deployment/launch tool). The relevant fact: DocBot's
+compiled build already reads `A_ScriptDir` for other purposes and — for a
+compiled AutoHotkey v2 script — `A_ScriptDir` resolves to the directory
+containing the running `.exe`. If a launcher such as Ivanti starts
+`DocBot.exe` directly from its network location ("run from source"), rather
+than staging a local copy first and running that, `A_ScriptDir` already
+equals that network share, with no separate configuration needed at all —
+mirroring exactly how the dev build already resolves its own `packages/`
+directory.
+
+The failure mode this can't rule out from source alone: some
+deployment-tool configurations copy the executable to a local (often
+temporary) folder before running it. In that case `A_ScriptDir` resolves to
+the local copy's directory, not the share, and a `packages` subfolder would
+not exist there. Since this depends entirely on how the project owner's
+specific Ivanti Application is configured — information not available from
+this environment — the fix combines both pieces the project owner asked
+for instead of guessing:
+
+1. `GetBundledPackageDirectory()` now writes `A_ScriptDir`'s value to the
+   standard log unconditionally, on every start (dev and compiled alike),
+   specifically so a real Ivanti-launched run can be checked against
+   `debug.log` to see what DocBot actually sees itself running from.
+2. The compiled build tries `LocalConfig["Packages"]["ShareDir"]` first, if
+   set; only when that is absent does it fall back to the auto-detected
+   `A_ScriptDir "\packages"`. Both branches log which one was used and the
+   resulting path (`"i", "Pakketten bron", ...`). `ValidatePackagesConfiguration()`
+   (D-048) is unchanged — `Packages` stays an optional `LocalConfig`
+   section, now explicitly framed as an override rather than the only way
+   to configure this.
+
+This means a correctly "run from source" Ivanti deployment needs zero
+`DocBot.local.ahk` configuration for packages at all; a deployment that
+turns out to stage a local copy can be fixed by setting `ShareDir`
+explicitly, discoverable from the same `A_ScriptDir` log line without
+needing to guess or experiment blindly.
+
+**Rejected alternatives:** requiring `Packages.ShareDir` unconditionally
+(D-048's original shape) — superseded here specifically because it forces
+manual configuration even in the common case where auto-detection already
+works, and because keeping the deploy location and the configured
+`ShareDir` in two separate places invites them silently drifting apart;
+detecting "was this copied locally" some other way (e.g. comparing
+`A_ScriptDir` against a known-share-prefix pattern) — rejected as more
+complex and less reliable than simply letting an explicit override win when
+one is present, which handles the "auto-detection guessed wrong" case
+without DocBot needing to guess *why* it guessed wrong.
+
+**Consequences**
+
+- No `DocBot.local.ahk` changes are needed for packages at all, for a
+  compiled deployment that runs directly from its network location — the
+  common case this was built for.
+- The `A_ScriptDir` log line is unconditional and cheap (one `DebugLog`
+  call), so it costs nothing on installs that never need it, while being
+  the exact piece of evidence needed to diagnose the one case that does
+  (local-copy launch).
+- `Packages.ShareDir`'s meaning changes from "the only way to configure
+  this" (D-048) to "override when auto-detection would be wrong" — existing
+  `DocBot.local.ahk` files that already set it keep working identically,
+  since an explicit value still always wins.
+- Still not yet validated on a compiled build on Windows, and specifically
+  not yet validated against an actual Ivanti-launched run (see D-037,
+  D-048) — whether the project owner's Ivanti Application configuration
+  runs `DocBot.exe` from source or from a local staged copy is exactly the
+  open question the new `A_ScriptDir` log line exists to answer, and is not
+  yet answered.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.4`).
+
+---
+
+## D-050 — The resolved package path is shown on screen, not in the standard log
+
+**Status:** Accepted
+
+Testing D-049 immediately showed the flaw: `SanitizeLogText()` (D-031's
+standard-log sanitization, in place well before this work) unconditionally
+redacts anything shaped like a local drive path (`X:\...` → `<lokaal pad
+afgeschermd>`) or a UNC path (`\\...` → `<netwerkpad afgeschermd>`) before a
+line ever reaches `debug.log` — by design, because the standard log can be
+attached to an emailed problem report, and a local path frequently contains
+the Windows username. The new `A_ScriptDir`/"Pakketten bron" log lines went
+through this same path, so the one piece of information they existed to
+show — the actual resolved directory — was exactly what got stripped out
+every time. Bypassing sanitization for just these lines was rejected
+immediately: it would carve a one-off exception into the same privacy
+guarantee D-030/D-031 established for the whole standard log, for a value
+that predictably contains the Windows username.
+
+The redacted placeholder text is not entirely useless on its own — which
+category matched (`<netwerkpad afgeschermd>` vs. `<lokaal pad afgeschermd>`)
+already answers the yes/no version of the Ivanti question (UNC vs. local
+drive path) without revealing the path itself — but the project owner
+wants the actual path, not just that classification.
+
+The fix moves the diagnostic to a surface that is never written to disk or
+emailed: the Hotstringpakketten (Package Manager) window, which is only
+ever visible to whoever is already sitting at the machine. The first
+attempt appended `BundledPackageDir` to `RefreshPackageManagerItems()`'s
+"Selecteer links een pakket." status text — but a screenshot from the
+project owner immediately showed why that doesn't work in practice: a
+package (and often an item within it) is normally already selected the
+moment the window opens, which overwrites that same status-text control
+with item/conflict details before it can ever be read. The path now lives
+instead in the window's static intro text (`"Kies links een pakket..."`,
+just below the title), which no selection-change handler ever touches —
+extending its height from 28 to 36px uses space already free above the
+list views (`y54 + h36 = 90`, exactly where they start), so no other
+control needed to move. The zero-packages case — arguably the most
+important one to diagnose, since it means the Package Manager window would
+otherwise never open at all — gets the same unsanitized path in its
+`MsgBox` instead.
+
+**Rejected alternatives:** bypassing or weakening `SanitizeLogText()` for
+this one log label — rejected per D-030/D-031 above; adding a new,
+separately-consented "show raw diagnostics" log tier — rejected as
+disproportionate for a single path value when an existing, always-available
+GUI surface already solves it with no new consent flow or storage.
+
+**Consequences**
+
+- The `A_ScriptDir`/"Pakketten bron" standard-log lines from D-049 stay as
+  they are (still sanitized, still useful for the network-vs-local
+  classification) — this decision adds a second, complementary surface
+  rather than replacing them.
+- Anyone diagnosing an Ivanti launch now opens **Pakketten** (or triggers
+  its "no packages" message) instead of reading `debug.log` for this
+  specific value.
+- `ShowPackageManager()` now reads the `BundledPackageDir` global, which it
+  did not previously depend on; `RefreshPackageManagerItems()`'s status text
+  is unchanged from before this decision.
+- The path is visible only while the Package Manager window is open with
+  nothing selected, or in the zero-packages message — not a permanent,
+  always-on-screen indicator. Acceptable for a diagnostic aid; revisit if
+  this needs to be checkable without opening that window.
+- Not yet validated on a compiled build on Windows (see D-037) — the
+  `MsgBox`/intro-text wording and the two-line static text's rendering
+  were reviewed as source only.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.6`).
+
+---
+
+## D-051 — `RefreshPackageManagerItemDetails()` re-checks its status control before every write, not only at entry
+
+**Status:** Accepted
+
+While testing D-050, the project owner hit an unrelated, pre-existing crash
+in the Package Manager: `Error: This value of type "Integer" has no
+property named "Value"` at `PackageManagerStatusText.Value := detail`
+inside `RefreshPackageManagerItemDetails()`. That function already guarded
+against a destroyed GUI, but only once, at entry
+(`if !IsObject(PackageManagerStatusText) return`). `RefreshPackageManagerItems()`'s
+own comments already document why that single check is not enough for this
+window: "De gebruiker kan het venster sluiten terwijl de statusindex wordt
+opgebouwd" (the user can close the window while the status index is still
+being built) — `GetPackageItemStatus()`/`FindPackageItemConflict()` scan
+every active package's items for conflicts, which is slow enough on a large
+package (the project owner's own test had a 1,393-item package active) that
+AHK can dispatch a window-close event mid-function, which runs
+`ClosePackageManager()` and resets `PackageManagerStatusText` to `0` before
+`RefreshPackageManagerItemDetails()` reaches its own final write — passing
+the entry guard is no protection against that happening later in the same
+call. This is not a consequence of any of D-046 through D-050's changes;
+none of them touch this function. It surfaced now simply because a large
+package made the race easier to hit while testing them.
+
+The fix re-checks immediately before each of the function's two writes to
+`PackageManagerStatusText`, using `IsLiveGuiControl()` — the same
+`DllCall("IsWindow", ...)`-backed helper `RefreshPackageManagerItems()`
+already uses for its own controls, for consistency and because it catches a
+stale-but-still-object control reference, not only a reset-to-`0` global.
+
+**Rejected alternatives:** wrapping the whole function in `Critical` to
+block interruption — rejected because `GetPackageItemStatus()` on a large
+package is exactly the kind of long-running work `Critical` would make
+worse to interrupt cleanly (e.g. blocking the close button entirely while
+it runs, rather than letting the close proceed and this function simply no
+one write its now-stale result).
+
+**Consequences**
+
+- Closing the Package Manager window while a large package's status is
+  still being computed no longer crashes; the in-flight refresh silently
+  discards its result instead, which is correct since there is no longer a
+  window to show it in.
+- Established the same "re-check `IsLiveGuiControl()` before every write,
+  not only at function entry" pattern already used in
+  `RefreshPackageManagerItems()` should be considered for equivalent
+  functions with slow per-item work — not applied elsewhere in this
+  decision, since `RefreshPackageManagerPackages()`'s own loop is a fast
+  flat `.Add()` per package with no per-item conflict scan and no report of
+  it crashing this way.
+- Not yet re-validated on a compiled build on Windows (see D-037) after
+  this fix — the original crash was caught on a real compiled build, but
+  the fix itself has only been reviewed as source.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.6`).
+
+---
+
+## D-052 — `Build-EPD_Machine.bat` populates each deploy target's `packages` folder
+
+**Status:** Accepted
+
+D-049's auto-detection (`A_ScriptDir "\packages"`) assumed the compiled
+`DocBot.exe` and a populated `packages/` folder would end up side by side.
+The project owner pointed out the real deploy layout doesn't match that
+assumption on its own: `Build-EPD_Machine.bat` compiles `DocBot.exe` next to
+`DocBot.ahk` (inside the git checkout), then deploys a *copy* one directory
+above it, to `PARENT_DIR\APP_NAME.exe` (the `:deploy` subroutine, already
+existing before this branch). `A_ScriptDir` for that deployed, running copy
+therefore resolves to `PARENT_DIR` — one level above the checkout that
+actually contains `packages/`. Without this decision, D-049's auto-detected
+path would reliably point at a `packages` folder that never gets created,
+making the "auto" half of D-049 non-functional for the project's own real
+deployment shape, not just a hypothetical Ivanti edge case.
+
+`:deploy` now calls a new `:sync_packages` subroutine right after an
+executable is successfully placed and verified, once per deploy target
+(so both the main `DocBot`/`DocBot-test`/`DocBot-dev` target and the
+optional sibling `EPD_Machine` target get their own `packages` folder).
+Per the project owner's own two-step reasoning during this conversation —
+first proposed as "check whether populated, copy if not, else install the
+newest version," then revised to the simpler final shape — the logic is:
+
+- `PARENT_DIR\packages` does not exist yet → copy it fresh from this
+  checkout's own `packages\`, no prompt (nothing to lose).
+- `PARENT_DIR\packages` already exists → ask interactively (`choice /C JN`,
+  the same pattern already used for the EPD_Machine copy question) whether
+  to replace it with this checkout's current `packages\`. A "no" leaves it
+  untouched — deliberately, so a deploy-target `packages` folder a project
+  owner has hand-edited (e.g. added a custom package directly on the share)
+  is never silently clobbered by a routine rebuild. A "yes" deletes the
+  existing folder and copies fresh, rather than merging, so a package
+  removed or renamed in the checkout actually disappears from the deploy
+  target too instead of lingering alongside the new set.
+
+**Rejected alternatives:** always overwriting without asking — rejected
+because it would silently destroy any package added directly on a deploy
+share outside the normal `packages/`-in-git workflow (the project owner's
+own `anest.json` experiment, from earlier in this conversation, is exactly
+such a case); merging instead of replacing on overwrite — rejected because
+a merge can't express "this package was intentionally removed," which
+matters just as much here as it did for `InitializeBundledPackages()`'s own
+now-removed local-cache-clearing logic (D-048).
+
+**Consequences**
+
+- D-049's auto-detected path now actually resolves to a real, populated
+  folder after a normal `Build-EPD_Machine.bat` run, for every deploy
+  target the script knows about — closing the gap this decision exists to
+  fix.
+- Running `Build-EPD_Machine.bat` against a deploy target that already has
+  a hand-edited `packages` folder now pauses for a yes/no prompt every
+  time, unless answered "yes" to accept the checkout's version once and for
+  all going forward (there is no "always overwrite" or "never ask again"
+  option here — every run asks again if the folder still exists).
+- This is `Build-EPD_Machine.bat`-only; it does not touch `DocBot.ahk`, so
+  per the branch-versioning rules in `CLAUDE.md`/`AGENTS.md` this commit
+  does not bump `global AppVersion`.
+- Not yet validated on a compiled build on Windows (see D-037) — the batch
+  logic (`xcopy`/`rd`/`choice` interplay, `errorlevel` propagation through
+  `:sync_packages`'s own `setlocal`) has only been reviewed as source, not
+  run.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`.
+
+---
+
+## D-053 — Document the migration registry and add an opt-in self-test entry point, without a code module split
+
+**Status:** Provisional; implemented on `claude/schema-migrations-setup-waiigd`,
+merged into `claude/hotstring-package-load-logging-w4cc5a`
+(`AppVersion 2.3-schema-migraties.1` originally; renumbered from this
+branch's own D-046 to D-053 on merge, see that branch's D-046 through D-052
+above), not yet validated on a compiled build
+on Windows (see D-037).
+
+Requested directly by the project owner ahead of the next feature: "get
+schema migrations in order first." `docs/TODO.md` already carried two
+relevant P2 items — "Make migration behavior easier to inspect" and, within
+"Introduce targeted automated tests where practical", "JSON
+migration/default-addition idempotency."
+
+**What this covers:**
+
+1. `docs/MIGRATIONS.md` — a new registry documenting, per storage format
+   (`hotstrings.json`, `speeddial.json`, `packages/*.json` +
+   `manifest.json`, `package-settings.json`), which schema version added
+   which field/default, the functional key used, which legacy
+   filenames/formats are still read, and a checklist for adding a future
+   migration. Explicitly records that hotstring schema versions 2–4 have no
+   dedicated migration block in the current code rather than guessing at
+   invented history.
+2. Two small shared helpers in `DocBot.ahk`, `ReadSchemaVersion(document)`
+   and `RejectNewerSchemaVersion(schemaVersion, currentVersion, subject)`,
+   defined once immediately before `InitializeBundledPackages()` and used by
+   all five schema-version-parsing/rejection call sites (hotstrings, speed
+   dial, package manifest, package file, package settings). This is a
+   behavior-preserving extraction of duplicated code, not a new migration
+   engine.
+3. An opt-in, argument-gated self-test entry point:
+   `if HasCommandLineArgument("--selftest")`, reusing the existing
+   command-line-argument scanner already used for
+   `GetRequestedStartupWindowState()` rather than inventing a second,
+   positional way to read `A_Args`. Placed immediately after
+   `ValidateLocalConfiguration()` succeeds and before `global AppVersion` —
+   i.e. before any GUI, user-data, or network access. It calls
+   `RunSelfTests()` from the new `tests/SelfTests.ahk` (`#Include`d as
+   function definitions only, so it changes nothing during a normal start)
+   and then `ExitApp()`s with a pass/fail exit code. `tests/SelfTests.ahk`
+   covers the two new helpers plus the idempotency of
+   `AddMissingDefaultHotstrings()`, `AddMissingDefaultSpeedDials()`, and
+   `NormalizeHotstringItem()`, temporarily substituting `global LocalConfig`
+   with a small fixture so the test is deterministic regardless of the
+   developer's real `DocBot.local.ahk` contents (which, per D-003, is never
+   committed and may have empty `DefaultHotstrings`/`DefaultSpeedDials`).
+   `RunSelfTests()` runs each test case through a small wrapper
+   (`RunSelfTestCase()`) that catches any unexpected exception and records it
+   as one FAIL line rather than letting it escape uncaught — the same class
+   of risk D-040 already had to defend against for `/Validate` (an
+   AutoHotkey process can show a blocking error dialog a headless CI runner
+   never dismisses instead of exiting with a clear failure).
+4. `.github/workflows/ahk-syntax-check.yml` runs `AutoHotkey64.exe
+   DocBot.ahk --selftest` as a second step in the same job, immediately
+   after the existing `/Validate` step, reusing the same
+   no-`-Wait`/`WaitForExit(60000)`/force-kill pattern from D-040 because a
+   real AutoHotkey process can hang a CI runner on a blocking dialog the
+   same way `/Validate` could. The pass/fail signal is the process exit
+   code (`RunSelfTests()`'s return value via `ExitApp(exitCode)`), not
+   captured stdout: `AutoHotkey64.exe` is a GUI-subsystem executable, and
+   whether `FileAppend(text, "*")` reliably reaches a redirected stdout for
+   such a process is not proven anywhere else in this codebase (no existing
+   call site uses it). `RunSelfTests()` therefore writes its human-readable
+   result lines to a fixed file,
+   `%TEMP%\docbot-selftest-results.txt` (overwritten every run,
+   `SelfTestLogPath()`), mirroring the existing `%TEMP%`-based diagnostic
+   artifact convention (D-041/D-044) rather than the network/GUI-coupled
+   rest of the app; the workflow step reads that file for the CI log after
+   `WaitForExit` succeeds, and degrades to a warning (not a failure) if the
+   file is missing. It still also attempts `FileAppend(text, "*")` as a
+   best-effort convenience for someone running `--selftest` interactively
+   from a normal console, but nothing depends on that path working.
+5. Message-wording unification: the five schema-version-ceiling error
+   messages (previously worded slightly differently, and in
+   `ReconcilePackageSettings()`'s case not even including the version
+   numbers) now share one template via `RejectNewerSchemaVersion()`. This
+   changes the exact Dutch wording shown in the rare "file is newer than
+   this DocBot build" error dialog; it does not change control flow, and
+   these strings are not among the stable product-facing names protected
+   elsewhere (D-015's package-status names, D-030's telemetry disclosure).
+
+**Rejected alternative:** moving the pure hotstring/speed-dial
+item-construction functions (`CreateHotstringItem`, `NormalizeHotstringItem`,
+`AddMissingDefaultHotstrings`, `CreateSpeedDialEntry`,
+`AddMissingDefaultSpeedDials`, etc.) into their own included file (mirroring
+the existing `Telemetry.ahk` module boundary), which would have let a
+separate test script `#Include` just that file without triggering
+`DocBot.ahk`'s auto-execute section at all. Rejected for now because these
+functions are called from many other subsystems throughout the file
+(hotstring editor save, package conflict resolution) and relocating
+core, frequently-called logic cannot be validated by this agent (no Windows
+runtime available, D-037) — `docs/TODO.md` P2 "Consider gradual
+modularization after 2.2" already flags exactly this kind of move as
+non-casual, future work requiring careful accounting of AHK v2 top-level
+init order and callback/global coupling. The chosen design (self-test
+gated by a CLI argument inside the existing monolith) gets equivalent test
+coverage of the pure logic without moving any existing call site's file
+location.
+
+**Rejected alternative:** a generic, config-driven "migration engine"
+(e.g. a table of `{schema, version, migrationFn}` triggered by a shared
+loader). Rejected because the four schemas' per-item loops, default-source
+functions (`DefaultPersonalHotstrings()` vs `DefaultSpeedDialEntries()`),
+and save paths are different enough that a generic engine would mostly be
+indirection around four things that are still, in practice, bespoke; the
+project's own P2 backlog item asked to document/extract "without changing
+behavior immediately," not to build new abstraction.
+
+**Consequences**
+
+- `docs/MIGRATIONS.md` closes `docs/TODO.md` P2 "Make migration behavior
+  easier to inspect."
+- The "JSON migration/default-addition idempotency" bullet under P2
+  "Introduce targeted automated tests where practical" is now covered for
+  the pure normalization/default-merge functions; the other bullets in that
+  same TODO item (number normalization, execution-mode selection, package
+  conflict resolution, telemetry payload/redaction, manifest parsing) remain
+  open and are not addressed by this change.
+- A future fifth schema (or a fifth storage format) should reuse
+  `ReadSchemaVersion()`/`RejectNewerSchemaVersion()` and add both a
+  `docs/MIGRATIONS.md` row and a `tests/SelfTests.ahk` case in the same
+  change, per the checklist in `docs/MIGRATIONS.md`.
+- `tests/SelfTests.ahk` ships inside the compiled executable (it is
+  `#Include`d unconditionally, like `Telemetry.ahk`) but is fully inert
+  without the `--selftest` argument, which no normal end-user launch path
+  supplies; this mirrors already-shipped dev-only code gated by other
+  conditions (e.g. `IsDevMode`).
+- Not yet confirmed on a compiled build on Windows: that `--selftest`
+  actually exits cleanly with the expected exit code from a compiled `.exe`
+  (only interpreter-level reasoning and the CI runner's use of the portable
+  interpreter support this so far), and that
+  `%TEMP%\docbot-selftest-results.txt` is actually written and readable by
+  the CI step in that environment. The exit code is the load-bearing signal
+  either way — the log file is diagnostics only, and its absence degrades to
+  a warning, not a failed step. If either mechanism turns out not to work as
+  expected on Windows, fix it rather than removing the gate.
+
+---
+
+## D-054 — Package manifest entries hold only `id`/`file`; package files gain an optional free-text `owner`
+
+**Status:** Accepted
+
+The project owner asked for package ownership to be visible in the
+structure (motivated directly by `packages/anest.json`, added on this
+branch by hand, and the earlier compiled-build testing that made clear
+custom packages can now come from multiple people once D-048 moved package
+loading to a live-read-from-a-share model). While deciding where an
+`owner` field should live, a related question came up: `manifest.json`
+entries already duplicate `name`, `version`, and `description` from each
+package file's own top-level fields. Checked directly against the code
+(`grep "packageEntry\["`): only `packageEntry["id"]` and
+`packageEntry["file"]` are ever read anywhere. The other three fields in
+every manifest entry are, and always were, dead data — never validated,
+never displayed, never cross-checked against the package file's own
+values. Adding a fourth duplicated field (`owner`) to both places would
+have repeated that mistake going forward instead of fixing it.
+
+**What changed:**
+
+- `packages/manifest.json`: every entry trimmed to `id` + `file` only, both
+  in the repository's own copy and in the description of what
+  `InitializeBundledPackages()` expects. This did not require a code
+  change — the existing validation
+  (`if !packageEntry.Has("id") || !packageEntry.Has("file")`) never
+  required the other fields either, so removing them from the data breaks
+  nothing.
+- `owner` (optional free text — who creates/maintains this package) added
+  to all six current package files (`nl-taal`, `spelfouten-wikipedia`,
+  `medisch-algemeen`, `controles`, `gyn-obst`, `anest`), each as an empty
+  `""` placeholder rather than a guessed name — this agent has no reliable
+  way to know who actually owns each one, and D-045's own precedent (never
+  overwrite/guess user-owned content) applies here too. Filling in the real
+  names is left to the project owner.
+  `LoadBundledPackageFile()` validates only that, if present, `owner` is
+  not an object (a JSON array/nested object there would break later string
+  use); it is not required, and adding it did not bump
+  `BundledPackageSchemaVersion` — see `docs/MIGRATIONS.md`'s package
+  section for why that ceiling exists.
+- `owner` is deliberately package-level only, not per-item: items within
+  one package file are consistently authored/maintained as a single unit
+  (exactly how `anest.json` was just added), so a per-item field would add
+  structure without a real use case.
+- Surfaced in **Pakketten**: `RefreshPackageManagerItemDetails()`'s status
+  line now reads `"<name> (eigenaar: <owner>) · <status>"` (owner segment
+  omitted when blank) instead of just `"<name> · <status>"`. This reuses
+  the existing dynamic status text rather than adding a new control or
+  ListView column — deliberately, to avoid the kind of untested pixel
+  layout risk flagged repeatedly elsewhere in this log (D-037, D-045):
+  `PackageManagerPackageLV`'s four columns already fill its `w326`, so a
+  fifth visible "Eigenaar" column would need shrinking existing columns or
+  widening the whole window, neither of which can be checked without
+  Windows.
+
+**Rejected alternatives:** keeping `owner` in `manifest.json` instead of
+(or in addition to) the package file — rejected because it would recreate
+the exact dead-duplication problem this decision otherwise fixes; guessing
+real owner names for the six existing packages from context (e.g. crediting
+the project owner for the original five) — rejected, an empty placeholder
+that is visibly blank is more honest than a plausible-looking guess a
+reader might trust as accurate; a dedicated package-details panel/column in
+the Package Manager window instead of reusing the status text — not
+rejected outright, just deferred as unnecessary complexity/layout risk for
+what the status-text change already delivers.
+
+**Consequences**
+
+- Adding a new package (as the project owner already did for `anest.json`)
+  now only requires an `id`/`file` pair in the manifest — one less pair of
+  fields to keep in sync with the package file's own metadata.
+- All six current package files ship with an empty `"owner": ""` needing to
+  be filled in; nothing in the code requires this, so an unfilled owner is
+  a silent gap, not an error — worth a manual pass by the project owner
+  rather than assuming it will get noticed on its own.
+- A future package-settings or manifest schema bump for an unrelated reason
+  should not reintroduce name/version/description into manifest entries
+  "for convenience" without re-checking whether something new actually
+  reads them by then.
+- Not yet validated on a compiled build on Windows (see D-037) — the
+  `IsObject()` guard on `owner`, the status-text change, and the trimmed
+  `manifest.json` have only been reviewed as source and checked with a
+  local JSON parser, not run through DocBot itself.
+- Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
+  (`AppVersion 2.3-pakket-logging.8`).

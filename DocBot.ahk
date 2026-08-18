@@ -6,6 +6,9 @@ Persistent true
 #Include Telemetry.ahk
 #Include ThirdParty\UIA-v2\UIA.ahk
 #Include ThirdParty\UIA-v2\UIA_Browser.ahk
+; Alleen functiedefinities; wordt pas uitgevoerd via de --selftest-poort
+; hieronder, ná geldige lokale configuratie. Zie docs/MIGRATIONS.md.
+#Include tests\SelfTests.ahk
 
 ; De echte lokale configuratie wordt bewust niet door Git gevolgd. Tijdens
 ; compilatie neemt Ahk2Exe dit include-bestand wel in de executable op.
@@ -24,7 +27,18 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-dev.4"
+; Poort voor het losstaande zelftestpakket (tests/SelfTests.ahk): alleen
+; actief met het expliciete argument --selftest, ná geldige lokale
+; configuratie maar vóór elke GUI-, netwerk- of gebruikersdatatoegang. Een
+; normale start (dubbelklik of de gecompileerde executable zonder
+; argumenten) bereikt deze tak nooit. Zie docs/MIGRATIONS.md en
+; tests/README.md.
+if HasCommandLineArgument("--selftest") {
+    exitCode := RunSelfTests()
+    ExitApp(exitCode)
+}
+
+global AppVersion := "2.3-pakket-logging.8"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -4742,13 +4756,20 @@ EscapeSmsJavaScriptString(value) {
 ; =============================================================================
 
 ShowPackageManager(*) {
-    global MainGui, C, BundledPackages
+    global MainGui, C, BundledPackages, BundledPackageDir
     global PackageManagerGui, PackageManagerPackageLV, PackageManagerItemLV
     global PackageManagerStatusText
 
     if BundledPackages.Count = 0 {
+        ; De pakketbron wordt hier expliciet op het scherm getoond (niet
+        ; alleen in het standaardlog): dat log schermt lokale/netwerkpaden
+        ; altijd af omdat het ongewijzigd in een probleemrapport terecht kan
+        ; komen, terwijl dit venster alleen zichtbaar is voor wie al achter
+        ; de machine zit. Precies bij nul geladen pakketten is dit pad de
+        ; belangrijkste aanwijzing om te controleren.
         MsgBox(
-            "Er zijn geen meegeleverde hotstringpakketten beschikbaar.",
+            "Er zijn geen meegeleverde hotstringpakketten beschikbaar.`n`n"
+            "Pakketbron: " (BundledPackageDir != "" ? BundledPackageDir : "(onbekend)"),
             "DocBot - Hotstringpakketten",
             "Icon!"
         )
@@ -4777,9 +4798,14 @@ ShowPackageManager(*) {
     )
     title.SetFont("s19 bold c" C["Text"], "Segoe UI")
 
+    ; Statische tekst (nooit overschreven door een selectiewijziging, in
+    ; tegenstelling tot PackageManagerStatusText hieronder) — vandaar dat de
+    ; pakketbron hier staat en niet alleen in het standaardlog, dat
+    ; lokale/netwerkpaden altijd afschermt (`docs/DECISIONS.md` D-050).
     intro := PackageManagerGui.AddText(
-        "x24 y54 w852 h28 Background" C["Window"],
-        "Kies links een pakket en bekijk rechts eerst de inhoud en eventuele conflicten."
+        "x24 y54 w852 h36 Background" C["Window"],
+        "Kies links een pakket en bekijk rechts eerst de inhoud en eventuele conflicten.`n"
+        "Pakketbron: " BundledPackageDir
     )
     intro.SetFont("s9 c" C["Muted"], "Segoe UI")
 
@@ -5249,12 +5275,18 @@ GetPackageItemStatus(packageId, itemId) {
 RefreshPackageManagerItemDetails(*) {
     global BundledPackages, PackageManagerStatusText
 
-    if !IsObject(PackageManagerStatusText)
+    ; De gebruiker kan het venster sluiten terwijl GetPackageItemStatus()/
+    ; FindPackageItemConflict() voor een groot pakket nog aan het rekenen
+    ; is (zie dezelfde opmerking bij RefreshPackageManagerItems()). Toets
+    ; daarom niet alleen bij binnenkomst, maar ook vlak vóór iedere
+    ; schrijfactie opnieuw of de control nog bestaat.
+    if !IsLiveGuiControl(PackageManagerStatusText)
         return
 
     selected := GetSelectedPackageManagerItem()
     if !IsObject(selected) {
-        PackageManagerStatusText.Value := "Selecteer een pakketitem."
+        if IsLiveGuiControl(PackageManagerStatusText)
+            PackageManagerStatusText.Value := "Selecteer een pakketitem."
         return
     }
 
@@ -5265,7 +5297,9 @@ RefreshPackageManagerItemDetails(*) {
     conflict := FindPackageItemConflict(packageId, itemId)
 
     status := GetPackageItemStatus(packageId, itemId)
-    detail := package["name"] " · " status
+    packageOwner := package.Has("owner") ? Trim(package["owner"] "") : ""
+    ownerSuffix := packageOwner != "" ? " (eigenaar: " packageOwner ")" : ""
+    detail := package["name"] ownerSuffix " · " status
 
     switch status {
         case "Inactief":
@@ -5291,7 +5325,8 @@ RefreshPackageManagerItemDetails(*) {
     if packageItem.Has("note") && Trim(packageItem["note"]) != ""
         detail .= " · " packageItem["note"]
 
-    PackageManagerStatusText.Value := detail
+    if IsLiveGuiControl(PackageManagerStatusText)
+        PackageManagerStatusText.Value := detail
 }
 
 ToggleSelectedPackage(*) {
@@ -6435,53 +6470,69 @@ ManualSaveHotstrings(pathEdit, *) {
 ; MEEGELEVERDE HOTSTRINGPAKKETTEN
 ; =============================================================================
 
+; Levert de map waaruit pakketbestanden rechtstreeks worden gelezen — geen
+; lokale kopie, geen inbakken in de executable. DocBot leest bij iedere
+; start live vanaf deze locatie, zodat een wijziging op de bron (nieuw,
+; aangepast of verwijderd pakketbestand) direct meekomt bij de volgende
+; start, zonder herbouw of herdistributie van de executable.
+;
+; Voor de gecompileerde versie geldt, als die is ingevuld, eerst
+; Packages.ShareDir uit DocBot.local.ahk. Zonder die expliciete override
+; neemt DocBot aan dat de executable zelf al rechtstreeks vanaf de juiste
+; netwerklocatie draait (bijvoorbeeld via een launcher als Ivanti die "vanaf
+; de bron" start, niet een lokale gecachete kopie) en leest packages\ naast
+; zichzelf, af te leiden uit A_ScriptDir — vandaar dat die hieronder altijd
+; wordt gelogd. Start de launcher in plaats daarvan een lokale kopie van de
+; executable, dan wijst A_ScriptDir naar die lokale map in plaats van de
+; share; zet dan Packages.ShareDir expliciet (`docs/DECISIONS.md` D-048,
+; D-049).
 GetBundledPackageDirectory() {
-    localAppData := EnvGet("LocalAppData")
-    if localAppData = ""
-        throw Error("De Windows-map LocalAppData kon niet worden gevonden.")
+    global LocalConfig
 
-    ; Ongecompileerde tests blijven strikt gescheiden van de productcache.
-    cacheName := A_IsCompiled ? "DocBot" : "DocBot-dev"
-    packageDir := localAppData "\\" cacheName "\\packages"
-
-    if !DirExist(packageDir)
-        DirCreate(packageDir)
-
-    InstallBundledPackageFiles(packageDir)
-    return packageDir
-}
-
-InstallBundledPackageFiles(packageDir) {
-    packageFiles := [
-        "manifest.json",
-        "nl-taal.json",
-        "medisch-algemeen.json",
-        "controles.json",
-        "spelfouten-wikipedia.json",
-        "gyn-obst.json"
-    ]
+    DebugLog("i", "Pakketten bron", "A_ScriptDir: " A_ScriptDir)
 
     if A_IsCompiled {
-        ; De bronpaden van FileInstall moeten letterlijk in het script staan,
-        ; zodat Ahk2Exe alle pakketten in de executable kan opnemen.
-        FileInstall "packages\manifest.json", packageDir "\manifest.json", true
-        FileInstall "packages\nl-taal.json", packageDir "\nl-taal.json", true
-        FileInstall "packages\medisch-algemeen.json", packageDir "\medisch-algemeen.json", true
-        FileInstall "packages\controles.json", packageDir "\controles.json", true
-        FileInstall "packages\spelfouten-wikipedia.json", packageDir "\spelfouten-wikipedia.json", true
-        FileInstall "packages\gyn-obst.json", packageDir "\gyn-obst.json", true
-        return
+        shareDir := ""
+        if IsSet(LocalConfig) && LocalConfig is Map && LocalConfig.Has("Packages")
+            && LocalConfig["Packages"] is Map && LocalConfig["Packages"].Has("ShareDir")
+            shareDir := Trim(LocalConfig["Packages"]["ShareDir"])
+
+        if shareDir != "" {
+            DebugLog("i", "Pakketten bron", "Handmatig geconfigureerd (Packages.ShareDir): " shareDir)
+            return shareDir
+        }
+
+        autoDir := A_ScriptDir "\packages"
+        DebugLog("i", "Pakketten bron", "Automatisch afgeleid van A_ScriptDir: " autoDir)
+        return autoDir
     }
 
-    ; Tijdens ontwikkeling worden de bronbestanden naar een aparte cache
-    ; gekopieerd. Daardoor raakt een test nooit de productiecache.
-    for _, fileName in packageFiles {
-        FileCopy(
-            A_ScriptDir "\packages\" fileName,
-            packageDir "\" fileName,
-            true
+    ; Ontwikkelversie leest rechtstreeks uit de broncode-map, zodat een
+    ; lokaal toegevoegd of gewijzigd pakketbestand direct meekomt bij de
+    ; volgende start.
+    return A_ScriptDir "\packages"
+}
+
+; Schema migraties: gedeelde bouwstenen voor het lezen en afwijzen van
+; schemaVersion-waarden, gebruikt door alle vijf de opslagformaten
+; (pakketmanifest, pakketbestanden, package-settings.json, hotstrings.json,
+; speeddial.json). Zie docs/MIGRATIONS.md voor het volledige overzicht per
+; formaat: welke versie welk veld/standaardwaarde toevoegde en welke oude
+; bestandsnamen/formaten nog worden ondersteund.
+ReadSchemaVersion(document) {
+    return document.Has("schemaVersion") ? (document["schemaVersion"] + 0) : 1
+}
+
+RejectNewerSchemaVersion(schemaVersion, currentVersion, subject) {
+    if schemaVersion > currentVersion
+        throw Error(
+            Format(
+                "{1} gebruikt schemaVersion {2}, maar deze DocBot-versie ondersteunt maximaal versie {3}.",
+                subject,
+                schemaVersion,
+                currentVersion
+            )
         )
-    }
 }
 
 InitializeBundledPackages() {
@@ -6490,59 +6541,91 @@ InitializeBundledPackages() {
     try {
         BundledPackageDir := GetBundledPackageDirectory()
         manifestPath := BundledPackageDir "\manifest.json"
+        DebugLog("i", "Pakketten laden", "Manifest: " manifestPath)
         manifest := LoadBundledJsonFile(manifestPath)
 
         if !(manifest is Map)
-            throw Error("Het pakketmanifest moet een JSON-object zijn.")
+            throw Error("Het pakketmanifest moet een JSON-object zijn: " manifestPath)
 
-        schemaVersion := manifest.Has("schemaVersion")
-            ? (manifest["schemaVersion"] + 0)
-            : 1
-
-        if schemaVersion > BundledPackageSchemaVersion {
-            throw Error(
-                Format(
-                    "Het pakketmanifest gebruikt schemaVersion {1}, maar deze DocBot-versie ondersteunt maximaal versie {2}.",
-                    schemaVersion,
-                    BundledPackageSchemaVersion
-                )
-            )
-        }
+        schemaVersion := ReadSchemaVersion(manifest)
+        RejectNewerSchemaVersion(schemaVersion, BundledPackageSchemaVersion, "Het pakketmanifest")
 
         if !manifest.Has("packages") || !(manifest["packages"] is Array)
-            throw Error("Het veld 'packages' ontbreekt in het pakketmanifest.")
+            throw Error("Het veld 'packages' ontbreekt in het pakketmanifest: " manifestPath)
 
         loadedPackages := Map()
+        failedCount := 0
 
+        ; Eén ongeldig pakketbestand mag de overige, wel geldige pakketten
+        ; niet meeslepen. Elk bestand wordt daarom los geprobeerd en gelogd,
+        ; zodat precies zichtbaar is welk bestand faalde en waarom.
         for _, packageEntry in manifest["packages"] {
             if !(packageEntry is Map)
-                throw Error("Een pakketvermelding in het manifest is ongeldig.")
+                throw Error("Een pakketvermelding in het manifest is ongeldig: " manifestPath)
 
             if !packageEntry.Has("id") || !packageEntry.Has("file")
-                throw Error("Een pakketvermelding mist 'id' of 'file'.")
+                throw Error("Een pakketvermelding mist 'id' of 'file': " manifestPath)
 
             packageId := Trim(packageEntry["id"])
             fileName := Trim(packageEntry["file"])
-            package := LoadBundledPackageFile(BundledPackageDir "\\" fileName)
+            filePath := BundledPackageDir "\\" fileName
 
-            if package["id"] != packageId {
-                throw Error(
+            DebugLog("→", "Pakket laden", "Bestand: " fileName " (manifest-id: " packageId ")")
+
+            try {
+                package := LoadBundledPackageFile(filePath)
+
+                if package["id"] != packageId {
+                    throw Error(
+                        Format(
+                            "Pakket-id '{1}' komt niet overeen met manifest-id '{2}': {3}",
+                            package["id"],
+                            packageId,
+                            filePath
+                        )
+                    )
+                }
+
+                if loadedPackages.Has(packageId)
+                    throw Error("Dubbel pakket-id in manifest: " packageId " (" filePath ")")
+
+                loadedPackages[packageId] := package
+                DebugLog(
+                    "✓",
+                    "Pakket geladen",
                     Format(
-                        "Pakket-id '{1}' komt niet overeen met manifest-id '{2}'.",
-                        package["id"],
-                        packageId
+                        "{1} ({2}), versie {3}, {4} items — {5}",
+                        package["name"],
+                        packageId,
+                        package["version"],
+                        package["items"].Length,
+                        fileName
                     )
                 )
+            } catch as packageError {
+                failedCount += 1
+                ReportStorageError(
+                    Format(
+                        "Hotstringpakket '{1}' kon niet worden geladen.`n`n{2}",
+                        fileName,
+                        packageError.Message
+                    ),
+                    false
+                )
             }
-
-            if loadedPackages.Has(packageId)
-                throw Error("Dubbel pakket-id in manifest: " packageId)
-
-            loadedPackages[packageId] := package
         }
 
         BundledPackages := loadedPackages
-        return true
+        DebugLog(
+            failedCount ? "!" : "i",
+            "Pakketten geladen",
+            Format(
+                "{1} pakket(ten) geladen, {2} mislukt.",
+                loadedPackages.Count,
+                failedCount
+            )
+        )
+        return failedCount = 0
     } catch as error {
         BundledPackages := Map()
         ReportStorageError(
@@ -6570,25 +6653,19 @@ LoadBundledPackageFile(path) {
     if !(package is Map)
         throw Error("Een hotstringpakket moet een JSON-object zijn: " path)
 
-    schemaVersion := package.Has("schemaVersion")
-        ? (package["schemaVersion"] + 0)
-        : 1
-
-    if schemaVersion > BundledPackageSchemaVersion {
-        throw Error(
-            Format(
-                "Pakket {1} gebruikt schemaVersion {2}, maximaal ondersteund is {3}.",
-                path,
-                schemaVersion,
-                BundledPackageSchemaVersion
-            )
-        )
-    }
+    schemaVersion := ReadSchemaVersion(package)
+    RejectNewerSchemaVersion(schemaVersion, BundledPackageSchemaVersion, "Pakket " path)
 
     for _, requiredField in ["id", "name", "version", "items"] {
         if !package.Has(requiredField)
             throw Error("Pakket mist verplicht veld '" requiredField "': " path)
     }
+
+    ; 'owner' is optioneel vrije tekst: wie dit pakket aanmaakt of onderhoudt.
+    ; Geen schemaVersion-eis, geen manifest-kopie — het pakketbestand zelf is
+    ; de enige plek waar dit staat (`docs/DECISIONS.md` D-054).
+    if package.Has("owner") && IsObject(package["owner"])
+        throw Error("Pakket " package["id"] ": 'owner' moet tekst zijn, geen object: " path)
 
     if !(package["items"] is Array)
         throw Error("Het veld 'items' moet een lijst zijn: " path)
@@ -6602,7 +6679,7 @@ LoadBundledPackageFile(path) {
 
         for _, requiredField in ["id", "trigger", "replacement"] {
             if !item.Has(requiredField)
-                throw Error("Pakketitem " index " mist veld '" requiredField "'.")
+                throw Error("Pakketitem " index " mist veld '" requiredField "': " path)
         }
 
         itemId := Trim(item["id"])
@@ -6610,7 +6687,7 @@ LoadBundledPackageFile(path) {
         replacement := item["replacement"] ""
 
         if itemId = "" || trigger = "" || replacement = ""
-            throw Error("Pakketitem " index " bevat een lege id, trigger of vervanging.")
+            throw Error("Pakketitem " index " bevat een lege id, trigger of vervanging: " path)
 
         if seenIds.Has(itemId)
             throw Error("Dubbel item-id in pakket: " itemId)
@@ -6681,11 +6758,8 @@ ReconcilePackageSettings(document) {
     if !(document is Map)
         throw Error("package-settings.json moet een JSON-object zijn.")
 
-    schemaVersion := document.Has("schemaVersion")
-        ? (document["schemaVersion"] + 0)
-        : 1
-    if schemaVersion > PackageSettingsSchemaVersion
-        throw Error("Deze versie van package-settings.json wordt nog niet ondersteund.")
+    schemaVersion := ReadSchemaVersion(document)
+    RejectNewerSchemaVersion(schemaVersion, PackageSettingsSchemaVersion, "package-settings.json")
 
     result := DefaultPackageSettings()
     result["schemaVersion"] := PackageSettingsSchemaVersion
@@ -7208,19 +7282,8 @@ LoadHotstringsFromJson(path, showMessage := false) {
         if !(document is Map)
             throw Error("De JSON-hoofdstructuur moet een object zijn.")
 
-        schemaVersion := document.Has("schemaVersion")
-            ? (document["schemaVersion"] + 0)
-            : 1
-
-        if schemaVersion > HotstringSchemaVersion {
-            throw Error(
-                Format(
-                    "Dit bestand gebruikt schemaVersion {1}, maar deze DocBot-versie ondersteunt maximaal versie {2}.",
-                    schemaVersion,
-                    HotstringSchemaVersion
-                )
-            )
-        }
+        schemaVersion := ReadSchemaVersion(document)
+        RejectNewerSchemaVersion(schemaVersion, HotstringSchemaVersion, "Dit bestand")
 
         if !document.Has("hotstrings") || !(document["hotstrings"] is Array)
             throw Error("Het veld 'hotstrings' ontbreekt of is geen lijst.")
@@ -7376,6 +7439,11 @@ AutoSaveHotstrings(*) {
 }
 
 ReportStorageError(message, showMessage := false) {
+    ; Iedere opslagfout moet terug te vinden zijn in het standaardlog, ook
+    ; wanneer de gebruiker de melding zelf nooit ziet (bijv. stille
+    ; achtergrondacties) of wegklikt.
+    DebugLog("✕", "Opslagfout", message)
+
     if showMessage {
         MsgBox(message, "DocBot - JSON", "Icon!")
         return
@@ -7501,19 +7569,8 @@ LoadSpeedDialFromJson(path, showMessage := false) {
         if !(document is Map)
             throw Error("De JSON-hoofdstructuur moet een object zijn.")
 
-        schemaVersion := document.Has("schemaVersion")
-            ? (document["schemaVersion"] + 0)
-            : 1
-
-        if schemaVersion > SpeedDialSchemaVersion {
-            throw Error(
-                Format(
-                    "Dit bestand gebruikt schemaVersion {1}, maar deze DocBot-versie ondersteunt maximaal versie {2}.",
-                    schemaVersion,
-                    SpeedDialSchemaVersion
-                )
-            )
-        }
+        schemaVersion := ReadSchemaVersion(document)
+        RejectNewerSchemaVersion(schemaVersion, SpeedDialSchemaVersion, "Dit bestand")
 
         if !document.Has("entries") || !(document["entries"] is Array)
             throw Error("Het veld 'entries' ontbreekt of is geen lijst.")
@@ -7680,6 +7737,7 @@ ValidateLocalConfiguration() {
 
     Telemetry_ValidateConfiguration(LocalConfig)
     ValidateSmsCallActionsConfiguration(LocalConfig)
+    ValidatePackagesConfiguration(LocalConfig)
 
     if !(LocalConfig["DefaultSpeedDials"] is Array)
         throw Error("DefaultSpeedDials moet een Array zijn.")
@@ -7737,6 +7795,29 @@ ValidateSmsCallActionItem(item, index) {
     }
     if !RegExMatch(Trim(item["Url"]), "i)^https://")
         throw Error("SmsCallAction item " index " ('" item["Title"] "'): Url moet een HTTPS-URL zijn (http:// wordt niet geaccepteerd).")
+}
+
+; De sectie 'Packages' is optioneel: zonder haar leidt de gecompileerde
+; applicatie de pakketlocatie automatisch af uit A_ScriptDir (zie
+; GetBundledPackageDirectory()) en blokkeert een ontbrekende sectie de
+; opstart dus nooit. Staat de sectie er wel — als expliciete override, bijv.
+; omdat een launcher zoals Ivanti een lokale kopie start in plaats van de
+; executable rechtstreeks vanaf de netwerklocatie — dan moet ShareDir wél
+; een ingevuld, geldig UNC-pad zijn; dat vangt een vergeten
+; placeholderwaarde af.
+ValidatePackagesConfiguration(config) {
+    if !config.Has("Packages")
+        return
+
+    packages := config["Packages"]
+    if !(packages is Map)
+        throw Error("LocalConfig['Packages'] moet een Map zijn.")
+
+    if !packages.Has("ShareDir") || Trim(packages["ShareDir"]) = ""
+        throw Error("Packages mist een ingevulde waarde voor 'ShareDir'.")
+
+    if !RegExMatch(Trim(packages["ShareDir"]), "^\\\\")
+        throw Error("Packages.ShareDir moet een netwerkpad zijn dat begint met \\ (UNC-pad).")
 }
 
 GetConfiguredSmsCallActions() {

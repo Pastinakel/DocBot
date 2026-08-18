@@ -81,6 +81,16 @@ de beschikbare executable opnieuw met dezelfde vensterstatus — actief, op de
 achtergrond of geminimaliseerd — en wordt na een geslaagde herstart door
 DocBot weer verwijderd.
 
+Voor iedere doelmap zorgt de batch na een geslaagde plaatsing van de
+executable ook voor een gevulde `packages`-submap ernaast — dat is de map
+waaruit de gecompileerde applicatie standaard leest (zie "Meegeleverde
+hotstringpakketten" hieronder). Ontbreekt die submap nog, dan wordt hij
+zonder te vragen gevuld vanuit de huidige checkout. Bestaat hij al, dan
+vraagt de batch interactief of hij met de nieuwste versie uit de checkout
+mag worden vervangen; bij "Nee" blijft een eventueel handmatig aangepaste
+inhoud (bijvoorbeeld een pakket dat rechtstreeks op de doellocatie is
+toegevoegd) ongemoeid (`docs/DECISIONS.md` D-052).
+
 Functionaliteit — Hotstrings
 -----------------------------
 - Hotstrings worden opgeslagen als JSON. Standaardlocatie is
@@ -144,15 +154,45 @@ Meegeleverde hotstringpakketten
 De bronbestanden voor meegeleverde hotstrings staan als versieerbare JSON in
 de map `packages`, met `manifest.json` als index. Momenteel bevat de
 catalogus Nederlandse taal, Medisch algemeen, Controles, Veelgebruikte
-spelfouten en Gynaecologie & obstetrie, samen 1.596 pakketitems.
+spelfouten, Gynaecologie & obstetrie en Anesthesiologie & pijngeneeskunde,
+samen 1.598 pakketitems.
 
-Bij compilatie neemt Ahk2Exe de bestanden via `FileInstall` op in de
-executable. De gecompileerde applicatie pakt ze uit naar
-`%LocalAppData%\DocBot\packages`. Een ongecompileerde ontwikkelversie
-kopieert dezelfde bronbestanden naar
-`%LocalAppData%\DocBot-dev\packages`, zodat tests de productiecache nooit
-overschrijven. Deze laag valideert manifest, schema, pakket-ID's,
-itemaantallen en dubbele triggers.
+Een `manifest.json`-vermelding bevat uitsluitend `id` en `file`: DocBot leest
+verder niets anders uit het manifest. Alle inhoudelijke metadata — naam,
+versie, beschrijving en optioneel `owner` (vrije tekst: wie dit pakket
+aanmaakt of onderhoudt, zichtbaar in het venster **Pakketten** zodra een
+item wordt bekeken) — staat uitsluitend in het pakketbestand zelf, nooit ook
+in het manifest (`docs/DECISIONS.md` D-054).
+
+Pakketten worden niet in de executable ingebakken en ook niet lokaal
+gecached: DocBot leest ze bij iedere start rechtstreeks van de bron. Een
+ongecompileerde ontwikkelversie leest daarvoor altijd de bronmap `packages`
+naast `DocBot.ahk`. De gecompileerde applicatie leidt die locatie standaard
+automatisch af: ook zij leest een map `packages` naast zichzelf
+(`A_ScriptDir`), wat vanzelf naar de juiste netwerklocatie wijst wanneer
+`DocBot.exe` rechtstreeks van daar wordt gestart (bijvoorbeeld door een
+launcher als Ivanti die "vanaf de bron" start in plaats van een lokale
+kopie te draaien) — `A_ScriptDir` wordt bij elke start naar het standaardlog
+geschreven, al toont dat log het pad zelf nooit (zie hieronder). Start de
+launcher toch een lokale kopie, dan is dat automatisch afgeleide pad niet
+bruikbaar; `DocBot.local.ahk` kan dan `LocalConfig["Packages"]["ShareDir"]`
+zetten als expliciete override naar het echte UNC-pad (`manifest.json` en
+de pakketbestanden direct erin, geen submap). Een pakketbestand toevoegen,
+wijzigen of verwijderen op de uiteindelijke bron is voor gebruikers direct
+zichtbaar bij hun eerstvolgende DocBot-herstart, zonder dat `DocBot.ahk`
+hoeft te worden aangepast of opnieuw gecompileerd. Is de bron niet
+bereikbaar, dan laadt DocBot die sessie bewust gewoon geen pakketten in
+plaats van de hele opstart te blokkeren; persoonlijke hotstrings blijven
+altijd werken. Deze laag valideert manifest, schema, pakket-ID's,
+itemaantallen en dubbele triggers, en logt per pakketbestand of het laden
+is gelukt (`docs/DECISIONS.md` D-046, D-048, D-049, D-052).
+
+Het standaardlog schermt lokale en netwerkpaden altijd af (zie
+"Probleem melden en diagnostiek" hieronder) — een gelogde pakketbron toont
+dus alleen of het om een lokaal of een netwerkpad gaat, nooit het pad zelf.
+Het echte pad staat wél gewoon op het scherm: in het venster **Pakketten**,
+direct onder de titel, en in de melding wanneer er nul pakketten geladen
+zijn (`docs/DECISIONS.md` D-050).
 
 Pakketkeuzes worden apart en atomisch opgeslagen in
 `package-settings.json`. Dat bestand bevat uitsluitend ingeschakelde
@@ -424,6 +464,56 @@ Changelog
 ---------
 
 ### 2.3 — In ontwikkeling
+- `manifest.json`-vermeldingen bevatten voortaan uitsluitend `id` en `file`;
+  `name`, `version` en `description` stonden daar ongebruikt gedupliceerd
+  (niets in de code las ze) en zijn verwijderd. Pakketbestanden ondersteunen
+  nu ook een optioneel `owner`-veld (vrije tekst), zichtbaar in het venster
+  **Pakketten** naast de pakketnaam zodra een item wordt bekeken
+  (`docs/DECISIONS.md` D-054).
+- Het laden van meegeleverde hotstringpakketten logt nu per bestand naar het
+  standaardlog: welk bestand wordt geprobeerd, of dat lukt (met naam, versie
+  en itemaantal) en zo niet, waarom. Eén ongeldig pakketbestand blokkeert
+  niet langer het laden van de overige pakketten. `ReportStorageError()`
+  schrijft elke opslagfout (pakketten, hotstrings, instellingen,
+  snelkiesnummers) voortaan ook naar het standaardlog, ook wanneer alleen
+  een tray-melding wordt getoond.
+- Meegeleverde hotstringpakketten worden niet meer in de executable
+  ingebakken. De ongecompileerde versie leest ze rechtstreeks uit de
+  bronmap `packages`; de gecompileerde applicatie leest een map `packages`
+  naast zichzelf (`A_ScriptDir`, bij elke start naar het standaardlog
+  geschreven) en gebruikt die automatisch als de executable rechtstreeks
+  vanaf de juiste netwerklocatie draait. Draait de executable via een
+  lokale kopie (bijvoorbeeld door een launcher als Ivanti die niet "vanaf
+  de bron" start), dan kan `LocalConfig["Packages"]["ShareDir"]` in
+  `DocBot.local.ahk` het echte UNC-pad als expliciete override instellen.
+  Een pakketbestand toevoegen, wijzigen of verwijderen op de uiteindelijke
+  bron is zo zichtbaar bij de eerstvolgende DocBot-herstart, zonder
+  wijziging aan of herbouw van `DocBot.ahk` (`docs/DECISIONS.md` D-048/
+  D-049, die samen D-047 vervangen). Het standaardlog schermt dat pad zelf
+  altijd af; het venster **Pakketten** toont het wél onafgeschermd, ook bij
+  nul geladen pakketten (D-050).
+- Het venster **Pakketten** kon vastlopen met een foutmelding
+  ("Integer has no property named 'Value'") bij het sluiten van het venster
+  terwijl de conflictstatus van een groot pakket nog werd berekend.
+  `RefreshPackageManagerItemDetails()` controleert nu vlak vóór iedere
+  schrijfactie opnieuw of de statusregel nog bestaat, in plaats van alleen
+  bij binnenkomst (`docs/DECISIONS.md` D-051).
+- `Build-EPD_Machine.bat` zorgt nu voor elke doelmap ook voor een gevulde
+  `packages`-submap naast de geplaatste executable — de locatie waaruit de
+  gecompileerde applicatie sinds D-049 standaard leest. Ontbreekt de submap,
+  dan wordt hij gevuld vanuit de huidige checkout; bestaat hij al, dan
+  vraagt de batch eerst of hij met de nieuwste versie mag worden vervangen
+  (`docs/DECISIONS.md` D-052).
+- Schemamigraties (hotstrings, snelkiesnummers, pakketten,
+  pakketkeuzes) zijn gedocumenteerd in het nieuwe `docs/MIGRATIONS.md`, en
+  de vijf schemaVersion-controles delen nu twee kleine gezamenlijke
+  functies (`ReadSchemaVersion()`, `RejectNewerSchemaVersion()`) in plaats
+  van vijfmaal losstaande code — dit wijzigt het gedrag niet, alleen de
+  exacte bewoording van de zeldzame "bestand is nieuwer dan deze
+  DocBot-versie"-foutmelding. Een nieuwe, standaard onzichtbare
+  `--selftest`-opstartmodus (`DocBot.ahk --selftest`) draait losstaande
+  zelftests voor deze migratielogica en is nu ook in de CI-syntaxcontrole
+  opgenomen (`docs/DECISIONS.md` D-053).
 - Nieuwe gebruikersinstructie voor veilige hotstring-inhoud: een vijfde
   Help-sectie ("Wat mag ik wel en niet in een hotstring zetten?") en een
   bijbehorende, altijd zichtbare hint op de Tekstvervanging-pagina. De

@@ -133,6 +133,10 @@ if errorlevel 1 goto :deploy_wait
 
 echo Nieuwe executable geplaatst en geverifieerd:
 echo "%DEPLOY_TARGET%"
+
+call :sync_packages "%DEPLOY_DIR%"
+if errorlevel 1 set "DEPLOY_RESULT=1"
+
 goto :deploy_cleanup
 
 :deploy_wait
@@ -163,6 +167,60 @@ if errorlevel 1 (
 )
 
 endlocal & exit /b %DEPLOY_RESULT%
+
+rem De gecompileerde DocBot.exe leidt haar pakketbron bij ontbreken van een
+rem expliciete Packages.ShareDir-override automatisch af uit A_ScriptDir
+rem (docs/DECISIONS.md D-049), oftewel een map "packages" naast zichzelf. Op
+rem een verse doellocatie bestaat die submap nog niet; deze stap zorgt dat
+rem elke deploy-map er een krijgt, zonder een reeds aanwezige (mogelijk met
+rem lokaal toegevoegde pakketten) stilzwijgend te overschrijven.
+:sync_packages
+setlocal EnableExtensions
+set "SYNC_SOURCE=%~dp0packages"
+set "SYNC_DEST=%~1packages"
+
+if not exist "%SYNC_SOURCE%\" (
+    echo.
+    echo FOUT: De bronmap packages is niet gevonden:
+    echo "%SYNC_SOURCE%"
+    endlocal & exit /b 1
+)
+
+if not exist "%SYNC_DEST%\" (
+    echo Geen pakketmap aangetroffen; wordt gevuld vanuit deze checkout:
+    echo "%SYNC_DEST%"
+    xcopy "%SYNC_SOURCE%" "%SYNC_DEST%\" /E /I /Y >nul
+    if errorlevel 1 (
+        echo.
+        echo FOUT: Pakketmap kon niet worden aangemaakt/gevuld.
+        endlocal & exit /b 1
+    )
+    echo Pakketmap aangemaakt en gevuld.
+    endlocal & exit /b 0
+)
+
+echo.
+echo Er staat al een pakketmap in de doellocatie:
+echo "%SYNC_DEST%"
+choice /C JN /N /M "Overschrijven met de nieuwste versie uit deze checkout? [J/N] "
+if errorlevel 2 (
+    echo Bestaande pakketmap ongewijzigd gelaten.
+    endlocal & exit /b 0
+)
+
+rem Volledig vervangen, niet samenvoegen: een pakketbestand dat hier is
+rem verwijderd of hernoemd moet ook echt verdwijnen in de doelmap, niet
+rem naast de nieuwe set blijven hangen.
+rd /s /q "%SYNC_DEST%" >nul 2>&1
+xcopy "%SYNC_SOURCE%" "%SYNC_DEST%\" /E /I /Y >nul
+if errorlevel 1 (
+    echo.
+    echo FOUT: Pakketmap kon niet worden vervangen.
+    endlocal & exit /b 1
+)
+
+echo Pakketmap vervangen met de nieuwste versie.
+endlocal & exit /b 0
 
 :signal_add
 set "DEPLOY_SIGNAL_FILE=%~1"
