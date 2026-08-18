@@ -528,7 +528,7 @@ instruction must:
   `README.md`; owned by the project owner.
 
 Implemented on `claude/hotstring-user-instruction-hcv2jw`
-(`AppVersion 2.3-hotstring-instructie.2`); see `docs/DECISIONS.md` D-045.
+(`AppVersion 2.3-hotstring-instructie.3`); see `docs/DECISIONS.md` D-045.
 Aligned with `docs/DATA_PROTECTION.md` §3.4 (updated in the same change) and
 `README.md`. Per project-owner decision, this does not (yet) extend to
 organizational onboarding — the in-product instruction is intended to cover

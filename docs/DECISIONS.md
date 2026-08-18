@@ -935,17 +935,26 @@ request. The Help page and other non-full-height pages were deliberately
 left out of this alignment, since they are not designed to fill the
 window.
 
-The hint and the Over page's GitHub link were first placed at y=654 (the
-row already used by the Help page's "Probleem melden..." button), then
-moved to y=672 at the project owner's request, to match the y-position of
-the "Sluiten verbergt DocBot in het systeemvak" footer on Overzicht and
-Telefonie instead. `githubLink`'s height shrank from 34 to 24 in the same
-change — at y=672 the original 34px height would have reached y=706, past
-the fixed 700px-tall window. `HotPrivacyHint`'s font grew from s9 to s10,
-matching `githubLink`'s size, per the same request; its color stays
-`C["Muted"]` (only size was asked to match, not color). The Help page's
-"Probleem melden..." button was deliberately left at y=654 — the request
-only covered the Hotstrings and Over footers.
+The hint and the Over page's GitHub link went through two rounds of
+project-owner feedback on their exact vertical position. First placed at
+y=654 (the row already used by the Help page's "Probleem melden..."
+button), they moved to y=672 to match the y-position of the "Sluiten
+verbergt DocBot in het systeemvak" footer on Overzicht and Telefonie
+instead — `githubLink`'s height shrank from 34 to 24 in that change, since
+34 at y=672 would have reached y=706, past the fixed 700px-tall window.
+`HotPrivacyHint`'s font grew from s9 to s10 in the same round, matching
+`githubLink`'s size; its color stayed `C["Muted"]` (only size was asked to
+match, not color).
+
+y=672 turned out to sit close to the window's bottom edge rather than
+centered in the space below the cards, so both controls moved again to be
+vertically centered in the 52px gap between the shared card bottom (y=648)
+and the window edge (700): `HotPrivacyHint` (h=22) to y=663
+(`648 + (52-22)/2`, 15px margin above and below) and `githubLink` (h=24) to
+y=662 (`648 + (52-24)/2`, 14px margin above and below). This intentionally
+no longer matches the Overzicht/Telefonie footer's y=672 or the Help page's
+"Probleem melden..." button at y=654 — centering these two specific
+controls took priority over sharing an exact row with those.
 
 Ownership of the instruction's content and its periodic review sits with
 the project owner; there is, for now, deliberately no separate
@@ -971,10 +980,11 @@ requirement.
   unchanged from before this decision, and consistent with the rejected
   alternative above.
 - Any future change to the Tekstvervanging, Telefonie or Over page layout
-  that moves a card's bottom edge away from y=648, or moves the shared
-  y=672 footer row, should keep the others in sync or explicitly record
-  why they diverge.
+  that moves a card's bottom edge away from y=648 should keep
+  `HotPrivacyHint` and `githubLink` centered in the space below it (or
+  explicitly record why they diverge), independently of the
+  Overzicht/Telefonie footer row at y=672.
 - Implemented on branch `claude/hotstring-user-instruction-hcv2jw`
-  (`AppVersion 2.3-hotstring-instructie.2`); not yet validated on a
+  (`AppVersion 2.3-hotstring-instructie.3`); not yet validated on a
   compiled build on Windows (see D-037) — layout math was verified by hand
   against the fixed 1000×700 window size, not by rendering the GUI.
