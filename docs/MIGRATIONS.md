@@ -111,6 +111,30 @@ exceeds `SpeedDialSchemaVersion`.
 
 ---
 
+## SMS default texts — `sms-default-texts.json`
+
+`SmsDefaultTextSchemaVersion` (currently **1**). No version-gated migration
+exists yet — the schema has never moved past 1. Functional key: `Title`
+(trimmed, case-insensitive), matching the same `SmsCallAction.Title`
+matching already used by `FindSmsCallActionIndexByTitle()` elsewhere in
+`DocBot.ahk`.
+
+Unlike `package-settings.json`, loading does **not** unconditionally
+reconcile/prune entries whose `Title` no longer matches a currently
+configured `SmsCallAction`. An item whose page was renamed or temporarily
+removed from `DocBot.local.ahk` is kept on disk and simply not shown in the
+Instellingen GUI until a matching `Title` exists again — consistent with the
+shared rule of never losing a user-edited value.
+
+`InitializeSmsDefaultTextStorage()` creates an empty document on first run,
+same as `InitializeSpeedDialStorage()`. There is no legacy filename fallback
+— this storage format did not exist before schema version 1.
+
+**Ceiling:** `LoadSmsDefaultTextsFromJson()` rejects a file whose
+`schemaVersion` exceeds `SmsDefaultTextSchemaVersion`.
+
+---
+
 ## Bundled package manifest & package files — `packages/manifest.json`, `packages/*.json`
 
 `BundledPackageSchemaVersion` (currently **1**). No version-gated migration

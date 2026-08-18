@@ -266,6 +266,15 @@ Functionaliteit — Telefonie
   UIA-`AutomationId` uit `FieldId` ingevuld; JavaScript is uitsluitend de
   fallback. SMS wordt alleen aangeboden voor een geldig Nederlands
   06-nummer en DocBot verstuurt het bericht niet zelf.
+- Is voor de gekozen SMS-pagina ook `TextFieldId` geconfigureerd, dan kan de
+  gebruiker onder **Instellingen > SMS actie** per SMS-pagina een
+  meerregelige standaardtekst instellen (harde enters worden bewaard). Die
+  tekst wordt na het telefoonnummer op dezelfde manier (UIA, met JavaScript
+  als fallback) in het berichtveld van de pagina ingevuld. Dit is
+  best-effort: lukt de tekstinvulling niet, dan blijft het al ingevulde
+  telefoonnummer gewoon staan en meldt DocBot geen fout. Zonder
+  `TextFieldId` blijft het standaardtekstveld uitgeschakeld voor die pagina.
+  De standaardtekst wordt per gebruiker bewaard in `sms-default-texts.json`.
 - Elke `SmsCallAction.Url` in `DocBot.local.ahk` moet met `https://`
   beginnen; `ValidateSmsCallActionItem()` weigert een `http://`-waarde al
   bij het opstarten.
@@ -464,6 +473,14 @@ Changelog
 ---------
 
 ### 2.3 — In ontwikkeling
+- Elke geconfigureerde SMS-pagina kan nu een optioneel tweede veld
+  (`TextFieldId`) aanwijzen voor het berichtveld. Is dat ingesteld, dan kan
+  de gebruiker onder **Instellingen > SMS actie** per SMS-pagina een
+  meerregelige standaardtekst instellen (harde enters blijven behouden);
+  DocBot vult die tekst na het telefoonnummer best-effort in hetzelfde
+  berichtveld in. De standaardtekst wordt per gebruiker bewaard in het
+  nieuwe `sms-default-texts.json`, met dezelfde schemaVersion-opzet als
+  `speeddial.json` (`docs/MIGRATIONS.md`, `docs/DECISIONS.md` D-055).
 - `manifest.json`-vermeldingen bevatten voortaan uitsluitend `id` en `file`;
   `name`, `version` en `description` stonden daar ongebruikt gedupliceerd
   (niets in de code las ze) en zijn verwijderd. Pakketbestanden ondersteunen

@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.3-dev.5"
+global AppVersion := "2.3-sms-standaardtekst.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -61,6 +61,7 @@ global ConfigFile := UserDataDir "\settings.ini"
 global DefaultHotstringFile := UserDataDir "\hotstrings.json"
 global DefaultPackageSettingsFile := UserDataDir "\package-settings.json"
 global DefaultSpeedDialFile := UserDataDir "\speeddial.json"
+global DefaultSmsDefaultTextFile := UserDataDir "\sms-default-texts.json"
 
 ; =============================================================================
 ; DocBot
@@ -134,6 +135,12 @@ global SpeedDialSchemaVersion := 3
 global TraySpeedDialMaxEntries := 10
 global SpeedDialEntries := DefaultSpeedDialEntries()
 global Hotstrings := DefaultPersonalHotstrings()
+
+; Standaardtekst per SMS-pagina, functionele sleutel = Title (lowercase,
+; getrimd). Moet vóór BuildMainGui() gevuld zijn: de Instellingen-pagina
+; toont bij constructie meteen de tekst voor de geselecteerde SMS-pagina.
+global SmsDefaultTextSchemaVersion := 1
+global SmsDefaultTexts := Map()
 
 global MainGui := 0
 global Pages := Map("overzicht", [], "telefonie", [], "tekstvervanging", [], "instellingen", [], "help", [], "over", [])
@@ -254,6 +261,7 @@ LoadAppSettings()
 InitializeHotstringStorage()
 InitializePackageSettings()
 InitializeSpeedDialStorage()
+InitializeSmsDefaultTextStorage()
 ReloadRuntimeHotstrings()
 Telemetry_Initialize(ConfigFile, AppVersion, GetTelemetryStatus)
 InitializeDiagnosticLogging()
@@ -581,7 +589,7 @@ BuildMainGui() {
     AddFlatButton("instellingen", 692, 230, 132, 36, "📂  Laden", ManualLoadHotstrings.Bind(filePathEdit), false)
     AddFlatButton("instellingen", 832, 230, 132, 36, "💾  Opslaan", ManualSaveHotstrings.Bind(filePathEdit), true)
 
-    AddCard("instellingen", 236, 304, 736, 202)
+    AddCard("instellingen", 236, 304, 736, 314)
     AddCardLabel("instellingen", 260, 326, 250, 24, "SMS actie", "s14 bold c" C["Text"])
     AddCardLabel("instellingen", 260, 366, 200, 20, "SMS-pagina", "s10 c" C["Muted"])
 
@@ -614,11 +622,39 @@ BuildMainGui() {
         smsAvailabilityText := "Geen SMS-pagina beschikbaar; de bijbehorende belactie is uitgeschakeld."
     AddCardLabel("instellingen", 260, 462, 688, 20, smsAvailabilityText, "s9 c" C["Muted"])
 
+    ; Standaardtekst per SMS-pagina: meerregelig, harde enters toegestaan
+    ; (zelfde Multi/VScroll-opzet als het hotstring-Replacement-veld
+    ; hierboven, dat WantReturn al niet nodig blijkt te hebben).
+    AddCardLabel("instellingen", 260, 488, 400, 18, "Standaardtekst voor deze pagina", "s10 c" C["Muted"])
+    smsDefaultTextGroup := AddRoundedEditGroup("instellingen", 260, 506, 688, 58, "", true, 6)
+    smsDefaultTextEdit := smsDefaultTextGroup["Edit"]
+    smsDefaultTextHint := AddCardLabel("instellingen", 260, 568, 688, 34, "", "s9 c" C["Muted"])
+
+    ; Niet-opgeslagen tekst blijft per SMS-pagina in het geheugen staan
+    ; zolang de Instellingen-pagina open is, ook als tussendoor van
+    ; SMS-pagina wordt gewisseld. Pas op Opslaan wordt alles weggeschreven
+    ; naar sms-default-texts.json, net als de rest van deze pagina.
+    pendingSmsDefaultTexts := Map()
+    smsDefaultTextUiState := Map(
+        "LastTitle", HasConfiguredSmsCallActions() ? ResolveSmsCallActionTitle(State["SmsCallActionTitle"]) : ""
+    )
+    ApplySmsDefaultTextFieldState(smsActionDropDown, smsDefaultTextEdit, smsDefaultTextHint, pendingSmsDefaultTexts)
+    smsActionDropDown.OnEvent(
+        "Change",
+        SmsActionSelectionChanged.Bind(
+            smsActionDropDown, smsDefaultTextEdit, smsDefaultTextHint,
+            pendingSmsDefaultTexts, smsDefaultTextUiState
+        )
+    )
+
     AddFlatButton(
         "instellingen",
-        824, 526, 140, 38,
+        824, 638, 140, 38,
         "Opslaan",
-        SaveSettings.Bind(autoSaveCheck, filePathEdit, smsActionDropDown),
+        SaveSettings.Bind(
+            autoSaveCheck, filePathEdit, smsActionDropDown,
+            smsDefaultTextEdit, pendingSmsDefaultTexts, smsDefaultTextUiState
+        ),
         true,
         C["Window"]
     )
@@ -4475,25 +4511,29 @@ RunSmsCallAction(smsConfig, number) {
             return false
         }
 
-        if FillSmsPhoneFieldWithUIA(edge, smsConfig["FieldId"], number) {
+        phoneFilled := FillSmsFieldWithUIA(edge, smsConfig["FieldId"], number)
+        if phoneFilled {
             ExtendedDebugLog(
                 "✓",
                 "SMS veldinvulling",
                 "AutomationId '" smsConfig["FieldId"] "' via UI Automation ingevuld."
             )
-            return true
+        } else {
+            ExtendedDebugLog(
+                "→",
+                "SMS veldinvulling",
+                "UIA Edit-element niet gevonden; JavaScriptfallback wordt uitgevoerd."
+            )
+            phoneFilled := FillSmsDomFieldWithJavaScript(edge, smsConfig["FieldId"], number)
         }
 
-        ExtendedDebugLog(
-            "→",
-            "SMS veldinvulling",
-            "UIA Edit-element niet gevonden; JavaScriptfallback wordt uitgevoerd."
-        )
-        return FillSmsDomFieldWithJavaScript(
-            edge,
-            smsConfig["FieldId"],
-            number
-        )
+        ; Standaardtekst is best-effort: een mislukte tekstinvulling mag een
+        ; al geslaagde telefoonnummerinvulling niet tot een mislukte
+        ; SMS-actie maken.
+        if phoneFilled
+            FillSmsDefaultTextField(edge, smsConfig)
+
+        return phoneFilled
     } finally {
         SetTitleMatchMode(previousTitleMatchMode)
         DetectHiddenWindows(previousDetectHiddenWindows)
@@ -4656,7 +4696,12 @@ OpenSmsPage(url, targetTitle) {
     }
 }
 
-FillSmsPhoneFieldWithUIA(edge, fieldId, value, timeoutMs := 5000) {
+; Generiek genoeg voor zowel het telefoonnummerveld als het optionele
+; standaardtekstveld: beide zijn UIA "Edit"-elementen (een <textarea>
+; verschijnt in Edge's toegankelijkheidsboom net als een <input> als Edit,
+; met IsMultiLine=true), dus dezelfde AutomationId-opzoeking en
+; Value-toewijzing werkt voor allebei.
+FillSmsFieldWithUIA(edge, fieldId, value, timeoutMs := 5000) {
     deadline := A_TickCount + timeoutMs
     attempts := 0
     lastError := ""
@@ -4697,10 +4742,16 @@ FillSmsDomFieldWithJavaScript(edge, fieldId, value) {
     escapedFieldId := EscapeSmsJavaScriptString(fieldId)
     escapedValue := EscapeSmsJavaScriptString(value)
 
+    ; Het standaardtekstveld is doorgaans een <textarea> in plaats van een
+    ; <input>; de native value-setter zit dan op HTMLTextAreaElement.prototype
+    ; in plaats van HTMLInputElement.prototype. Aanroepen via de verkeerde
+    ; prototype-setter faalt op een element van het andere type, dus wordt de
+    ; setter hier op basis van tagName gekozen in plaats van vast aangenomen.
     js := "(()=>{"
         . "const e=document.getElementById('" escapedFieldId "');"
         . "if(!e){throw new Error('DocBot: SMS-veld niet gevonden');}"
-        . "const s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;"
+        . "const proto=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;"
+        . "const s=Object.getOwnPropertyDescriptor(proto,'value').set;"
         . "s.call(e,'" escapedValue "');"
         . "e.dispatchEvent(new Event('input',{bubbles:true}));"
         . "e.dispatchEvent(new Event('change',{bubbles:true}));"
@@ -4719,6 +4770,38 @@ FillSmsDomFieldWithJavaScript(edge, fieldId, value) {
     } catch as jsError {
         ExtendedDebugLog("✕", "SMS JavaScriptfallback", jsError.Message)
         return false
+    }
+}
+
+; Best-effort: vult het optionele TextFieldId met de standaardtekst van deze
+; SMS-pagina, als beide geconfigureerd zijn. Ontbreekt TextFieldId of is er
+; geen standaardtekst ingesteld, dan gebeurt er bewust niets — de al
+; geslaagde telefoonnummerinvulling blijft dan het enige resultaat.
+FillSmsDefaultTextField(edge, smsConfig) {
+    if !smsConfig.Has("TextFieldId") || Trim(smsConfig["TextFieldId"]) = ""
+        return
+
+    defaultText := GetSmsDefaultText(smsConfig["Title"])
+    if Trim(defaultText) = ""
+        return
+
+    if FillSmsFieldWithUIA(edge, smsConfig["TextFieldId"], defaultText) {
+        ExtendedDebugLog(
+            "✓",
+            "SMS standaardtekst",
+            "AutomationId '" smsConfig["TextFieldId"] "' via UI Automation ingevuld."
+        )
+        return
+    }
+
+    if FillSmsDomFieldWithJavaScript(edge, smsConfig["TextFieldId"], defaultText) {
+        ExtendedDebugLog("✓", "SMS standaardtekst", "Veld ingevuld via JavaScriptfallback.")
+    } else {
+        ExtendedDebugLog(
+            "✕",
+            "SMS standaardtekst",
+            "Kon het geconfigureerde tekstveld niet vinden of vullen; het telefoonnummer is wel ingevuld."
+        )
     }
 }
 
@@ -7700,6 +7783,201 @@ SaveSpeedDialToJson(path, showMessage := false) {
     }
 }
 
+; =============================================================================
+; SMS-STANDAARDTEKST — sms-default-texts.json
+; =============================================================================
+; Zelfde opzet als speeddial.json hierboven: schemaVersion + atomair
+; wegschrijven via .tmp/.bak. Functionele sleutel is Title (lowercase,
+; getrimd), net als FindSmsCallActionIndexByTitle() elders in dit bestand.
+; Anders dan package-settings.json wordt hier bewust niets stilzwijgend
+; verwijderd wanneer een Title niet (meer) voorkomt in de huidige
+; SmsCallActions: de GUI toont zo'n item dan simpelweg niet, maar de tekst
+; blijft bewaard voor het geval de titel later terugkeert (bijv. na een
+; tijdelijke configuratiefout).
+
+GetSmsDefaultText(title) {
+    global SmsDefaultTexts
+
+    key := StrLower(Trim(title))
+    return (key != "" && SmsDefaultTexts.Has(key)) ? SmsDefaultTexts[key]["DefaultText"] : ""
+}
+
+SetSmsDefaultText(title, text) {
+    global SmsDefaultTexts
+
+    key := StrLower(Trim(title))
+    if key = ""
+        return
+
+    if Trim(text) = "" {
+        if SmsDefaultTexts.Has(key)
+            SmsDefaultTexts.Delete(key)
+        return
+    }
+
+    SmsDefaultTexts[key] := Map("Title", Trim(title), "DefaultText", text)
+}
+
+BuildSmsDefaultTextDocument() {
+    global SmsDefaultTexts, SmsDefaultTextSchemaVersion
+
+    items := []
+    for _, entry in SmsDefaultTexts
+        items.Push(Map("Title", entry["Title"], "DefaultText", entry["DefaultText"]))
+
+    return Map("schemaVersion", SmsDefaultTextSchemaVersion, "items", items)
+}
+
+InitializeSmsDefaultTextStorage() {
+    global DefaultSmsDefaultTextFile
+
+    if FileExist(DefaultSmsDefaultTextFile) {
+        LoadSmsDefaultTextsFromJson(DefaultSmsDefaultTextFile, false)
+        return
+    }
+
+    ; Bij de eerste start wordt een lege lijst direct aangemaakt.
+    SaveSmsDefaultTextsToJson(DefaultSmsDefaultTextFile, false)
+}
+
+LoadSmsDefaultTextsFromJson(path, showMessage := false) {
+    global SmsDefaultTexts, SmsDefaultTextSchemaVersion
+
+    path := Trim(path)
+    if path = "" {
+        ReportStorageError("Er is geen JSON-bestand ingesteld.", showMessage)
+        return false
+    }
+
+    if !FileExist(path) {
+        ReportStorageError("Het JSON-bestand bestaat niet:`n`n" path, showMessage)
+        return false
+    }
+
+    try {
+        jsonText := FileRead(path, "UTF-8")
+        jsonText := LTrim(jsonText, Chr(0xFEFF))
+        document := Jxon_Load(&jsonText)
+
+        if !(document is Map)
+            throw Error("De JSON-hoofdstructuur moet een object zijn.")
+
+        schemaVersion := ReadSchemaVersion(document)
+        RejectNewerSchemaVersion(schemaVersion, SmsDefaultTextSchemaVersion, "sms-default-texts.json")
+
+        if !document.Has("items") || !(document["items"] is Array)
+            throw Error("Het veld 'items' ontbreekt of is geen lijst.")
+
+        loaded := Map()
+        skipped := 0
+
+        for _, rawItem in document["items"] {
+            if !(rawItem is Map) {
+                skipped += 1
+                continue
+            }
+
+            title := rawItem.Has("Title") ? Trim(rawItem["Title"]) : ""
+            text := rawItem.Has("DefaultText") ? rawItem["DefaultText"] : ""
+
+            if title = "" {
+                skipped += 1
+                continue
+            }
+
+            loaded[StrLower(title)] := Map("Title", title, "DefaultText", text)
+        }
+
+        SmsDefaultTexts := loaded
+
+        if showMessage {
+            MsgBox(
+                Format(
+                    "SMS-standaardteksten geladen: {1}`nOvergeslagen: {2}`n`n{3}",
+                    loaded.Count,
+                    skipped,
+                    path
+                ),
+                "DocBot - SMS-standaardteksten laden",
+                "Iconi"
+            )
+        }
+
+        return true
+    } catch as error {
+        ReportStorageError(
+            Format(
+                "Het JSON-bestand kon niet worden geladen.`n`n{1}`n`n{2}",
+                path,
+                error.Message
+            ),
+            showMessage
+        )
+        return false
+    }
+}
+
+SaveSmsDefaultTextsToJson(path, showMessage := false) {
+    path := Trim(path)
+    if path = "" {
+        ReportStorageError("Er is geen JSON-bestand ingesteld.", showMessage)
+        return false
+    }
+
+    tempPath := path ".tmp"
+    backupPath := path ".bak"
+
+    try {
+        SplitPath(path, , &directory)
+        if directory != "" && !DirExist(directory)
+            DirCreate(directory)
+
+        document := BuildSmsDefaultTextDocument()
+        jsonText := Jxon_Dump(document, 2)
+
+        if FileExist(tempPath)
+            FileDelete(tempPath)
+
+        FileAppend(jsonText, tempPath, "UTF-8-RAW")
+
+        ; Controleer het tijdelijke bestand vóór het bestaande bestand wordt
+        ; vervangen. Zo blijft de vorige versie intact bij corrupte uitvoer.
+        verifyText := FileRead(tempPath, "UTF-8")
+        verifyDocument := Jxon_Load(&verifyText)
+        if !(verifyDocument is Map) || !verifyDocument.Has("items")
+            throw Error("Controle van het tijdelijke JSON-bestand is mislukt.")
+
+        if FileExist(path)
+            FileCopy(path, backupPath, true)
+
+        FileMove(tempPath, path, true)
+
+        if showMessage {
+            MsgBox(
+                "SMS-standaardteksten opgeslagen.`n`n" path
+                (FileExist(backupPath) ? "`n`nBack-up: " backupPath : ""),
+                "DocBot - SMS-standaardteksten opslaan",
+                "Iconi"
+            )
+        }
+
+        return true
+    } catch as error {
+        if FileExist(tempPath)
+            try FileDelete(tempPath)
+
+        ReportStorageError(
+            Format(
+                "De SMS-standaardteksten konden niet worden opgeslagen.`n`n{1}`n`n{2}",
+                path,
+                error.Message
+            ),
+            showMessage
+        )
+        return false
+    }
+}
+
 ClearHotstringEditorIfReady() {
     global HotLV, HotEnabledCheck, HotTriggerEdit
     global HotOptionDraft
@@ -7795,6 +8073,13 @@ ValidateSmsCallActionItem(item, index) {
     }
     if !RegExMatch(Trim(item["Url"]), "i)^https://")
         throw Error("SmsCallAction item " index " ('" item["Title"] "'): Url moet een HTTPS-URL zijn (http:// wordt niet geaccepteerd).")
+
+    ; TextFieldId is optioneel: zonder deze waarde is er simpelweg geen
+    ; doelveld voor een standaardtekst en blijft die functionaliteit voor
+    ; deze pagina uitgeschakeld. Is de sleutel wel aanwezig, dan mag hij
+    ; niet leeg zijn (waarschijnlijk een vergeten placeholder).
+    if item.Has("TextFieldId") && Trim(item["TextFieldId"]) = ""
+        throw Error("SmsCallAction item " index " ('" item["Title"] "'): TextFieldId mag niet leeg zijn als het aanwezig is.")
 }
 
 ; De sectie 'Packages' is optioneel: zonder haar leidt de gecompileerde
@@ -7879,6 +8164,49 @@ GetSelectedSmsCallAction() {
 
     index := FindSmsCallActionIndexByTitle(State["SmsCallActionTitle"])
     return index > 0 ? SmsCallActions[index] : 0
+}
+
+; Vult het standaardtekst-veld op de Instellingen-pagina voor de op dit
+; moment in de dropdown gekozen SMS-pagina: niet-opgeslagen tekst uit
+; pendingSmsDefaultTexts krijgt voorrang boven de opgeslagen waarde, en het
+; veld wordt uitgeschakeld zolang die pagina geen TextFieldId heeft.
+ApplySmsDefaultTextFieldState(smsActionDropDown, smsDefaultTextEdit, smsDefaultTextHint, pendingSmsDefaultTexts) {
+    global SmsCallActions
+
+    title := HasConfiguredSmsCallActions() ? ResolveSmsCallActionTitle(smsActionDropDown.Text) : ""
+    index := title != "" ? FindSmsCallActionIndexByTitle(title) : 0
+    smsConfig := index > 0 ? SmsCallActions[index] : 0
+    hasTextField := IsObject(smsConfig) && smsConfig.Has("TextFieldId") && Trim(smsConfig["TextFieldId"]) != ""
+
+    if !hasTextField {
+        smsDefaultTextEdit.Value := ""
+        smsDefaultTextEdit.Enabled := false
+        smsDefaultTextHint.Text := title = ""
+            ? "Configureer eerst een SMS-pagina om een standaardtekst in te stellen."
+            : "Voor '" title "' is geen tekstveld geconfigureerd. Vraag de beheerder om TextFieldId toe te voegen aan DocBot.local.ahk."
+        return
+    }
+
+    key := StrLower(title)
+    smsDefaultTextEdit.Value := pendingSmsDefaultTexts.Has(key)
+        ? pendingSmsDefaultTexts[key]
+        : GetSmsDefaultText(title)
+    smsDefaultTextEdit.Enabled := true
+    smsDefaultTextHint.Text := "Wordt samen met het telefoonnummer ingevuld in het berichtveld van deze SMS-pagina."
+}
+
+; Bewaart de nog niet opgeslagen tekst van de vorige selectie in het geheugen
+; vóórdat de tekst van de nieuw gekozen SMS-pagina wordt geladen.
+SmsActionSelectionChanged(smsActionDropDown, smsDefaultTextEdit, smsDefaultTextHint, pendingSmsDefaultTexts, smsDefaultTextUiState, *) {
+    previousTitle := smsDefaultTextUiState["LastTitle"]
+    if previousTitle != ""
+        pendingSmsDefaultTexts[StrLower(previousTitle)] := smsDefaultTextEdit.Value
+
+    ApplySmsDefaultTextFieldState(smsActionDropDown, smsDefaultTextEdit, smsDefaultTextHint, pendingSmsDefaultTexts)
+
+    smsDefaultTextUiState["LastTitle"] := HasConfiguredSmsCallActions()
+        ? ResolveSmsCallActionTitle(smsActionDropDown.Text)
+        : ""
 }
 
 NormalizeCallAction(value, fallback := 1) {
@@ -8161,8 +8489,8 @@ ParseCallActionSetting(value, fallback := 1) {
     return Number(value)
 }
 
-SaveSettings(autoSaveCheck, filePathEdit, smsActionDropDown, *) {
-    global State
+SaveSettings(autoSaveCheck, filePathEdit, smsActionDropDown, smsDefaultTextEdit, pendingSmsDefaultTexts, smsDefaultTextUiState, *) {
+    global State, SmsCallActions, DefaultSmsDefaultTextFile
 
     State["AutoSave"] := autoSaveCheck.Value = 1
     State["HotstringFile"] := Trim(filePathEdit.Value)
@@ -8175,12 +8503,28 @@ SaveSettings(autoSaveCheck, filePathEdit, smsActionDropDown, *) {
         return
     }
 
+    ; De op dit moment zichtbare standaardtekst is nog niet in
+    ; pendingSmsDefaultTexts gezet (dat gebeurt pas bij het wisselen van
+    ; SMS-pagina) — doe dat hier alsnog vóór het wegschrijven.
+    currentTitle := smsDefaultTextUiState["LastTitle"]
+    if currentTitle != ""
+        pendingSmsDefaultTexts[StrLower(currentTitle)] := smsDefaultTextEdit.Value
+
+    for _, action in SmsCallActions {
+        if !action.Has("TextFieldId") || Trim(action["TextFieldId"]) = ""
+            continue
+        key := StrLower(action["Title"])
+        if pendingSmsDefaultTexts.Has(key)
+            SetSmsDefaultText(action["Title"], pendingSmsDefaultTexts[key])
+    }
+
     settingsSaved := SaveAppSettings()
     dataSaved := !State["AutoSave"] || AutoSaveHotstrings()
+    smsTextSaved := SaveSmsDefaultTextsToJson(DefaultSmsDefaultTextFile, false)
 
     BuildTrayMenu()
 
-    if settingsSaved && dataSaved
+    if settingsSaved && dataSaved && smsTextSaved
         MsgBox("Instellingen opgeslagen.", "DocBot", "Iconi")
     else
         MsgBox(

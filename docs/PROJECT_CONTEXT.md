@@ -152,6 +152,8 @@ Requirements for the SMS path:
 - First try to activate the matching Edge window/tab; UI Automation is the main background-tab/fill mechanism.
 - JavaScript is only a fallback, not the primary implementation.
 - DocBot fills the telephone number but does not send the SMS. Final checking and sending stay with the user.
+- An `SmsCallAction` may optionally set `TextFieldId`, the field id of a second, message-body field on the same SMS page. Where set, and where the user has configured a default text for that page's `Title` on Instellingen (`sms-default-texts.json`), DocBot best-effort-fills that field too, right after the phone-number fill succeeds — a failed text fill never turns an otherwise-successful SMS action into a reported failure, and is only logged.
+- The default-text field on Instellingen is multiline and preserves real newlines (hard Enters), reusing the same control already used for the multiline hotstring Replacement editor.
 - The cancel/SMS/call dialog is keyboard-operable with left/right plus Enter and must paint its initial visual selection correctly.
 - Only one call-action dialog (confirmation, or the cancel/SMS/call choice) may be open at a time. A newer clipboard-detected number always closes a still-open older dialog first — with a short notification — regardless of which action the new number then triggers (a new dialog, an immediate call, or no action). Do not reintroduce stacking dialogs by adding a new outcome path that skips this close step.
 - `State["IPT"]["ClipBoardNumber"]` is cleared immediately once the current action is handed off, completed, or cancelled (call placed, SMS started, dialog cancelled/closed, or no action configured) — not left until the next number is detected or the app exits.
@@ -178,7 +180,8 @@ Key user files include:
 - `settings.ini`;
 - `hotstrings.json`;
 - `package-settings.json`;
-- `speeddial.json`.
+- `speeddial.json`;
+- `sms-default-texts.json`.
 
 Debug logging lives under LocalAppData, not the Documents profile.
 

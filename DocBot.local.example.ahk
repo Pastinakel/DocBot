@@ -40,6 +40,12 @@ global LocalConfig := Map(
             "Url", "https://VUL-HIER-DE-SMS-PAGINA-IN/",
             "FieldId", "number",
             "WindowTitle", "SMS opnameplein Funatic"
+            ; TextFieldId is optioneel: het AutomationId/element-id van het
+            ; berichtveld op deze SMS-pagina (vaak een <textarea>). Zonder
+            ; deze regel kan de gebruiker voor deze pagina geen
+            ; standaardtekst instellen bij Instellingen — het bijbehorende
+            ; veld staat dan uitgeschakeld.
+            ; , "TextFieldId", "message"
         )
     ],
 

@@ -1885,3 +1885,84 @@ what the status-text change already delivers.
   local JSON parser, not run through DocBot itself.
 - Implemented on branch `claude/hotstring-package-load-logging-w4cc5a`
   (`AppVersion 2.3-pakket-logging.8`).
+
+---
+
+## D-055 — SMS default text: optional `TextFieldId`, best-effort fill, own storage file
+
+**Status:** Accepted
+
+The project owner asked for a per-SMS-page default message text, set by the
+end user (not the local-configuration owner) in a multiline field on
+Instellingen, filled into a second web-page field alongside the existing
+telephone-number fill.
+
+**What changed:**
+
+- `SmsCallAction` gains an optional `TextFieldId` (the `AutomationId`/DOM id
+  of the message field), alongside the existing required `FieldId` for the
+  telephone number. Kept as a second, separately-named key instead of
+  renaming `FieldId` to something like `PhoneFieldId`, so every existing
+  `DocBot.local.ahk` deployment keeps working unchanged.
+  `ValidateSmsCallActionItem()` only rejects it when present-but-empty; its
+  absence is a supported "this page has no configured message field" state,
+  not a configuration error.
+- New storage file `sms-default-texts.json`, following the exact
+  `speeddial.json` pattern (`docs/MIGRATIONS.md`): `schemaVersion` + array
+  of `{Title, DefaultText}`, atomic `.tmp`/`.bak` writes. Functional key is
+  `Title`, matching `FindSmsCallActionIndexByTitle()`.
+- Deliberately **no** `package-settings.json`-style unconditional
+  reconciliation/pruning of entries whose `Title` no longer matches a
+  configured `SmsCallAction`. A renamed or temporarily-removed page must not
+  silently discard text the user typed; the GUI simply hides an item it
+  cannot currently match, and a matching `Title` returning makes it visible
+  again.
+- Instellingen gained a multiline `AddRoundedEditGroup(..., true, ...)`
+  field under the existing SMS-page dropdown — the same control already
+  used for the hotstring Replacement editor, which already supports real
+  newlines without `WantReturn`. Switching the dropdown before clicking
+  "Opslaan" keeps not-yet-saved text for every page visited that session in
+  an in-memory Map (never written to disk); "Opslaan" is still the only
+  thing that persists anything, matching how the rest of this page already
+  works (no per-field autosave).
+- `RunSmsCallAction()` fills the message field only *after* the phone-number
+  fill has already succeeded, and only best-effort: a missing/unfillable
+  text field is logged but never turns an otherwise-successful SMS action
+  into a reported failure. This keeps D-021 (SMS is assisted, never
+  automatically sent) intact — the new fill is one more pre-populated field
+  for the user to review, nothing more.
+- `FillSmsPhoneFieldWithUIA()` renamed to `FillSmsFieldWithUIA()` and reused
+  for both fields — it was already generic (`fieldId`, `value`), with
+  nothing phone-specific in its body; keeping the old name would have been
+  actively misleading once it also fills a message field.
+- `FillSmsDomFieldWithJavaScript()`'s native-setter lookup, previously
+  hardcoded to `HTMLInputElement.prototype`, now branches on
+  `e.tagName === 'TEXTAREA'` to use `HTMLTextAreaElement.prototype`
+  instead. This was a real latent bug for this feature, not a style
+  choice: the message field on a typical SMS web form is a `<textarea>`,
+  and calling the `<input>` prototype's value setter via `.call()` on a
+  `<textarea>` instance throws (mismatched internal slots), so the
+  JavaScript fallback would have failed on exactly the element type this
+  feature targets most.
+
+**Rejected alternatives:** storing the default text in `settings.ini`
+instead of a new JSON file — rejected, INI values are single-line and this
+field must preserve real newlines; renaming `FieldId` to `PhoneFieldId` for
+symmetry — rejected as an unnecessary breaking change to every existing
+local configuration for a purely cosmetic gain; reconciling/pruning stale
+`sms-default-texts.json` entries like `package-settings.json` does —
+rejected, package-settings prunes references to bundled *package* content
+that genuinely stops existing, whereas a renamed/temporarily-misconfigured
+`SmsCallAction.Title` is exactly the kind of transient state D-010's "never
+overwrite/lose a user-edited value" rule is meant to protect against.
+
+**Consequences**
+
+- A deployment that wants this feature must add `TextFieldId` to the
+  relevant `SmsCallAction` item(s) in its own `DocBot.local.ahk`; nothing
+  changes for a deployment that does not.
+- Not yet validated on a compiled build on Windows (see D-037) — in
+  particular the UIA fill against a real `<textarea>`, the JavaScript
+  fallback's tagName branch, and the Instellingen layout have only been
+  reviewed as source, not run through DocBot itself.
+- Implemented on branch `claude/sms-default-text-config-oigp28`.
