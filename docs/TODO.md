@@ -507,27 +507,39 @@ Do not move migration code during the 2.2 release just for cleanliness.
 
 ---
 
-## P2 — Add a user instruction for safe hotstring content
+## P2 — Add a user instruction for safe hotstring content (implemented, pending Windows validation)
 
 Create and maintain an end-user instruction for personal hotstrings. The
 instruction must:
 
-- [ ] explain that hotstrings are intended for generic, reusable text;
-- [ ] prohibit patient-identifying and patient-specific content in
+- [x] explain that hotstrings are intended for generic, reusable text;
+- [x] prohibit patient-identifying and patient-specific content in
   `hotstrings.json`;
-- [ ] distinguish prohibited patient-specific content from generic clinical
+- [x] distinguish prohibited patient-specific content from generic clinical
   formulations that are not linked to an identifiable patient;
-- [ ] explain that a name, telephone number, e-mail address or signature of
+- [x] explain that a name, telephone number, e-mail address or signature of
   the employee can be personal data and remains subject to organizational
   policy;
-- [ ] explain that DocBot cannot technically determine whether free text
+- [x] explain that DocBot cannot technically determine whether free text
   contains patient-specific information;
-- [ ] identify where the instruction is presented to users and who owns its
-  review and maintenance.
+- [x] identify where the instruction is presented to users and who owns its
+  review and maintenance. Presented as a fifth Help accordion section plus
+  an always-visible hint on the Tekstvervanging page, and summarized in
+  `README.md`; owned by the project owner.
 
-Align the instruction with `docs/DATA_PROTECTION.md` and reassess whether it
-must also appear in the README, in-product help or organizational onboarding
-before release.
+Implemented on `claude/hotstring-user-instruction-hcv2jw`
+(`AppVersion 2.3-hotstring-instructie.6`); see `docs/DECISIONS.md` D-045.
+Aligned with `docs/DATA_PROTECTION.md` §3.4 (updated in the same change) and
+`README.md`. Per project-owner decision, this does not (yet) extend to
+organizational onboarding — the in-product instruction is intended to cover
+that on its own.
+
+- [ ] Validate on a compiled build on a managed Windows workstation: the new
+  Help section (including that a fifth accordion section still fits above
+  the "Probleem melden..." button), the always-visible hint on
+  Tekstvervanging in both the compact and expanded editor state, and that
+  the Hotstrings/Telefonie/Over cards now end at a consistent y=648 without
+  visual overlap or clipping.
 
 ---
 

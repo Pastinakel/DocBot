@@ -888,3 +888,201 @@ manual fallback, which depends on the files still being on disk).
   Tracked separately as `docs/TODO.md` P2 "Harden the standard-log format
   migration check beyond the first 256 bytes" rather than expanding this
   decision's scope.
+
+---
+
+## D-045 — In-product user instruction for safe hotstring content
+
+**Status:** Accepted
+
+`docs/DATA_PROTECTION.md` §3.4 already stated that patient-identifying or
+patient-specific information is not intended as content of
+`hotstrings.json`, but that the free `Replacement` field has no technical
+control enforcing this — compliance was said to rest on user instruction
+and organizational policy, while no such instruction actually existed yet
+(`docs/TODO.md` P2 "Add a user instruction for safe hotstring content").
+
+The instruction is implemented as a fifth `AddHelpAccordionSection()` entry
+on the Help page ("Wat mag ik wel en niet in een hotstring zetten?"),
+matching the style of the existing four sections, plus a short, always-
+visible hint (`HotPrivacyHint`) on the Tekstvervanging page that links to
+that Help section, prefixed with an ℹ️ glyph. The hint sits outside both
+`HotEditorCompactCard` and `HotEditorExpandedCard`, so it is visible in
+both the compact and the expanded hotstring editor, not only one of them.
+`README.md` (Hotstrings section) carries a shorter, consistent summary for
+users reading the bundled documentation instead of the in-product Help
+page.
+
+Fitting a fifth accordion section required reducing
+`RefreshHelpAccordion()`'s `collapsedHeight` from 64 to 54 (and the
+matching `AddCard()` height inside `AddHelpAccordionSection()`) so that the
+worst case — one section expanded (258) plus four collapsed (4×54) plus
+five 12px gaps — still ends at y=638, 16px above the "Probleem melden..."
+button at y=654 (unchanged).
+
+Fitting the new hint below the hotstring-editor cards required the
+Tekstvervanging page's editor cards to stop extending past y=648 in their
+expanded state. `HotEditorExpandedCard` shrank from height 230 to 196
+(matching `HotEditorCompactCard`), `HotReplacementMultiGroup`'s height
+from 70 to 56, and `HotSaveButton` moved from two conditional positions
+(y=590/626, set in `ApplyHotReplacementEditorState()`) to one fixed
+position (y=602) that fits under the multiline field in both states. This
+in turn made it natural to align the "Snelkiesnummer bewerken" card on
+Telefonie (already ending at y=648) with the Over page's content card
+(enlarged from height 500 to 556, so it also ends at y=648) — Hotstrings,
+Telefonie and Over now share the same bottom edge, at the project owner's
+request. The Help page and other non-full-height pages were deliberately
+left out of this alignment, since they are not designed to fill the
+window.
+
+The hint and the Over page's GitHub link went through two rounds of
+project-owner feedback on their exact vertical position. First placed at
+y=654 (the row already used by the Help page's "Probleem melden..."
+button), they moved to y=672 to match the y-position of the "Sluiten
+verbergt DocBot in het systeemvak" footer on Overzicht and Telefonie
+instead — `githubLink`'s height shrank from 34 to 24 in that change, since
+34 at y=672 would have reached y=706, past the fixed 700px-tall window.
+`HotPrivacyHint`'s font grew from s9 to s10 in the same round, matching
+`githubLink`'s size; its color stayed `C["Muted"]` (only size was asked to
+match, not color).
+
+y=672 turned out to sit close to the window's bottom edge rather than
+centered in the space below the cards, so both controls moved again to be
+vertically centered in the 52px gap between the shared card bottom (y=648)
+and the window edge (700): `HotPrivacyHint` (h=22) to y=663
+(`648 + (52-22)/2`, 15px margin above and below) and `githubLink` (h=24) to
+y=662 (`648 + (52-24)/2`, 14px margin above and below). This intentionally
+no longer matches the Overzicht/Telefonie footer's y=672 or the Help page's
+"Probleem melden..." button at y=654 — centering these two specific
+controls took priority over sharing an exact row with those.
+
+Ownership of the instruction's content and its periodic review sits with
+the project owner; there is, for now, deliberately no separate
+organizational-onboarding text — the in-product instruction (Help +
+README) is intended to cover this on its own.
+
+Screenshots of the new accordion body and the enlarged Over page surfaced
+an unrelated, pre-existing bug in `RoundControl()` (the shared helper
+behind `AddRound()`, used to give many controls rounded corners via
+`SetWindowRgn`): it built the rounded region from `GetClientRect`, which
+by definition excludes any scroll bar, then applied that undersized region
+to the whole control window via `SetWindowRgn` — whose region coordinates
+are window-relative, not client-relative. The result: the vertical
+scroll bar strip fell outside the region and was clipped away entirely,
+on any rounded control that has one. Across all `AddRound()` call sites,
+that is exactly `bodyEdit` (the Help accordion's RichEdit body, `AddRound`
+radius 8) and `aboutEdit` (the Over page's edit control, radius 10) — the
+two controls the project owner reported as having no visible way to tell
+that scrolling was possible. `RoundControl()` now measures with
+`GetWindowRect` instead, which includes the scroll bar. This is a general
+fix to a shared helper, not something specific to this decision's own
+controls, but it was found and is fixed in the same change because it
+directly affects the readability of the Help section added here.
+
+The `HotPrivacyHint` link ("Bekijk de richtlijn op de Help-pagina") only
+switched to the Help page, leaving `HelpOpenSection` (which section is
+expanded) untouched — the user would still have to find and open the right
+accordion section by hand. A new `OpenHotstringHelpSection()` handler now
+sets `HelpOpenSection` to `HotstringHelpSectionIndex` (captured as
+`HelpSections.Length` right after that section's `AddHelpAccordionSection()`
+call, so it tracks the section's position even if sections are reordered
+later) before calling `ShowPage("help")`, which already refreshes the
+accordion layout and redraws — no separate refresh/redraw call was needed
+in the new handler.
+
+The project owner also reported the accordion body sometimes showing a
+blue text selection. `FormatHelpBody()` already collapsed its own
+formatting selection at the end, so that wasn't the cause; the real cause
+is that a plain click or double-click inside a read-only RichEdit is
+still, by default, a normal text-selection gesture. `HelpRichEditSubclass()`
+already intercepted `WM_LBUTTONDOWN` to detect link clicks, but let every
+non-link click fall through to `DefSubclassProc`, which started RichEdit's
+normal caret/selection handling. It now returns 0 (swallows the message)
+for every `WM_LBUTTONDOWN` and `WM_LBUTTONDBLCLK` on a registered help
+body, whether or not the click landed on a link — a link click still
+navigates, everything else is now a no-op instead of a selection. This
+only covered bodies already registered in `HelpLinkControls`, which
+`RegisterHelpLinkControl()` only populated when a section had
+`linkTargets`; a future section without any links would have kept the
+selection bug. `AddHelpAccordionSection()` now calls the new, idempotent
+`EnsureHelpRichEditSubclass()` for every body unconditionally (extracted
+from `RegisterHelpLinkControl()`'s subclass-install code, now shared via
+`InstallHelpRichEditSubclass()`), so the fix applies regardless of whether
+a given section has links.
+
+That fix covered clicks landing directly on a body's own text, but the
+project owner then found a second, related selection bug specific to
+`OpenHotstringHelpSection()`: clicking "Help" on the hint (on the
+Tekstvervanging page) navigates to Help and opens the fifth section, and
+its entire body text appeared selected once shown — not just a small
+range. `FormatHelpBody()` already collapses its own formatting selection,
+but only once, at GUI build time; this happens later, at navigation time.
+The likely mechanism: the click originates on a different control
+(`HotPrivacyHint`, a SysLink) on a different page; once that control is
+hidden by the page switch, Windows appears to hand keyboard focus to the
+now-visible RichEdit body, combined with leftover mouse state from the
+originating click, which RichEdit interprets as a drag-select from
+position 0 to wherever that state maps on screen — far below the body's
+visible text, which clamps to "select to end of document." `RefreshHelpAccordion()`
+now calls a new `ClearHelpBodySelection()` (`EM_SETSEL` to `0,0`, the same
+one-line technique already used in `FormatHelpBody()`) on a section's body
+immediately when it becomes the open one — covering the normal
+click-a-header-to-toggle path too, not only navigation from the hint.
+Because the project owner also observed the selection surviving until a
+later, unrelated interaction (double-click, switch windows, switch back),
+suggesting whatever sets it can still arrive slightly after this point in
+the message queue on the cross-page-navigation path, `RefreshHelpAccordion()`
+additionally schedules one deferred re-clear 50ms later via
+`SetTimer(ClearHelpBodySelection.Bind(...), -50)`, so a delayed message
+doesn't win the race. The exact Windows-internal cause was not confirmed
+through live debugging (not available from this environment); the fix is
+deliberately unconditional and applied at every section-open, so it holds
+regardless of which precise mechanism causes it.
+
+**Rejected alternatives:** a technical content filter on the `Replacement`
+field that tries to detect patient-identifying text — rejected because
+free text cannot be reliably classified this way (the instruction itself
+says so, per the TODO's explicit requirement); leaving the expanded editor
+card taller than the compact one — rejected because it would either cover
+the new hint in expanded state or force the hint to move depending on
+`HotReplacementExpanded`, defeating the "visible in both states"
+requirement.
+
+**Consequences**
+
+- Closes all six content requirements and the placement/ownership
+  requirement of `docs/TODO.md` P2 "Add a user instruction for safe
+  hotstring content"; `docs/DATA_PROTECTION.md` §3.4 no longer needs to
+  describe this as an open follow-up action.
+- `hotstrings.json` still has no technical enforcement of this policy —
+  unchanged from before this decision, and consistent with the rejected
+  alternative above.
+- Any future change to the Tekstvervanging, Telefonie or Over page layout
+  that moves a card's bottom edge away from y=648 should keep
+  `HotPrivacyHint` and `githubLink` centered in the space below it (or
+  explicitly record why they diverge), independently of the
+  Overzicht/Telefonie footer row at y=672.
+- The `RoundControl()` fix applies to every current and future
+  `AddRound()` target with a scroll bar, not only `bodyEdit`/`aboutEdit`;
+  any control that gains both in the future gets a working scroll bar for
+  free instead of needing its own fix.
+- `HotstringHelpSectionIndex` and `OpenHotstringHelpSection()` only cover
+  the one hint on Tekstvervanging; a future "jump straight to an open
+  accordion section" link elsewhere would need its own index variable and
+  handler, or a small generalization of this pattern.
+- `EnsureHelpRichEditSubclass()`/`InstallHelpRichEditSubclass()` mean every
+  future `AddHelpAccordionSection()` call automatically gets both the
+  link-click handling and the no-selection behavior, with no per-call
+  opt-in required.
+- `ClearHelpBodySelection()` runs on every section open, from any entry
+  point (header click, `OpenHotstringHelpSection()`, or any future
+  "open Help at section N" caller), so a future caller does not need to
+  remember to clear the selection itself.
+- If a compiled test build still shows the selection despite this fix, the
+  50ms deferred re-clear's delay may need to increase, or the actual
+  Windows-internal cause should be identified rather than tuning the delay
+  further blind.
+- Implemented on branch `claude/hotstring-user-instruction-hcv2jw`
+  (`AppVersion 2.3-hotstring-instructie.6`); not yet validated on a
+  compiled build on Windows (see D-037) — layout math was verified by hand
+  against the fixed 1000×700 window size, not by rendering the GUI.

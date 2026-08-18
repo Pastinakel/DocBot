@@ -133,6 +133,11 @@ Functionaliteit — Hotstrings
 - Bij de eerste start migreert het script eenmalig een eventueel bestaand
   `DocBot.ini` en `hotstrings.json` naast het script (oude locatie) naar de
   nieuwe gebruikersmap, zonder bestaande nieuwe bestanden te overschrijven.
+- Gebruik hotstrings voor generieke, herbruikbare tekst. Zet geen
+  patiëntidentificerende of patiëntspecifieke gegevens in een hotstring —
+  de volledige richtlijn, inclusief het onderscheid met generieke klinische
+  formuleringen, staat in DocBot onder Help. DocBot controleert de inhoud
+  van `hotstrings.json` niet automatisch op patiëntgegevens.
 
 Meegeleverde hotstringpakketten
 ---------------------------------
@@ -419,6 +424,26 @@ Changelog
 ---------
 
 ### 2.3 — In ontwikkeling
+- Nieuwe gebruikersinstructie voor veilige hotstring-inhoud: een vijfde
+  Help-sectie ("Wat mag ik wel en niet in een hotstring zetten?") en een
+  bijbehorende, altijd zichtbare hint op de Tekstvervanging-pagina. De
+  kaarten op Hotstrings, Telefonie en Over sluiten daarbij nu onderaan op
+  dezelfde hoogte af (`docs/DECISIONS.md` D-045).
+- De verticale scrollbalk van een afgeronde tekstbox (zoals de Help-
+  accordeontekst en het Over-scherm) werd altijd onzichtbaar afgeknipt,
+  ook wanneer er wel degelijk meer te scrollen was. `RoundControl()`
+  gebruikt nu `GetWindowRect` in plaats van `GetClientRect`, zodat de
+  scrollbalk binnen de afgeronde regio valt (`docs/DECISIONS.md` D-045).
+- De Help-link bij de hotstring-privacyhint op Tekstvervanging opent nu
+  direct de bijbehorende, al opengeklapte accordeonsectie in plaats van
+  alleen naar de Help-pagina te navigeren. Een klik of dubbelklik in een
+  Help-accordeontekst laat ook geen blauwe tekstselectie meer achter — dat
+  is nu, net als een klik op een link, een no-op in plaats van RichEdit's
+  standaard selectiegedrag. Ook het openen van een sectie via die Help-link
+  kon de hele hoofdtekst blauw geselecteerd tonen; elke sectie wist nu bij
+  het openen expliciet zijn eigen selectie, met een korte herhaling om een
+  laat binnenkomend bericht niet te laten winnen (`docs/DECISIONS.md`
+  D-045).
 - Telefonie en SMS vereisen nu een HTTPS-URL: `ValidateLocalConfiguration()`
   weigert een niet-HTTPS `Telephony.BaseUrl` en `ValidateSmsCallActionItem()`
   weigert een niet-HTTPS `SmsCallAction.Url`, beide al bij het opstarten

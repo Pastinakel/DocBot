@@ -24,7 +24,7 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.3-dev.3"
+global AppVersion := "2.3-hotstring-instructie.6"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -126,6 +126,12 @@ global Pages := Map("overzicht", [], "telefonie", [], "tekstvervanging", [], "in
 global CurrentPage := ""
 global HelpSections := []
 global HelpOpenSection := 1
+; Index binnen HelpSections van "Wat mag ik wel en niet in een hotstring
+; zetten?", gezet in BuildMainGui() direct na die AddHelpAccordionSection()-
+; aanroep. Gebruikt door OpenHotstringHelpSection() zodat de link bij de
+; hint op Tekstvervanging altijd naar de juiste, actuele sectie-index
+; verwijst, ook als de volgorde van accordeonsecties ooit verandert.
+global HotstringHelpSectionIndex := 0
 global HelpLinkControls := Map()
 global NavButtons := Map()
 global NavBars := Map()
@@ -290,6 +296,7 @@ BuildMainGui() {
     global HotEditorCompactCard, HotEditorExpandedCard, HotSaveButton
     global SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText
     global SpeedDialLV, SpeedDialEnabledCheck, SpeedDialNameEdit, SpeedDialNumberEdit
+    global HelpSections, HotstringHelpSectionIndex
 
     MainGui := Gui("-MaximizeBox", "DocBot")
     MainGui.BackColor := C["Window"]
@@ -423,6 +430,7 @@ BuildMainGui() {
     AddFlatButton("telefonie", 702, 436, 42, 36, Chr(0xE70E), MoveSpeedDialUp, false)
     AddFlatButton("telefonie", 752, 436, 42, 36, Chr(0xE70D), MoveSpeedDialDown, false)
 
+    ; y=500 h=148 eindigt op y=648; Hotstrings en Over sluiten hier op aan.
     AddCard("telefonie", 236, 500, 736, 148)
     AddCardLabel("telefonie", 260, 520, 300, 24, "Snelkiesnummer bewerken", "s12 bold c" C["Text"])
     SpeedDialEnabledCheck := MainGui.AddCheckbox("x260 y560 w82 h24 Background" C["Card"], "Actief")
@@ -475,8 +483,14 @@ BuildMainGui() {
     AddFlatButton("tekstvervanging", 402, 388, 140, 36, Chr(0xE70F) "  Wijzig", EditSelectedHotstring, false)
     AddFlatButton("tekstvervanging", 552, 388, 140, 36, Chr(0xE74D) "  Verwijder", DeleteSelectedHotstring, false)
 
+    ; Beide kaarten eindigen bewust op dezelfde y=648 als de kaart
+    ; "Snelkiesnummer bewerken" op de Telefonie-pagina (y=500 h=148), zodat
+    ; Hotstrings en Telefonie onderaan gelijk aflopen. Het uitgeklapte
+    ; meerregelige veld is daarom iets minder hoog (56 i.p.v. 70) dan vóór
+    ; deze uitlijning, en Opslaan staat op een vaste plek die in beide
+    ; standen past in plaats van te verspringen tussen y=590 en y=626.
     HotEditorCompactCard := AddCard("tekstvervanging", 236, 452, 736, 196)
-    HotEditorExpandedCard := AddCard("tekstvervanging", 236, 452, 736, 230)
+    HotEditorExpandedCard := AddCard("tekstvervanging", 236, 452, 736, 196)
     AddCardLabel("tekstvervanging", 260, 472, 220, 22, "Hotstring bewerken", "s12 bold c" C["Text"])
     AddFlatButton("tekstvervanging", 588, 464, 220, 34, "⚙  Geavanceerde opties...", ShowAdvancedHotstringOptions, false)
     HotEnabledCheck := MainGui.AddCheckbox("x840 y472 w100 h22 Background" C["Card"], "Actief")
@@ -484,15 +498,15 @@ BuildMainGui() {
     AddPageControl("tekstvervanging", HotEnabledCheck)
     AddCardLabel("tekstvervanging", 260, 512, 100, 20, "Afkorting", "s10 c" C["Text"])
     HotTriggerEdit := AddRoundedEdit("tekstvervanging", 370, 504, 586, 34, "")
-    AddCardLabel("tekstvervanging", 260, 552, 100, 20, "Vervanging", "s10 c" C["Text"])
-    HotReplacementSingleGroup := AddRoundedEditGroup("tekstvervanging", 370, 544, 538, 34, "", false, 8)
-    HotReplacementMultiGroup := AddRoundedEditGroup("tekstvervanging", 370, 544, 538, 70, "", true, 6)
+    AddCardLabel("tekstvervanging", 260, 548, 100, 20, "Vervanging", "s10 c" C["Text"])
+    HotReplacementSingleGroup := AddRoundedEditGroup("tekstvervanging", 370, 540, 538, 34, "", false, 8)
+    HotReplacementMultiGroup := AddRoundedEditGroup("tekstvervanging", 370, 540, 538, 56, "", true, 6)
     HotReplacementSingleGroup["Edit"].OnEvent("Change", UpdateHotReplacementDraft)
     HotReplacementMultiGroup["Edit"].OnEvent("Change", UpdateHotReplacementDraft)
     ; Deze twee eenvoudige klikcontrols worden door Windows betrouwbaarder
     ; opnieuw getekend na hide/show dan twee overlappende custom-draw buttons.
     HotReplacementExpandButton := MainGui.AddText(
-        "x920 y544 w36 h34 Center 0x200 Background" C["Button"],
+        "x920 y540 w36 h34 Center 0x200 Background" C["Button"],
         Chr(0xE740)
     )
     HotReplacementExpandButton.SetFont("s12 c" C["Text"], "Segoe MDL2 Assets")
@@ -503,7 +517,7 @@ BuildMainGui() {
     )
 
     HotReplacementCollapseButton := MainGui.AddText(
-        "x920 y544 w36 h34 Center 0x200 Background" C["Button"],
+        "x920 y540 w36 h34 Center 0x200 Background" C["Button"],
         Chr(0xE73F)
     )
     HotReplacementCollapseButton.SetFont("s12 c" C["Text"], "Segoe MDL2 Assets")
@@ -512,8 +526,27 @@ BuildMainGui() {
     HotReplacementCollapseButton.OnEvent(
         "Click", ToggleHotReplacementEditor.Bind(false)
     )
-    HotSaveButton := AddFlatButton("tekstvervanging", 808, 590, 148, 36, "💾  Opslaan", SaveHotstringFromForm, true)
+    ; Vaste positie (was afhankelijk van HotReplacementExpanded): het
+    ; meerregelige veld eindigt nu altijd ruim vóór y=638, dus Opslaan hoeft
+    ; niet meer te verspringen.
+    HotSaveButton := AddFlatButton("tekstvervanging", 808, 602, 148, 36, "💾  Opslaan", SaveHotstringFromForm, true)
     ApplyHotReplacementEditorState()
+
+    ; y=663 centreert deze 22px-hoge regel verticaal in de 52px-ruimte
+    ; tussen het einde van de kaart hierboven (y=648) en de vensterrand
+    ; (700): 648 + (52-22)/2 = 663, met 15px marge boven en onder. Zelfde
+    ; tekstgrootte (s10) als de GitHub-link op de Over-pagina. Als
+    ; paginabreed element (geen kaartinhoud) blijft de melding zichtbaar in
+    ; zowel de compacte als de uitgeklapte weergave van de hotstringeditor.
+    HotPrivacyHint := MainGui.AddLink(
+        "x260 y663 w650 h22 Background" C["Window"],
+        'ℹ️  Zet geen patiëntgegevens in hotstrings. Bekijk de richtlijn op de <a href="help">Help</a>-pagina.'
+    )
+    HotPrivacyHint.SetFont("s10 c" C["Muted"], "Segoe UI")
+    ; Opent Help mét de bijbehorende accordeonsectie al uitgeklapt, in
+    ; plaats van alleen naar de Help-pagina te navigeren.
+    HotPrivacyHint.OnEvent("Click", OpenHotstringHelpSection)
+    AddPageControl("tekstvervanging", HotPrivacyHint)
 
     ; -------------------------------------------------------------------------
     ; PAGINA: INSTELLINGEN
@@ -625,6 +658,36 @@ BuildMainGui() {
         ["Overzicht", "Tekstvervanging", "Hotstrings"],
         Map("Overzicht", "overzicht", "Hotstrings", "tekstvervanging")
     )
+    AddHelpAccordionSection(
+        "Wat mag ik wel en niet in een hotstring zetten?",
+        "Hotstrings zijn bedoeld voor generieke, herbruikbare tekst: vaste zinnen, "
+        "standaardformuleringen of afkortingen die je voor meerdere situaties gebruikt."
+        "`r`n`r`nZet nooit patiëntidentificerende of patiëntspecifieke gegevens in een "
+        "hotstring, zoals een patiëntnaam, geboortedatum, BSN of dossiernummer, of een "
+        "tekst die alleen op één patiënt van toepassing is. Hotstrings staan in "
+        "hotstrings.json op je eigen computer en zijn niet bedoeld als plek voor "
+        "dossierinformatie."
+        "`r`n`r`nGenerieke klinische formuleringen die niet aan een identificeerbare "
+        "patiënt gekoppeld zijn, mag je wel gebruiken, bijvoorbeeld 'geen afwijkingen' "
+        "of 'Op {{datum}} zag ik uw patiënt'. Zulke tekst wordt pas patiëntspecifiek op "
+        "het moment dat jij ze in een dossier invoegt en aanvult, niet door de hotstring "
+        "zelf."
+        "`r`n`r`nOok je eigen naam, telefoonnummer, e-mailadres of ondertekening in een "
+        "hotstring kan persoonsgegevens zijn. Dat is toegestaan voor praktisch gebruik, "
+        "zoals een vaste afsluiting, maar valt onder het reguliere privacybeleid van je "
+        "organisatie."
+        "`r`n`r`nDocBot controleert de inhoud van je hotstrings niet automatisch op "
+        "patiëntgegevens. Je blijft dus zelf verantwoordelijk voor wat je opslaat."
+        "`r`n`r`nBeheer je persoonlijke hotstrings op de pagina Hotstrings in DocBot.",
+        [
+            "hotstrings.json",
+            "patiëntidentificerende of patiëntspecifieke gegevens",
+            "controleert de inhoud van je hotstrings niet automatisch",
+            "Hotstrings"
+        ],
+        Map("Hotstrings", "tekstvervanging")
+    )
+    HotstringHelpSectionIndex := HelpSections.Length
     RefreshHelpAccordion()
 
     ; De bestaande footer wordt volledig vervangen door een herkenbare
@@ -643,25 +706,28 @@ BuildMainGui() {
 
     AddPageHeader("over", "Over", "Informatie over DocBot.")
 
-    AddCard("over", 236, 92, 736, 500)
+    ; Kaarthoogte 556 (i.p.v. voorheen 500) laat deze kaart, net als
+    ; Hotstrings en Telefonie, op y=648 eindigen. De GitHub-link hieronder
+    ; staat verticaal gecentreerd in de ruimte daaronder.
+    AddCard("over", 236, 92, 736, 556)
 
-    aboutShell := MainGui.AddText("x260 y116 w688 h452 Background" C["Border"], "")
+    aboutShell := MainGui.AddText("x260 y116 w688 h508 Background" C["Border"], "")
     AddRound(aboutShell, 12)
     AddPageControl("over", aboutShell)
 
     aboutEdit := MainGui.AddEdit(
-        "x262 y118 w684 h448 ReadOnly VScroll Multi -E0x200 BackgroundFFFFFF",
+        "x262 y118 w684 h504 ReadOnly VScroll Multi -E0x200 BackgroundFFFFFF",
         BuildAboutText()
     )
     aboutEdit.SetFont("s10 c" C["Text"], "Segoe UI")
     AddRound(aboutEdit, 10)
     AddPageControl("over", aboutEdit)
 
-    ; Zelfde hoogte als de "Probleem melden..."-knop op de Help-pagina
-    ; (x786 y654 w170 h34), maar gespiegeld naar links, in de al onbenutte
-    ; ruimte onder de kaart. Laat de kaart/aboutEdit hierboven ongemoeid.
+    ; y=662 centreert deze 24px-hoge link verticaal in de 52px-ruimte
+    ; tussen het einde van de kaart hierboven (y=648) en de vensterrand
+    ; (700): 648 + (52-24)/2 = 662, met 14px marge boven en onder.
     githubLink := MainGui.AddLink(
-        "x262 y654 w300 h34",
+        "x262 y662 w300 h24",
         'Bekijk DocBot op <a href="https://github.com/Pastinakel/DocBot">GitHub</a>'
     )
     githubLink.SetFont("s10 c" C["Text"], "Segoe UI")
@@ -731,8 +797,11 @@ AddHelpAccordionSection(title, bodyText, boldTerms := [], linkTargets := 0) {
 
     ; Beide kaartformaten worden vooraf als GDI+-bitmap opgebouwd. Bij het
     ; openen wisselen we alleen zichtbaarheid en positie, waardoor de
-    ; afgeronde hoeken ook na paginawisselingen stabiel blijven.
-    collapsedCard := AddCard("help", 236, 104, 720, 64)
+    ; afgeronde hoeken ook na paginawisselingen stabiel blijven. De hoogtes
+    ; hier moeten gelijk blijven aan collapsedHeight/expandedHeight in
+    ; RefreshHelpAccordion() — dat bepaalt alleen de tussenruimte, niet de
+    ; werkelijke kaartgrootte.
+    collapsedCard := AddCard("help", 236, 104, 720, 54)
     expandedCard := AddCard("help", 236, 104, 720, 258)
     expandedCard.Opt("+Hidden")
 
@@ -763,6 +832,10 @@ AddHelpAccordionSection(title, bodyText, boldTerms := [], linkTargets := 0) {
     )
     bodyEdit.SetFont("s10 c" C["Text"], "Segoe UI")
     FormatHelpBody(bodyEdit, bodyText, boldTerms, linkTargets)
+    ; Ook zonder linkTargets moet HelpRichEditSubclass() klikken kunnen
+    ; afvangen, anders zou zo'n sectie alsnog een blauwe tekstselectie
+    ; kunnen tonen (zie EnsureHelpRichEditSubclass()).
+    EnsureHelpRichEditSubclass(bodyEdit)
     AddRound(bodyEdit, 8)
     bodyEdit.Opt("+Hidden")
     AddPageControl("help", bodyEdit)
@@ -924,7 +997,29 @@ RegisterHelpLinkControl(bodyCtrl, linkRanges) {
         "Control", bodyCtrl,
         "Ranges", linkRanges
     )
+    InstallHelpRichEditSubclass(bodyCtrl)
+}
 
+; Zorgt dat ook een accordeonsectie zónder linkTargets de subclass krijgt
+; die HelpRichEditSubclass() gebruikt om iedere klik/dubbelklik af te
+; vangen (zie daar). Zonder deze aanroep zou zo'n sectie geen entry in
+; HelpLinkControls hebben en zou een klik alsnog RichEdit's standaard
+; tekstselectie starten. Idempotent: doet niets als RegisterHelpLinkControl
+; deze hwnd al heeft geregistreerd.
+EnsureHelpRichEditSubclass(bodyCtrl) {
+    global HelpLinkControls
+
+    if HelpLinkControls.Has(bodyCtrl.Hwnd)
+        return
+
+    HelpLinkControls[bodyCtrl.Hwnd] := Map(
+        "Control", bodyCtrl,
+        "Ranges", []
+    )
+    InstallHelpRichEditSubclass(bodyCtrl)
+}
+
+InstallHelpRichEditSubclass(bodyCtrl) {
     ; Subclass het RichEdit-venster zelf. Daarmee komt WM_LBUTTONDOWN altijd
     ; langs onze handler, onafhankelijk van EN_LINK/EN_MSGFILTER.
     static subclassCallback := 0
@@ -939,7 +1034,7 @@ RegisterHelpLinkControl(bodyCtrl, linkRanges) {
         "Ptr", 0,
         "Int"
     )
-        throw Error("De navigatielinks in Help konden niet worden geactiveerd.")
+        throw Error("De klikafhandeling in Help kon niet worden geactiveerd.")
 }
 
 HelpRichEditSubclass(
@@ -953,9 +1048,15 @@ HelpRichEditSubclass(
     global HelpLinkControls
 
     static WM_LBUTTONDOWN := 0x0201
+    static WM_LBUTTONDBLCLK := 0x0203
     static WM_NCDESTROY := 0x0082
     static EM_CHARFROMPOS := 0x00D7
 
+    ; De hulptekst is alleen-lezen uitlegtekst, geen invoerveld: een klik of
+    ; dubbelklik mag nooit een blauwe tekstselectie achterlaten. Alleen een
+    ; klik op een geregistreerde linktekst wordt doorgelaten (als navigatie,
+    ; niet als selectie); elke andere klik/dubbelklik wordt hier volledig
+    ; afgevangen zodat RichEdit's standaard selectiegedrag nooit start.
     if message = WM_LBUTTONDOWN
         && IsSet(HelpLinkControls)
         && IsObject(HelpLinkControls)
@@ -986,7 +1087,15 @@ HelpRichEditSubclass(
                 return 0
             }
         }
+
+        return 0
     }
+
+    if message = WM_LBUTTONDBLCLK
+        && IsSet(HelpLinkControls)
+        && IsObject(HelpLinkControls)
+        && HelpLinkControls.Has(hwnd)
+        return 0
 
     if message = WM_NCDESTROY
         && IsSet(HelpLinkControls)
@@ -1013,12 +1122,30 @@ ToggleHelpSection(sectionIndex, *) {
     RedrawMainGui()
 }
 
+; Klikhandler voor de hint op de Tekstvervanging-pagina: navigeert naar
+; Help en klapt meteen de bijbehorende accordeonsectie open, in plaats van
+; de gebruiker die zelf te laten zoeken/aanklikken. ShowPage("help") ververst
+; de accordeon en de afgeronde hoeken zelf al, dus dat hoeft hier niet nog
+; eens.
+OpenHotstringHelpSection(*) {
+    global HelpOpenSection, HotstringHelpSectionIndex
+
+    HelpOpenSection := HotstringHelpSectionIndex
+    ShowPage("help")
+}
+
 RefreshHelpAccordion() {
     global HelpSections, HelpOpenSection
 
+    ; collapsedHeight is bewust kleiner dan de kaarthoogte die
+    ; AddHelpAccordionSection() voor iedere ingeklapte kaart aanmaakt (64):
+    ; met vijf secties en één opengeklapte sectie (258) moet de opsomming
+    ; nog boven de "Probleem melden..."-knop op y=654 eindigen. Bij
+    ; collapsedHeight=54 eindigt de langste combinatie (258 + 4×54 + 5×12)
+    ; op y=638, met 16px marge tot die knop.
     y := 104
     gap := 12
-    collapsedHeight := 64
+    collapsedHeight := 54
     expandedHeight := 258
 
     for index, section in HelpSections {
@@ -1036,12 +1163,44 @@ RefreshHelpAccordion() {
         if isOpen {
             section["Body"].Move(260, y + 58, 672, 184)
             section["Body"].Opt("-Hidden")
+            ClearHelpBodySelection(section["Body"])
+            ; Directe aanroep is niet altijd genoeg: bij navigatie vanaf een
+            ; andere control (zoals de hint op Tekstvervanging) komt de
+            ; ongewenste selectie soms pas iets later binnen, via een
+            ; bericht dat nog in de wachtrij stond op het moment van deze
+            ; aanroep. Een eenmalige herhaling na de huidige berichtenronde
+            ; wint dan alsnog van dat late bericht.
+            SetTimer(ClearHelpBodySelection.Bind(section["Body"]), -50)
         } else {
             section["Body"].Opt("+Hidden")
         }
 
         y += (isOpen ? expandedHeight : collapsedHeight) + gap
     }
+}
+
+; FormatHelpBody() al collapt zijn eigen opmaakselectie na het vet maken
+; van termen/links, maar dat gebeurt eenmalig bij het bouwen van de GUI.
+; Een sectie die via OpenHotstringHelpSection() wordt geopend terwijl de
+; klik nog op een ándere control (de link op Tekstvervanging) plaatsvond,
+; kan de hele hoofdtekst blauw geselecteerd tonen zodra het RichEdit-veld
+; zichtbaar wordt en onverwacht focus krijgt — vermoedelijk doordat Windows
+; automatisch focus verplaatst naar de nu zichtbare RichEdit wanneer de
+; eerder gefocuste linkcontrol wegvalt, gecombineerd met een leftover
+; muisstatus van die klik. Deze selectie blijft dan zichtbaar staan tot de
+; volgende gebruikersinteractie. Dit wist elke keer dat een sectie
+; opengaat expliciet de selectie, ongeacht de precieze oorzaak.
+ClearHelpBodySelection(bodyCtrl) {
+    static EM_SETSEL := 0x00B1
+
+    DllCall(
+        "SendMessageW",
+        "Ptr", bodyCtrl.Hwnd,
+        "UInt", EM_SETSEL,
+        "Ptr", 0,
+        "Ptr", 0,
+        "Ptr"
+    )
 }
 
 ; Geen navigatiepagina — dit sluit de hele applicatie af, inclusief het
@@ -5327,7 +5486,9 @@ ApplyHotReplacementEditorState() {
     HotEditorExpandedCard.Opt(visible && HotReplacementExpanded ? "-Hidden" : "+Hidden")
     HotReplacementExpandButton.Opt(visible && !HotReplacementExpanded ? "-Hidden" : "+Hidden")
     HotReplacementCollapseButton.Opt(visible && HotReplacementExpanded ? "-Hidden" : "+Hidden")
-    HotSaveButton.Move(808, HotReplacementExpanded ? 626 : 590, 148, 36)
+    ; Opslaan staat sinds de bodemuitlijning met Telefonie/Over op een vaste
+    ; positie (y=602) die in zowel de compacte als de uitgeklapte kaart past,
+    ; dus hoeft hier niet meer te verspringen.
 }
 
 RefreshHotstringList(selectItemId := "", *) {
@@ -8168,13 +8329,22 @@ ApplyRoundedControls(visibleOnly := false) {
 }
 
 RoundControl(control, radius := 12) {
+    ; SetWindowRgn shapes de hele vensterrechthoek van het control, niet
+    ; alleen het clientgebied. GetClientRect sluit een scrollbalk echter per
+    ; definitie uit (MSDN: "the client area... not including... scroll
+    ; bars"), dus een regio op basis van GetClientRect viel eerder net te
+    ; smal uit voor elk control met WS_VSCROLL (bodyEdit in de Help-
+    ; accordeon, aboutEdit op de Over-pagina): de scrollbalkstrook viel
+    ; buiten de regio en werd daardoor onzichtbaar geknipt, ook wanneer er
+    ; wel degelijk meer te scrollen was. GetWindowRect neemt de scrollbalk
+    ; wel mee.
     rect := Buffer(16, 0)
 
-    if !DllCall("GetClientRect", "ptr", control.Hwnd, "ptr", rect, "int")
+    if !DllCall("GetWindowRect", "ptr", control.Hwnd, "ptr", rect, "int")
         return
 
-    width := NumGet(rect, 8, "int")
-    height := NumGet(rect, 12, "int")
+    width := NumGet(rect, 8, "int") - NumGet(rect, 0, "int")
+    height := NumGet(rect, 12, "int") - NumGet(rect, 4, "int")
 
     if width <= 0 || height <= 0
         return
