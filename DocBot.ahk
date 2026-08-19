@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.3-dev.7"
+global AppVersion := "2.3-profielselectie-build-vorm.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -46,11 +46,14 @@ global IsDevMode := (A_UserName = "n.feenstra")
 global StartupWindowState := GetRequestedStartupWindowState()
 
 ; Gebruikersgegevens staan buiten de programmamap en zijn bewust per
-; releasekanaal gescheiden. Stable gebruikt DocBot, de centrale develop-
-; versies met -dev of -rc gebruiken DocBot-test en feature-/fixbranches
-; gebruiken DocBot-dev. Een prereleasebuild kan zo nooit productiedata migreren.
+; releasekanaal gescheiden. Stable gebruikt DocBot. Binnen elke niet-stabiele
+; versie bepaalt de buildvorm (A_IsCompiled), niet het prereleaselabel, of
+; DocBot-test of DocBot-dev wordt gebruikt: een gecompileerde prerelease test
+; de opleverbare vorm en deelt daarom het centrale testprofiel, een
+; niet-gecompileerde prerelease is broncode-ontwikkeling en blijft
+; geïsoleerd. Een prereleasebuild kan zo nooit productiedata migreren.
 global AppDataFolderName := "DocBot"
-global UserDataProfile := GetUserDataProfile(AppVersion)
+global UserDataProfile := GetUserDataProfile(AppVersion, A_IsCompiled)
 global ProductionUserDataDir := A_MyDocuments "\" AppDataFolderName
 global TestUserDataDir := ProductionUserDataDir "-test"
 global DevelopmentUserDataDir := ProductionUserDataDir "-dev"
@@ -8220,22 +8223,21 @@ NormalizeCallAction(value, fallback := 1) {
     return value = 3 && !HasConfiguredSmsCallActions() ? fallback : value
 }
 
-GetUserDataProfile(appVersion) {
+GetUserDataProfile(appVersion, isCompiled) {
     normalizedVersion := StrLower(Trim(appVersion))
 
     ; Een stabiele SemVer bestaat hier uitsluitend uit cijfers en punten.
+    ; Stable heeft voorrang: die gebruikt altijd het productieprofiel,
+    ; ongeacht buildvorm.
     if RegExMatch(normalizedVersion, "^\d+(?:\.\d+)*$")
         return "main"
 
-    ; -dev en -rc direct achter het numerieke versienummer gebruiken het
-    ; testkanaal. Bijvoorbeeld: 2.1-dev, 2.1-dev.15 en 2.1-rc.1.
-    if RegExMatch(normalizedVersion, "^\d+(?:\.\d+)*-(?:dev|rc)(?:\.\d+|\d+)?$")
-        return "test"
-
-    ; Iedere andere prerelease/build met letters is een feature- of fixbuild.
-    ; Ook een onverwachte niet-stabiele notatie valt uit veiligheid in dev,
-    ; zodat zo'n build nooit de productiegegevens gebruikt.
-    return "dev"
+    ; Voor elke niet-stabiele versie bepaalt de buildvorm het profiel, niet
+    ; het prereleaselabel (-dev, -rc of een feature-/fixnaam): een
+    ; gecompileerde build test de opleverbare vorm en deelt daarom het
+    ; centrale testprofiel; een niet-gecompileerde build is
+    ; broncode-ontwikkeling en blijft geïsoleerd in het devprofiel.
+    return isCompiled ? "test" : "dev"
 }
 
 GetUserDataSeedDirectory() {

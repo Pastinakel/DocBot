@@ -10,11 +10,14 @@
 ; Getest wordt uitsluitend pure logica die geen bestands-I/O, GUI of
 ; netwerk aanraakt: het lezen/afwijzen van schemaVersion-waarden
 ; (ReadSchemaVersion / RejectNewerSchemaVersion, gedefinieerd vlak vóór
-; InitializeBundledPackages() in DocBot.ahk) en de idempotentie van de
+; InitializeBundledPackages() in DocBot.ahk), de idempotentie van de
 ; eenmalige standaardwaarde-migraties voor persoonlijke hotstrings en
-; snelkiesnummers (AddMissingDefaultHotstrings / AddMissingDefaultSpeedDials).
+; snelkiesnummers (AddMissingDefaultHotstrings / AddMissingDefaultSpeedDials)
+; en de gebruikersprofielkeuze (GetUserDataProfile; docs/DECISIONS.md D-056).
 ; Dit dekt bewust niet de bestands-I/O, GUI-vernieuwing of showMessage-paden
-; van LoadHotstringsFromJson/LoadSpeedDialFromJson zelf.
+; van LoadHotstringsFromJson/LoadSpeedDialFromJson zelf, en ook niet de
+; daadwerkelijke profiel-bootstrapkopie (InitializeUserStorage) — dat vereist
+; Windows-functionele validatie (D-037).
 ;
 ; "Idempotent" betekent hier alleen: een tweede aanroep op dezelfde lijst
 ; voegt niets dubbel toe. Dat een eenmaal door de gebruiker verwijderde
@@ -34,6 +37,7 @@ RunSelfTests() {
     RunSelfTestCase(results, "TestAddMissingDefaultHotstringsIdempotency", TestAddMissingDefaultHotstringsIdempotency)
     RunSelfTestCase(results, "TestAddMissingDefaultSpeedDialsIdempotency", TestAddMissingDefaultSpeedDialsIdempotency)
     RunSelfTestCase(results, "TestCreateSpeedDialEntryDefaults", TestCreateSpeedDialEntryDefaults)
+    RunSelfTestCase(results, "TestGetUserDataProfile", TestGetUserDataProfile)
 
     logText := ""
     for _, line in results["lines"]
@@ -252,4 +256,33 @@ TestCreateSpeedDialEntryDefaults(results) {
 
     inactive := CreateSpeedDialEntry("Testnaam", "0123456789", 0)
     AssertEqual(results, "CreateSpeedDialEntry zet actief op false bij een falsy waarde", inactive["actief"], false)
+}
+
+; Dekt de testmatrix uit docs/TODO.md ("P2 — Change user-data profile
+; selection to build mode") voor de acht stabiliteit x buildvorm-combinaties.
+; Stable heeft voorrang; binnen niet-stabiel bepaalt uitsluitend isCompiled,
+; nooit het prereleaselabel zelf, of het testprofiel of het devprofiel wordt
+; gebruikt (docs/DECISIONS.md D-056).
+TestGetUserDataProfile(results) {
+    AssertEqual(results, "Stabiel, compiled -> main", GetUserDataProfile("2.3", true), "main")
+    AssertEqual(results, "Stabiel, noncompiled -> main", GetUserDataProfile("2.3", false), "main")
+
+    AssertEqual(results, "-dev, compiled -> test", GetUserDataProfile("2.3-dev.7", true), "test")
+    AssertEqual(results, "-dev, noncompiled -> dev", GetUserDataProfile("2.3-dev.7", false), "dev")
+
+    AssertEqual(results, "-rc, compiled -> test", GetUserDataProfile("2.3-rc.1", true), "test")
+    AssertEqual(results, "-rc, noncompiled -> dev", GetUserDataProfile("2.3-rc.1", false), "dev")
+
+    AssertEqual(
+        results,
+        "Feature/fixlabel, compiled -> test",
+        GetUserDataProfile("2.3-profielselectie-build-vorm.1", true),
+        "test"
+    )
+    AssertEqual(
+        results,
+        "Feature/fixlabel, noncompiled -> dev",
+        GetUserDataProfile("2.3-profielselectie-build-vorm.1", false),
+        "dev"
+    )
 }

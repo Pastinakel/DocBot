@@ -99,12 +99,14 @@ Functionaliteit — Hotstrings
   Keuzes voor meegeleverde pakketten staan afzonderlijk in
   `%MyDocuments%\DocBot\package-settings.json`.
 - Gebruikersgegevens zijn per releasekanaal gescheiden: stabiele numerieke
-  versies gebruiken `%MyDocuments%\DocBot`, centrale `-dev`-versies
-  gebruiken `DocBot-test` en feature- of fixversies met een ander
-  prereleaselabel gebruiken `DocBot-dev`. Een ontbrekend testprofiel wordt
-  vanuit main gekopieerd; een ontbrekend devprofiel bij voorkeur vanuit test
-  en anders vanuit main. Opgeslagen interne hotstringpaden worden naar de
-  doelmap omgezet voordat de normale datamodelmigraties draaien.
+  versies gebruiken `%MyDocuments%\DocBot`. Voor iedere niet-stabiele versie
+  bepaalt de buildvorm het profiel, niet het prereleaselabel: een
+  gecompileerde prerelease gebruikt `DocBot-test`, een niet-gecompileerde
+  (rechtstreeks vanuit broncode gestarte) prerelease gebruikt `DocBot-dev`.
+  Een ontbrekend testprofiel wordt vanuit main gekopieerd; een ontbrekend
+  devprofiel bij voorkeur vanuit test en anders vanuit main. Opgeslagen
+  interne hotstringpaden worden naar de doelmap omgezet voordat de normale
+  datamodelmigraties draaien.
 - Het bewerkformulier toont vervangingen standaard op één regel en kan
   worden uitgeklapt naar drie regels. Een geladen meerregelige vervanging
   klapt automatisch uit. Het JSON-model houdt één veld `Replacement`; een
@@ -473,6 +475,12 @@ Changelog
 ---------
 
 ### 2.3 — In ontwikkeling
+- Het gebruikersprofiel (`DocBot`/`DocBot-test`/`DocBot-dev`) voor
+  niet-stabiele versies wordt nu bepaald door de buildvorm (`A_IsCompiled`)
+  in plaats van door het prereleaselabel: een gecompileerde prerelease
+  gebruikt `DocBot-test`, een niet-gecompileerde prerelease gebruikt
+  `DocBot-dev`, ongeacht of het label `-dev`, `-rc` of een feature-/fixnaam
+  is. Stable blijft altijd `DocBot` gebruiken (`docs/DECISIONS.md` D-056).
 - Elke geconfigureerde SMS-pagina kan nu een optioneel tweede veld
   (`TextFieldId`) aanwijzen voor het berichtveld. Is dat ingesteld, dan kan
   de gebruiker onder **Instellingen > SMS actie** per SMS-pagina een

@@ -167,11 +167,11 @@ Requirements for the SMS path:
 
 ### 4.6 Storage profiles
 
-User data is deliberately isolated by release channel so prerelease builds cannot migrate production data:
+User data is deliberately isolated by release channel so prerelease builds cannot migrate production data. Stable versions take priority; for every non-stable version, build form (`A_IsCompiled`), not the prerelease label, selects the profile:
 
-- stable numeric versions such as `2.1` -> `%MyDocuments%\DocBot`;
-- central `-dev` and `-rc` versions -> `%MyDocuments%\DocBot-test`;
-- other lettered prereleases such as feature/fix builds -> `%MyDocuments%\DocBot-dev`.
+- stable numeric versions such as `2.1` -> `%MyDocuments%\DocBot`, regardless of build form;
+- any non-stable, compiled version (`-dev`, `-rc`, or a feature/fix build) -> `%MyDocuments%\DocBot-test`;
+- any non-stable, noncompiled version -> `%MyDocuments%\DocBot-dev`.
 
 When a target profile does not yet exist, it is copied once from the most appropriate predecessor and then normal schema migrations run. Existing target folders are never overwritten by this profile bootstrap.
 

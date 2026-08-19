@@ -125,17 +125,20 @@ Deze bestanden staan niet in de repository:
 
 ## Gebruikersprofielen per releasekanaal
 
-DocBot gebruikt bewust drie gescheiden mappen onder `A_MyDocuments`. De
-versiestring bepaalt het profiel:
+DocBot gebruikt bewust drie gescheiden mappen onder `A_MyDocuments`. Stable
+heeft voorrang; voor elke niet-stabiele versie kiest de buildvorm
+(`A_IsCompiled`), niet het prereleaselabel, tussen `DocBot-test` en
+`DocBot-dev`:
 
 - een versie met uitsluitend cijfers en punten, bijvoorbeeld `2.2`, gebruikt
-  `DocBot` (main/stable);
-- `-dev` of `-rc` direct achter het numerieke versienummer, bijvoorbeeld
-  `2.3-dev.15` of `2.3-rc.1`, gebruikt `DocBot-test` (centrale
-  ontwikkel-, test- en releasecandidateversies);
-- iedere andere prerelease met letters, bijvoorbeeld
-  `2.3-multiline.1` of `2.3-bugs-pakketview.2`, gebruikt `DocBot-dev`
-  (feature- en fixbranches).
+  altijd `DocBot` (main/stable), ongeacht of die build gecompileerd is;
+- iedere niet-stabiele, gecompileerde versie — bijvoorbeeld `2.3-dev.15`,
+  `2.3-rc.1` of `2.3-multiline.1` — gebruikt `DocBot-test`: een gecompileerde
+  prerelease test de opleverbare vorm en deelt daarom het centrale
+  testprofiel, ongeacht welke branch de build maakte;
+- iedere niet-stabiele, niet-gecompileerde versie (rechtstreeks vanuit
+  broncode gestart) gebruikt `DocBot-dev`: dat is broncode-ontwikkeling en
+  blijft geïsoleerd van het gedeelde testprofiel.
 
 Als `DocBot-test` nog niet bestaat, wordt die eenmalig vanuit `DocBot`
 gekopieerd. Als `DocBot-dev` nog niet bestaat, wordt die bij voorkeur vanuit
