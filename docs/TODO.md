@@ -215,10 +215,24 @@ every managed Windows workstation.
   `docs/REGULATORY_ASSESSMENT.md` and `docs/DECISIONS.md`. Also updated
   `docs/DATA_PROTECTION.md` (not originally listed here, but it contained
   the same now-stale "code does not enforce HTTPS" wording in three places).
-- [ ] Confirm separately whether the server provides strong client/server
-  authentication; TLS transport encryption alone does not establish client
-  authorization. Record any additional authentication work as an explicit
-  scoped task.
+- [ ] This is an infrastructure/organizational question, not a DocBot code
+  task, and not something resolvable from within this repository or by the
+  project owner alone: DocBot's own requests (`IPT_callNumber()`,
+  `IPT_register()`) send no application-level credential today — no API
+  key, bearer token, or client certificate, only an `Accept-Language`
+  header — so as far as the code shows, the only current "authentication"
+  is network reachability (hospital LAN/VPN). Escalate to whoever owns/
+  administers the internal telephony server (or the hospital network/
+  security team) and ask explicitly:
+  - Is the endpoint reachable only from within the hospital network/VPN,
+    i.e. is network segmentation the intended authentication boundary?
+  - Does the server expect an additional credential (API key, token,
+    client certificate/mTLS) that DocBot does not currently send?
+  - Is there a reverse proxy in front of it enforcing anything beyond TLS?
+  Record the answer in `docs/DECISIONS.md` once known. Only if the answer
+  reveals a real gap does this become a scoped `DocBot.ahk` implementation
+  task (e.g. sending a configured credential header); until then, do not
+  add speculative auth code with no confirmed server-side contract.
 
 ### Acceptance evidence
 
