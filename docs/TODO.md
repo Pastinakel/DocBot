@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-17. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-19. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -126,6 +126,67 @@ history and tag `v2.2`.
 
 ---
 
+## P1 — Baseline debug output for repeated SMS window/tab reopening
+
+Reported by the project owner (2026-08-19): sometimes a new SMS Edge
+window/tab is opened even though a matching tab is already open on the
+correct page. The project owner wants to see, in the always-on developer
+debug window/standard log, which path `RunSmsCallAction()` actually took
+and why the earlier ones were skipped — not only during a consented
+extended-logging session.
+
+### Root cause of the diagnostic gap
+
+`RunSmsCallAction()` (`DocBot.ahk`) tries three paths in order:
+
+1. `ActivateSmsEdgeWindowByTitle()` — `WinActivate`/`WinWaitActive` on
+   `smsConfig["WindowTitle"]`;
+2. `ActivateSmsEdgeTabByTitle()` — enumerates usable Edge windows
+   (`GetUsableEdgeBrowserWindows()`) and calls UIA `TabExist()` per window;
+3. `OpenSmsPage()` — URL fallback that starts a new `msedge.exe` process.
+
+Every decision point in these four functions currently logs only through
+`ExtendedDebugLog()`, which is gated behind explicit user consent and an
+active problem-report session (see `docs/PROJECT_CONTEXT.md` §4.9). In
+normal use nothing about *why* path 1/2 failed and path 3 (new
+window/tab) triggered reaches the baseline `debug.log`/live debug window
+at all, so the project owner cannot currently see why a matching tab was
+missed.
+
+### Scope
+
+- [ ] Add baseline `DebugLog()` calls (not only `ExtendedDebugLog()`) at
+  the decision points in `RunSmsCallAction()`,
+  `ActivateSmsEdgeWindowByTitle()`, `ActivateSmsEdgeTabByTitle()`, and
+  `OpenSmsPage()`: which path was attempted, whether it matched, and — for
+  the tab-selection path — how many usable Edge windows/tabs were
+  considered before falling through to the URL fallback that opens a new
+  window/tab.
+- [ ] Keep `ExtendedDebugLog()` calls as-is for the already-detailed
+  tracing; this is about promoting a summary of the same decision to the
+  baseline log, not duplicating full detail there.
+- [ ] Follow existing redaction conventions: reuse `MaskSmsPhoneNumber()`
+  for the number (already the case), and treat `WindowTitle` as the
+  existing technical matching value it already is elsewhere in these
+  logs — do not log the filled/entered SMS message text.
+- [ ] Investigate, using the new logging, plausible causes for a false
+  "no matching tab" result on an already-open correct tab: title-match
+  timing (`TabExist(targetTitle, 2, false)` timeout), a minimized/hidden
+  window not enumerated by `GetUsableEdgeBrowserWindows()`, multiple Edge
+  windows where the match is checked in the wrong one first and returns
+  before scanning the rest, or the tab's title having changed (e.g. after
+  page navigation) so it no longer matches the configured `WindowTitle`.
+- [ ] Update `docs/DATA_PROTECTION.md`/README only if the new baseline log
+  lines add a new category of logged content beyond what is already
+  documented for the standard log.
+
+This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
+branch from the then-current `develop` (this task was filed from
+`claude/sms-window-reopen-bug-mmx5ln`) and update the branch-specific
+`AppVersion` in every commit that changes `DocBot.ahk`.
+
+---
+
 ## P1 — Make HTTPS mandatory for telephony and SMS URLs
 
 An exploratory test on 2026-08-09 showed that changing the local telephony
@@ -154,10 +215,24 @@ every managed Windows workstation.
   `docs/REGULATORY_ASSESSMENT.md` and `docs/DECISIONS.md`. Also updated
   `docs/DATA_PROTECTION.md` (not originally listed here, but it contained
   the same now-stale "code does not enforce HTTPS" wording in three places).
-- [ ] Confirm separately whether the server provides strong client/server
-  authentication; TLS transport encryption alone does not establish client
-  authorization. Record any additional authentication work as an explicit
-  scoped task.
+- [ ] This is an infrastructure/organizational question, not a DocBot code
+  task, and not something resolvable from within this repository or by the
+  project owner alone: DocBot's own requests (`IPT_callNumber()`,
+  `IPT_register()`) send no application-level credential today — no API
+  key, bearer token, or client certificate, only an `Accept-Language`
+  header — so as far as the code shows, the only current "authentication"
+  is network reachability (hospital LAN/VPN). Escalate to whoever owns/
+  administers the internal telephony server (or the hospital network/
+  security team) and ask explicitly:
+  - Is the endpoint reachable only from within the hospital network/VPN,
+    i.e. is network segmentation the intended authentication boundary?
+  - Does the server expect an additional credential (API key, token,
+    client certificate/mTLS) that DocBot does not currently send?
+  - Is there a reverse proxy in front of it enforcing anything beyond TLS?
+  Record the answer in `docs/DECISIONS.md` once known. Only if the answer
+  reveals a real gap does this become a scoped `DocBot.ahk` implementation
+  task (e.g. sending a configured credential header); until then, do not
+  add speculative auth code with no confirmed server-side contract.
 
 ### Acceptance evidence
 
