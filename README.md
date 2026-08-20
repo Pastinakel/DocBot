@@ -66,11 +66,15 @@ Bij de eerste start maakt het script zelf een gebruikersmap aan (zie hieronder)
 voor instellingen en hotstrings — daar is verder niets voor te installeren of 
 te configureren.
 
-`Build-EPD_Machine.bat` compileert in de bronmap eerst `DocBot.exe` en
-plaatst vervolgens een kopie in de bovenliggende applicatiemap, met de naam
-van die map. Wanneer het script een centrale `-dev`-versie bevat en de
-batch vanuit een directe submap van `DocBot` draait, kan optioneel ook
-`EPD_Machine.exe` in de naastgelegen applicatiemap worden bijgewerkt. Voor
+`Build-EPD_Machine.bat` stelt eerst al zijn interactieve vragen — inclusief
+die over de `packages`-submap hieronder — en doorloopt daarna zonder verdere
+onderbrekingen het compileren en uitrollen. Enter zonder tekst registreert
+telkens Ja; alleen een expliciete "N" telt als Nee. De batch compileert in de
+bronmap eerst `DocBot.exe` en plaatst vervolgens een kopie in de bovenliggende
+applicatiemap, met de naam van die map. Wanneer het script een centrale
+`-dev`-versie bevat en de batch vanuit een directe submap van `DocBot`
+draait, kan optioneel ook `EPD_Machine.exe` in de naastgelegen
+applicatiemap worden bijgewerkt. Voor
 iedere gekozen doelmap plaatst de batch tijdelijk `ALL:update` in het
 lokale `signal.txt`. Een actieve DocBot-instantie registreert vóór het
 afsluiten een eenmalige taak in Windows Taakplanner. De batch probeert daarna
@@ -475,6 +479,11 @@ Changelog
 ---------
 
 ### 2.3 — In ontwikkeling
+- `Build-EPD_Machine.bat` stelt al zijn interactieve vragen (EPD_Machine
+  meekopiëren, een bestaande `packages`-submap overschrijven) nu vooraf,
+  vóór het compileren begint, in plaats van verspreid tijdens het uitrollen.
+  Enter zonder tekst registreert telkens Ja; alleen een expliciete "N" telt
+  als Nee.
 - Het gebruikersprofiel (`DocBot`/`DocBot-test`/`DocBot-dev`) voor
   niet-stabiele versies wordt nu bepaald door de buildvorm (`A_IsCompiled`)
   in plaats van door het prereleaselabel: een gecompileerde prerelease
