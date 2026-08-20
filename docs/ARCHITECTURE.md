@@ -164,15 +164,17 @@ Telemetry separately holds its own asynchronous request object.
 
 ### 7.1 Release-channel profiles
 
-`AppVersion` selects one of three Documents profiles:
+`AppVersion` and `A_IsCompiled` together select one of three Documents profiles. Stability (from `AppVersion`) takes priority; build form (`A_IsCompiled`) only decides between the two non-stable profiles:
 
 ```text
-stable numeric version       -> %MyDocuments%\DocBot
--dev or -rc prerelease       -> %MyDocuments%\DocBot-test
-other named prerelease       -> %MyDocuments%\DocBot-dev
+stable numeric version                  -> %MyDocuments%\DocBot
+non-stable version, compiled            -> %MyDocuments%\DocBot-test
+non-stable version, noncompiled         -> %MyDocuments%\DocBot-dev
 ```
 
-Purpose: a feature/fix or RC build must never mutate/migrate production user data simply because it is launched by a developer/tester.
+The prerelease label itself (`-dev`, `-rc`, or a feature/fix name) no longer independently selects `DocBot-test` versus `DocBot-dev` — only whether the running build is compiled does (`docs/DECISIONS.md` D-056, superseding D-009).
+
+Purpose: a feature/fix or RC build must never mutate/migrate production user data simply because it is launched by a developer/tester, and an uncompiled source run — whichever branch or version string it carries — is always source-level development and must stay isolated from the shared test profile.
 
 Bootstrap behavior:
 

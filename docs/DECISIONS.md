@@ -146,7 +146,7 @@ Stable releases receive an annotated tag such as `v2.2` on the stable release co
 
 ## D-009 — User data is isolated by release channel
 
-**Status:** Accepted
+**Status:** Superseded by D-056
 
 Stable, central test/RC, and feature/fix builds use different Documents folders.
 
@@ -155,6 +155,10 @@ stable     -> DocBot
 -dev/-rc   -> DocBot-test
 other pre  -> DocBot-dev
 ```
+
+D-056 keeps this same three-way isolation but replaces the prerelease-label
+based split between `DocBot-test` and `DocBot-dev` with a build-form
+(`A_IsCompiled`) based split.
 
 **Reason**
 
@@ -1966,3 +1970,53 @@ overwrite/lose a user-edited value" rule is meant to protect against.
   fallback's tagName branch, and the Instellingen layout have only been
   reviewed as source, not run through DocBot itself.
 - Implemented on branch `claude/sms-default-text-config-oigp28`.
+
+---
+
+## D-056 — User-data profile selection uses build form, not prerelease label
+
+**Status:** Accepted (supersedes D-009)
+
+Non-stable Documents-profile selection (`DocBot-test` vs. `DocBot-dev`) is
+based on `A_IsCompiled`, not on the `-dev`/`-rc`/feature-label distinction in
+`AppVersion`. Stable numeric versions still always resolve to `DocBot`
+regardless of compilation.
+
+```text
+stable                          -> DocBot
+non-stable, compiled            -> DocBot-test
+non-stable, noncompiled         -> DocBot-dev
+```
+
+**Reason**
+
+`GetUserDataProfile()` previously read the prerelease label itself
+(`-dev`/`-rc` versus any other lettered prerelease) to choose between
+`DocBot-test` and `DocBot-dev`. This left two real gaps in D-009's
+data-isolation intent: an uncompiled `develop`/`-rc` checkout run directly
+from source landed in the central `DocBot-test` profile shared with real
+testers, and a compiled feature/fix acceptance-test build landed in the
+isolated `DocBot-dev` profile instead of the shared test profile it was
+actually meant to validate against.
+
+A compiled prerelease — whichever branch produced it — is a test of the
+deliverable form and should share the central test profile. A noncompiled
+prerelease is source-level development and should stay isolated, even when
+it happens to carry a `-dev`/`-rc` label. `AppVersion` continues to identify
+branch/release state for versioning; it no longer independently determines
+the non-stable storage profile.
+
+**Consequences**
+
+- `GetUserDataProfile(appVersion, isCompiled)` gains an explicit `isCompiled`
+  parameter instead of reading `A_IsCompiled` internally, keeping it pure
+  and directly unit-testable from `tests/SelfTests.ahk`.
+- The one-time bootstrap chain in `InitializeUserStorage()` /
+  `GetUserDataSeedDirectory()` is unchanged: it already operates on the
+  resulting `"main"`/`"test"`/`"dev"` value, not on how that value is
+  derived.
+- No change to the branch-version scheme (`2.3-dev.N`, `2.3-<branch>.N`,
+  `2.3-rc.N`, stable `2.3`) and no change to telemetry payload/interval;
+  only the `settings.ini` location it reads from follows the (now
+  differently derived) selected profile.
+- Implemented on branch `claude/profielselectie-build-vorm-bdkt6j`.

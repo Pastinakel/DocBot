@@ -450,6 +450,11 @@ Do not copy end-user changelog content into these docs verbatim; link concepts a
 
 ## P2 — Change user-data profile selection to build mode
 
+**Status: implemented** (`docs/DECISIONS.md` D-056, supersedes D-009) on
+branch `claude/profielselectie-build-vorm-bdkt6j`. Kept here until Windows
+functional validation (D-037) confirms the test matrix below; remove this
+item once validated.
+
 _Downgraded from P1 to P2 on 2026-08-17: this closes a real gap in D-009's
 data-isolation intent (an uncompiled `develop`/`-rc` script run currently
 shares the central `DocBot-test` profile with real testers, and a compiled
@@ -479,30 +484,36 @@ Stable has priority: a stable numeric `AppVersion` uses `DocBot` regardless of w
 
 ### Implementation scope
 
-- [ ] Change the profile-selection logic in `DocBot.ahk` (currently centered around `GetUserDataProfile(AppVersion)`) so it incorporates stability plus `A_IsCompiled`.
-- [ ] Keep the existing one-time bootstrap chain unless implementation review finds a concrete reason to change it: missing `DocBot-test` copies from `DocBot`; missing `DocBot-dev` prefers `DocBot-test`, otherwise `DocBot`; never overwrite an existing destination profile.
-- [ ] Update nearby source comments so they no longer describe `-dev`/`-rc` versus other prerelease suffixes as the profile selector.
-- [ ] Update `README.md` wherever the old profile rule is described.
-- [ ] Update the `Gebruikersprofielen` rule in both `AGENTS.md` and `CLAUDE.md`; make explicit that build form, not feature/RC suffix, selects the non-stable profile.
-- [ ] Update `docs/PROJECT_CONTEXT.md` and `docs/ARCHITECTURE.md` to the new invariant/data-flow.
-- [ ] Add/supersede the corresponding storage-profile decision in `docs/DECISIONS.md` rather than silently erasing the old rationale.
-- [ ] Revisit this TODO and any acceptance-test wording that still assumes suffix-only profile selection.
-- [ ] Do not change the branch-version scheme (`2.3-dev.N`, `2.3-<branch>.N`, `2.3-rc.N`, stable `2.3`).
-- [ ] Do not treat package-cache behavior under `%LocalAppData%` as part of this change unless explicitly approved; this task concerns Documents/config/user-data profile selection.
-- [ ] Telemetry payload, fields and interval should remain unchanged; only its `settings.ini` location follows the selected user profile. Update telemetry documentation only if the implementation changes telemetric behavior beyond that.
+- [x] Change the profile-selection logic in `DocBot.ahk` (currently centered around `GetUserDataProfile(AppVersion)`) so it incorporates stability plus `A_IsCompiled`.
+- [x] Keep the existing one-time bootstrap chain unless implementation review finds a concrete reason to change it: missing `DocBot-test` copies from `DocBot`; missing `DocBot-dev` prefers `DocBot-test`, otherwise `DocBot`; never overwrite an existing destination profile. (No reason found; `InitializeUserStorage()`/`GetUserDataSeedDirectory()` left unchanged — they already operate on the resulting profile name.)
+- [x] Update nearby source comments so they no longer describe `-dev`/`-rc` versus other prerelease suffixes as the profile selector.
+- [x] Update `README.md` wherever the old profile rule is described.
+- [x] Update the `Gebruikersprofielen` rule in both `AGENTS.md` and `CLAUDE.md`; make explicit that build form, not feature/RC suffix, selects the non-stable profile.
+- [x] Update `docs/PROJECT_CONTEXT.md` and `docs/ARCHITECTURE.md` to the new invariant/data-flow.
+- [x] Add/supersede the corresponding storage-profile decision in `docs/DECISIONS.md` rather than silently erasing the old rationale. (D-056 supersedes D-009.)
+- [x] Revisit this TODO and any acceptance-test wording that still assumes suffix-only profile selection.
+- [x] Do not change the branch-version scheme (`2.3-dev.N`, `2.3-<branch>.N`, `2.3-rc.N`, stable `2.3`).
+- [x] Do not treat package-cache behavior under `%LocalAppData%` as part of this change unless explicitly approved; this task concerns Documents/config/user-data profile selection.
+- [x] Telemetry payload, fields and interval should remain unchanged; only its `settings.ini` location follows the selected user profile. Update telemetry documentation only if the implementation changes telemetric behavior beyond that.
 
 ### Required test matrix
 
-- [ ] Stable `2.3`, compiled -> `Documents\DocBot`.
-- [ ] Stable `2.3`, noncompiled -> `Documents\DocBot`.
-- [ ] `2.3-dev.N`, compiled -> `Documents\DocBot-test`.
-- [ ] `2.3-rc.N`, compiled -> `Documents\DocBot-test`.
-- [ ] Feature/fix prerelease such as `2.3-example.1`, compiled -> `Documents\DocBot-test`.
-- [ ] `2.3-dev.N`, noncompiled -> `Documents\DocBot-dev`.
-- [ ] `2.3-rc.N`, noncompiled -> `Documents\DocBot-dev`.
-- [ ] Feature/fix prerelease, noncompiled -> `Documents\DocBot-dev`.
-- [ ] Existing `DocBot-test` and `DocBot-dev` directories are never repopulated/overwritten merely because selection rules changed.
-- [ ] Stored hotstring/settings/package/speeddial paths still migrate or resolve correctly in the selected profile.
+The first eight rows are now covered by pure-logic self-tests
+(`TestGetUserDataProfile` in `tests/SelfTests.ahk`, run via
+`DocBot.ahk --selftest`). The last two rows involve real file-system
+bootstrap/migration and still need Windows functional validation (D-037)
+before this item can be removed from the TODO.
+
+- [x] Stable `2.3`, compiled -> `Documents\DocBot`. (self-test)
+- [x] Stable `2.3`, noncompiled -> `Documents\DocBot`. (self-test)
+- [x] `2.3-dev.N`, compiled -> `Documents\DocBot-test`. (self-test)
+- [x] `2.3-rc.N`, compiled -> `Documents\DocBot-test`. (self-test)
+- [x] Feature/fix prerelease such as `2.3-example.1`, compiled -> `Documents\DocBot-test`. (self-test)
+- [x] `2.3-dev.N`, noncompiled -> `Documents\DocBot-dev`. (self-test)
+- [x] `2.3-rc.N`, noncompiled -> `Documents\DocBot-dev`. (self-test)
+- [x] Feature/fix prerelease, noncompiled -> `Documents\DocBot-dev`. (self-test)
+- [ ] Existing `DocBot-test` and `DocBot-dev` directories are never repopulated/overwritten merely because selection rules changed. (needs Windows validation, D-037)
+- [ ] Stored hotstring/settings/package/speeddial paths still migrate or resolve correctly in the selected profile. (needs Windows validation, D-037)
 
 ### Version/preflight requirement when implementing
 
