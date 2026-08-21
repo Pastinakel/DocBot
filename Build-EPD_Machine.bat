@@ -59,11 +59,12 @@ if not errorlevel 1 set "IS_DEVELOP=1"
 set "DO_EPD_COPY="
 if defined IS_DEVELOP if /I "%APP_NAME%"=="DocBot" (
     if not exist "%ROOT_DIR%\EPD_Machine\" (
-        echo FOUT: De naastgelegen applicatiemap bestaat niet:
+        echo De naastgelegen applicatiemap EPD_Machine bestaat niet; deze
+        echo stap wordt overgeslagen:
         echo "%ROOT_DIR%\EPD_Machine"
-        goto :failed
+    ) else (
+        call :ask "Ook een executable naar de naastgelegen map EPD_Machine kopieren? [J/n] " DO_EPD_COPY
     )
-    call :ask "Ook een executable naar de naastgelegen map EPD_Machine kopieren? [J/n] " DO_EPD_COPY
 )
 
 set "OVERWRITE_MAIN_PACKAGES=J"
