@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.3-dev.8"
+global AppVersion := "2.3-sms-heropen.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -4501,15 +4501,27 @@ RunSmsCallAction(smsConfig, number) {
     )
 
     try {
+        gebruiktPad := "WinActivate(WindowTitle)"
         edge := ActivateSmsEdgeWindowByTitle(smsConfig["WindowTitle"])
 
-        if !IsObject(edge)
+        if !IsObject(edge) {
+            gebruiktPad := "UIA-tabselectie"
             edge := ActivateSmsEdgeTabByTitle(smsConfig["WindowTitle"])
-
-        if !IsObject(edge)
-            edge := OpenSmsPage(smsConfig["Url"], smsConfig["WindowTitle"])
+        }
 
         if !IsObject(edge) {
+            gebruiktPad := "URL-fallback (nieuw venster/tab)"
+            edge := OpenSmsPage(smsConfig["Url"], smsConfig["WindowTitle"])
+        }
+
+        if !IsObject(edge) {
+            DebugLog(
+                "✕",
+                "SMS vensterselectie",
+                "Geen van de drie paden (WinActivate, UIA-tabselectie, URL-fallback) "
+                    "vond een bruikbare Edge-tab voor WindowTitle '"
+                    smsConfig["WindowTitle"] "'."
+            )
             ExtendedDebugLog(
                 "✕",
                 "SMS vensterselectie",
@@ -4517,6 +4529,13 @@ RunSmsCallAction(smsConfig, number) {
             )
             return false
         }
+
+        DebugLog(
+            "✓",
+            "SMS vensterselectie",
+            "Pad '" gebruiktPad "' leverde de gebruikte Edge-tab voor WindowTitle '"
+                smsConfig["WindowTitle"] "'."
+        )
 
         phoneFilled := FillSmsFieldWithUIA(edge, smsConfig["FieldId"], number)
         if phoneFilled {
@@ -4553,6 +4572,11 @@ ActivateSmsEdgeWindowByTitle(targetTitle) {
 
     try WinActivate(targetTitle)
     catch as activateError {
+        DebugLog(
+            "←",
+            "SMS WinActivate",
+            "Geen titelmatch voor WindowTitle '" targetTitle "'."
+        )
         ExtendedDebugLog(
             "←",
             "SMS WinActivate",
@@ -4564,6 +4588,11 @@ ActivateSmsEdgeWindowByTitle(targetTitle) {
 
     hwnd := WinWaitActive(targetTitle, , 1)
     if !hwnd {
+        DebugLog(
+            "←",
+            "SMS WinActivate",
+            "Titelmatch voor WindowTitle '" targetTitle "' werd niet binnen 1 seconde actief."
+        )
         ExtendedDebugLog(
             "←",
             "SMS WinActivate",
@@ -4574,6 +4603,11 @@ ActivateSmsEdgeWindowByTitle(targetTitle) {
 
     try {
         edge := UIA_Browser(hwnd)
+        DebugLog(
+            "✓",
+            "SMS WinActivate",
+            "Edge-venster met WindowTitle '" targetTitle "' geactiveerd en UIA_Browser gekoppeld."
+        )
         ExtendedDebugLog(
             "✓",
             "SMS WinActivate",
@@ -4582,6 +4616,11 @@ ActivateSmsEdgeWindowByTitle(targetTitle) {
         )
         return edge
     } catch as browserError {
+        DebugLog(
+            "✕",
+            "SMS WinActivate",
+            "Venster met WindowTitle '" targetTitle "' actief, maar UIA_Browser koppelen mislukte."
+        )
         ExtendedDebugLog(
             "✕",
             "SMS WinActivate",
@@ -4616,6 +4655,12 @@ ActivateSmsEdgeTabByTitle(targetTitle) {
     startedAt := A_TickCount
     edgeWindows := GetUsableEdgeBrowserWindows()
 
+    DebugLog(
+        "→",
+        "SMS UIA-tabselectie",
+        edgeWindows.Length " bruikbare Edge-venster(s) gevonden voor WindowTitle '"
+            targetTitle "'."
+    )
     ExtendedDebugLog(
         "→",
         "SMS UIA-tabselectie",
@@ -4630,12 +4675,25 @@ ActivateSmsEdgeTabByTitle(targetTitle) {
 
             edge := UIA_Browser(hwnd)
             tab := edge.TabExist(targetTitle, 2, false)
-            if !tab
+            if !tab {
+                DebugLog(
+                    "←",
+                    "SMS UIA-tabselectie",
+                    "Venster " index "/" edgeWindows.Length
+                        ": geen tab met WindowTitle '" targetTitle "' gevonden."
+                )
                 continue
+            }
 
             edge.SelectTab(tab)
             WinActivate("ahk_id " hwnd)
             if WinWaitActive("ahk_id " hwnd, , 2) {
+                DebugLog(
+                    "✓",
+                    "SMS UIA-tabselectie",
+                    "Venster " index "/" edgeWindows.Length
+                        ": tab met WindowTitle '" targetTitle "' gevonden en geactiveerd."
+                )
                 ExtendedDebugLog(
                     "✓",
                     "SMS UIA-tabselectie",
@@ -4644,7 +4702,20 @@ ActivateSmsEdgeTabByTitle(targetTitle) {
                 )
                 return edge
             }
+
+            DebugLog(
+                "←",
+                "SMS UIA-tabselectie",
+                "Venster " index "/" edgeWindows.Length
+                    ": tab gevonden maar niet binnen 2 seconden actief geworden."
+            )
         } catch as windowError {
+            DebugLog(
+                "←",
+                "SMS UIA-tabselectie",
+                "Venster " index "/" edgeWindows.Length
+                    " overgeslagen (fout bij koppelen/selecteren)."
+            )
             ExtendedDebugLog(
                 "←",
                 "SMS UIA-tabselectie",
@@ -4654,6 +4725,13 @@ ActivateSmsEdgeTabByTitle(targetTitle) {
         }
     }
 
+    DebugLog(
+        "←",
+        "SMS UIA-tabselectie",
+        "Geen passende tab gevonden in " edgeWindows.Length
+            " bruikbare Edge-venster(s) voor WindowTitle '" targetTitle
+            "'; URL-fallback volgt."
+    )
     ExtendedDebugLog(
         "←",
         "SMS UIA-tabselectie",
@@ -4673,6 +4751,7 @@ OpenSmsPage(url, targetTitle) {
 
     try Run('msedge.exe "' url '"')
     catch as runError {
+        DebugLog("✕", "SMS URL-fallback", "Edge starten mislukte.")
         ExtendedDebugLog("✕", "SMS URL-fallback", "Edge starten mislukte: " runError.Message)
         return 0
     }
@@ -4681,6 +4760,12 @@ OpenSmsPage(url, targetTitle) {
     ; een samengestelde query met ahk_exe in deze werkomgeving niet betrouwbaar is.
     hwnd := WinWaitActive(targetTitle, , 10)
     if !hwnd {
+        DebugLog(
+            "✕",
+            "SMS URL-fallback",
+            "Nieuw geopende pagina met WindowTitle '" targetTitle
+                "' werd niet binnen 10 seconden actief."
+        )
         ExtendedDebugLog(
             "✕",
             "SMS URL-fallback",
@@ -4691,9 +4776,19 @@ OpenSmsPage(url, targetTitle) {
 
     try {
         edge := UIA_Browser(hwnd)
+        DebugLog(
+            "✓",
+            "SMS URL-fallback",
+            "Nieuwe Edge-tab met WindowTitle '" targetTitle "' actief en UIA_Browser gekoppeld."
+        )
         ExtendedDebugLog("✓", "SMS URL-fallback", "Nieuwe Edge-tab actief en UIA_Browser gekoppeld.")
         return edge
     } catch as browserError {
+        DebugLog(
+            "✕",
+            "SMS URL-fallback",
+            "UIA_Browser koppelen aan de nieuwe tab met WindowTitle '" targetTitle "' mislukte."
+        )
         ExtendedDebugLog(
             "✕",
             "SMS URL-fallback",

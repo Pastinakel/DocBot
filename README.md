@@ -479,6 +479,19 @@ Changelog
 ---------
 
 ### 2.3 — In ontwikkeling
+- Het venster-/tabselectiepad voor een SMS-actie (`RunSmsCallAction()`,
+  `ActivateSmsEdgeWindowByTitle()`, `ActivateSmsEdgeTabByTitle()`,
+  `OpenSmsPage()`) logt de belangrijkste beslispunten voortaan ook naar het
+  standaardlog/ontwikkelaarsvenster, niet langer uitsluitend naar het
+  uitgebreide log tijdens een toegestane sessie: welk pad (WinActivate,
+  UIA-tabselectie of URL-fallback) is geprobeerd, per doorzocht Edge-venster
+  of er een tab met de geconfigureerde `WindowTitle` is gevonden, en welk pad
+  uiteindelijk de gebruikte tab leverde. Dit maakt zichtbaar waarom soms een
+  nieuw Edge-venster/tab wordt geopend terwijl een passende tab al open leek
+  te staan, zonder dat daarvoor eerst een uitgebreide-loggingsessie nodig is.
+  Alleen een samenvatting is toegevoegd; de al bestaande gedetailleerde
+  `ExtendedDebugLog()`-regels blijven ongewijzigd (`docs/TODO.md`, gefileerd
+  vanuit `claude/sms-window-reopen-bug-mmx5ln`).
 - `Build-EPD_Machine.bat` stelt al zijn interactieve vragen (EPD_Machine
   meekopiëren, een bestaande `packages`-submap overschrijven) nu vooraf,
   vóór het compileren begint, in plaats van verspreid tijdens het uitrollen.
