@@ -475,6 +475,19 @@ Changelog
 ---------
 
 ### 2.3 — In ontwikkeling
+- Het venster-/tabselectiepad voor een SMS-actie (`RunSmsCallAction()`,
+  `ActivateSmsEdgeWindowByTitle()`, `ActivateSmsEdgeTabByTitle()`,
+  `OpenSmsPage()`) logt de belangrijkste beslispunten voortaan ook naar het
+  standaardlog/ontwikkelaarsvenster, niet langer uitsluitend naar het
+  uitgebreide log tijdens een toegestane sessie: welk pad (WinActivate,
+  UIA-tabselectie of URL-fallback) is geprobeerd, per doorzocht Edge-venster
+  of er een tab met de geconfigureerde `WindowTitle` is gevonden, en welk pad
+  uiteindelijk de gebruikte tab leverde. Dit maakt zichtbaar waarom soms een
+  nieuw Edge-venster/tab wordt geopend terwijl een passende tab al open leek
+  te staan, zonder dat daarvoor eerst een uitgebreide-loggingsessie nodig is.
+  Alleen een samenvatting is toegevoegd; de al bestaande gedetailleerde
+  `ExtendedDebugLog()`-regels blijven ongewijzigd (`docs/TODO.md`, gefileerd
+  vanuit `claude/sms-window-reopen-bug-mmx5ln`).
 - Het gebruikersprofiel (`DocBot`/`DocBot-test`/`DocBot-dev`) voor
   niet-stabiele versies wordt nu bepaald door de buildvorm (`A_IsCompiled`)
   in plaats van door het prereleaselabel: een gecompileerde prerelease

@@ -155,20 +155,31 @@ missed.
 
 ### Scope
 
-- [ ] Add baseline `DebugLog()` calls (not only `ExtendedDebugLog()`) at
+- [x] Add baseline `DebugLog()` calls (not only `ExtendedDebugLog()`) at
   the decision points in `RunSmsCallAction()`,
   `ActivateSmsEdgeWindowByTitle()`, `ActivateSmsEdgeTabByTitle()`, and
   `OpenSmsPage()`: which path was attempted, whether it matched, and — for
   the tab-selection path — how many usable Edge windows/tabs were
   considered before falling through to the URL fallback that opens a new
-  window/tab.
-- [ ] Keep `ExtendedDebugLog()` calls as-is for the already-detailed
+  window/tab. Implemented on `claude/sms-window-baseline-logging`
+  (`AppVersion 2.3-sms-heropen.1`). `ActivateSmsEdgeTabByTitle()` now also
+  logs a baseline line for the previously-silent "no tab in this window,
+  trying the next one" case per window, not only the final all-windows
+  failure.
+- [x] Keep `ExtendedDebugLog()` calls as-is for the already-detailed
   tracing; this is about promoting a summary of the same decision to the
-  baseline log, not duplicating full detail there.
-- [ ] Follow existing redaction conventions: reuse `MaskSmsPhoneNumber()`
+  baseline log, not duplicating full detail there. Every new `DebugLog()`
+  call sits next to its existing `ExtendedDebugLog()` call with a shorter
+  message; no `ExtendedDebugLog()` call was changed or removed.
+- [x] Follow existing redaction conventions: reuse `MaskSmsPhoneNumber()`
   for the number (already the case), and treat `WindowTitle` as the
   existing technical matching value it already is elsewhere in these
-  logs — do not log the filled/entered SMS message text.
+  logs — do not log the filled/entered SMS message text. `WindowTitle`
+  values pass through the same `DebugLog()`/`SanitizeStandardLogText()`
+  path as every other baseline log line, so an accidental URL/phone/
+  internal-number match within a title would still be redacted; no new
+  category of content is logged, so `docs/DATA_PROTECTION.md`/README were
+  not changed beyond the changelog entry.
 - [ ] Investigate, using the new logging, plausible causes for a false
   "no matching tab" result on an already-open correct tab: title-match
   timing (`TabExist(targetTitle, 2, false)` timeout), a minimized/hidden
@@ -176,14 +187,27 @@ missed.
   windows where the match is checked in the wrong one first and returns
   before scanning the rest, or the tab's title having changed (e.g. after
   page navigation) so it no longer matches the configured `WindowTitle`.
-- [ ] Update `docs/DATA_PROTECTION.md`/README only if the new baseline log
+  Still open: this needs the new logging to actually run against a real
+  reopening incident on Windows/Edge, which is not possible from this
+  environment. Source review during implementation did not find a
+  code-level bug in the loop/window-selection logic itself (a per-window
+  non-match already falls through to the next window rather than
+  aborting); the most plausible remaining explanation from source review
+  alone is a post-navigation title change no longer matching the
+  configured `WindowTitle`, but that is not confirmed without the actual
+  log output from a reproduction.
+- [x] Update `docs/DATA_PROTECTION.md`/README only if the new baseline log
   lines add a new category of logged content beyond what is already
-  documented for the standard log.
+  documented for the standard log. Assessed: no new category (see above);
+  only the README changelog was updated.
 
-This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
+This changes `DocBot.ahk` behavior. Implemented on a dedicated feature/fix
 branch from the then-current `develop` (this task was filed from
-`claude/sms-window-reopen-bug-mmx5ln`) and update the branch-specific
-`AppVersion` in every commit that changes `DocBot.ahk`.
+`claude/sms-window-reopen-bug-mmx5ln`); the branch-specific `AppVersion` was
+updated in the same commit that changes `DocBot.ahk`. The remaining
+"Investigate" item keeps this P1 entry open until the project owner
+reproduces the issue on a compiled build with the new baseline logging and
+records what it shows.
 
 ---
 
