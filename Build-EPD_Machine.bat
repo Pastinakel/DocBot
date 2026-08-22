@@ -42,6 +42,52 @@ if not exist "%BASE%" (
     goto :failed
 )
 
+rem ============================================================
+rem  Alle vragen worden hier vooraf gesteld, voordat het compileren
+rem  begint. Daarna doorloopt het script alle stappen zonder verdere
+rem  onderbrekingen. Op Enter (zonder tekst intypen) wordt telkens
+rem  Ja (J) geregistreerd; alleen een expliciete "N" telt als Nee.
+rem ============================================================
+
+rem Alleen de centrale developversie of een RC mag vanaf een directe submap
+rem van DocBot optioneel ook naar de naastgelegen applicatiemap EPD_Machine
+rem worden uitgerold.
+set "IS_DEVELOP="
+findstr /B /C:"global AppVersion" "%SOURCE%" | findstr /C:"-dev" /C:"-rc" >nul
+if not errorlevel 1 set "IS_DEVELOP=1"
+
+set "DO_EPD_COPY="
+if defined IS_DEVELOP if /I "%APP_NAME%"=="DocBot" (
+    if not exist "%ROOT_DIR%\EPD_Machine\" (
+        echo De naastgelegen applicatiemap EPD_Machine bestaat niet; deze
+        echo stap wordt overgeslagen:
+        echo "%ROOT_DIR%\EPD_Machine"
+    ) else (
+        call :ask "Ook een executable naar de naastgelegen map EPD_Machine kopieren? [J/n] " DO_EPD_COPY
+    )
+)
+
+set "OVERWRITE_MAIN_PACKAGES=J"
+if exist "%PARENT_DIR%\packages\" (
+    echo.
+    echo Er staat al een pakketmap in de doellocatie:
+    echo "%PARENT_DIR%\packages"
+    call :ask "Overschrijven met de nieuwste versie uit deze checkout? [J/n] " OVERWRITE_MAIN_PACKAGES
+)
+
+set "OVERWRITE_EPD_PACKAGES=J"
+if defined DO_EPD_COPY if exist "%ROOT_DIR%\EPD_Machine\packages\" (
+    echo.
+    echo Er staat al een pakketmap in de doellocatie:
+    echo "%ROOT_DIR%\EPD_Machine\packages"
+    call :ask "Overschrijven met de nieuwste versie uit deze checkout? [J/n] " OVERWRITE_EPD_PACKAGES
+)
+
+echo.
+echo Alle vragen zijn beantwoord. Het compileren en uitrollen start nu
+echo en loopt door zonder verdere onderbrekingen.
+echo.
+
 echo DocBot compileren naar DocBot.exe...
 "%AHK2EXE%" /in "%SOURCE%" /out "%OUTPUT%" /icon "%ICON%" /base "%BASE%" /compress 0
 
@@ -56,31 +102,14 @@ echo Build gereed:
 echo "%OUTPUT%"
 echo.
 
-call :deploy "%TARGET%" "%APP_NAME%"
+call :deploy "%TARGET%" "%APP_NAME%" "%OVERWRITE_MAIN_PACKAGES%"
 if errorlevel 1 goto :failed
 
-rem Alleen de centrale developversie of een RC mag vanaf een directe submap van DocBot
-rem optioneel ook naar de naastgelegen applicatiemap worden uitgerold.
-set "IS_DEVELOP="
-findstr /B /C:"global AppVersion" "%SOURCE%" | findstr /C:"-dev" /C:"-rc" >nul
-if not errorlevel 1 set "IS_DEVELOP=1"
-
-if defined IS_DEVELOP if /I "%APP_NAME%"=="DocBot" (
-    echo.
-    choice /C JN /N /M "Ook een executable naar de naastgelegen map EPD_Machine kopieren? [J/N] "
-    if errorlevel 2 goto :done
-
-    if not exist "%ROOT_DIR%\EPD_Machine\" (
-        echo.
-        echo FOUT: De naastgelegen applicatiemap bestaat niet:
-        echo "%ROOT_DIR%\EPD_Machine"
-        goto :failed
-    )
-
+if defined DO_EPD_COPY (
     rem ROOT_DIR is al buiten dit haakjesblok gezet. Gebruik het pad
     rem rechtstreeks: een variabele die binnen hetzelfde blok wordt gezet,
     rem wordt met %%...%% mogelijk te vroeg geexpandeerd.
-    call :deploy "%ROOT_DIR%\EPD_Machine\EPD_Machine.exe" "EPD_Machine"
+    call :deploy "%ROOT_DIR%\EPD_Machine\EPD_Machine.exe" "EPD_Machine" "%OVERWRITE_EPD_PACKAGES%"
     if errorlevel 1 goto :failed
 )
 
@@ -91,10 +120,22 @@ echo.
 pause
 exit /b 0
 
+rem Stelt een J/n-vraag waarbij een lege invoer (Enter) als Ja geldt.
+rem %1 = prompttekst, %2 = naam van de variabele die J of N krijgt.
+:ask
+setlocal EnableExtensions
+set "ASK_ANSWER="
+set /p "ASK_ANSWER=%~1"
+if not defined ASK_ANSWER set "ASK_ANSWER=J"
+if /I "%ASK_ANSWER:~0,1%"=="N" (set "ASK_RESULT=N") else set "ASK_RESULT=J"
+endlocal & set "%~2=%ASK_RESULT%"
+exit /b 0
+
 :deploy
 setlocal EnableExtensions
 set "DEPLOY_TARGET=%~1"
 set "DEPLOY_NAME=%~2"
+set "DEPLOY_OVERWRITE_PACKAGES=%~3"
 for %%I in ("%DEPLOY_TARGET%") do set "DEPLOY_DIR=%%~dpI"
 set "DEPLOY_SIGNAL=%DEPLOY_DIR%signal.txt"
 set "DEPLOY_RESULT=0"
@@ -134,7 +175,7 @@ if errorlevel 1 goto :deploy_wait
 echo Nieuwe executable geplaatst en geverifieerd:
 echo "%DEPLOY_TARGET%"
 
-call :sync_packages "%DEPLOY_DIR%"
+call :sync_packages "%DEPLOY_DIR%" "%DEPLOY_OVERWRITE_PACKAGES%"
 if errorlevel 1 set "DEPLOY_RESULT=1"
 
 goto :deploy_cleanup
@@ -173,11 +214,14 @@ rem expliciete Packages.ShareDir-override automatisch af uit A_ScriptDir
 rem (docs/DECISIONS.md D-049), oftewel een map "packages" naast zichzelf. Op
 rem een verse doellocatie bestaat die submap nog niet; deze stap zorgt dat
 rem elke deploy-map er een krijgt, zonder een reeds aanwezige (mogelijk met
-rem lokaal toegevoegde pakketten) stilzwijgend te overschrijven.
+rem lokaal toegevoegde pakketten) stilzwijgend te overschrijven. Of een
+rem bestaande pakketmap mag worden overschreven, is al vooraf beantwoord
+rem via de OVERWRITE_*_PACKAGES-vraag; hier wordt niet opnieuw gevraagd.
 :sync_packages
 setlocal EnableExtensions
 set "SYNC_SOURCE=%~dp0packages"
 set "SYNC_DEST=%~1packages"
+set "SYNC_OVERWRITE=%~2"
 
 if not exist "%SYNC_SOURCE%\" (
     echo.
@@ -199,11 +243,7 @@ if not exist "%SYNC_DEST%\" (
     endlocal & exit /b 0
 )
 
-echo.
-echo Er staat al een pakketmap in de doellocatie:
-echo "%SYNC_DEST%"
-choice /C JN /N /M "Overschrijven met de nieuwste versie uit deze checkout? [J/N] "
-if errorlevel 2 (
+if /I not "%SYNC_OVERWRITE%"=="J" (
     echo Bestaande pakketmap ongewijzigd gelaten.
     endlocal & exit /b 0
 )
