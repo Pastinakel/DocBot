@@ -4,10 +4,11 @@ _Status: technisch concept met openstaande organisatorische invulpunten._
 
 _Opgesteld: 2026-08-09._
 
-_Onderzochte basis: `main`, tag `v2.2` (commit `a156dfe`), DocBot `2.2`
-(stabiele release). De feitelijke gegevensstromen in §3.1 waren al
-bijgewerkt voor het bel-/klembordgedrag van PR #23; alleen dit versieanker
-volgde nog niet._
+_Onderzochte basis: `main`, tag `v2.3` (commit `dbe4c52`), DocBot `2.3`
+(stabiele release). De feitelijke gegevensstromen waren al bijgewerkt voor
+de 2.3-functionaliteit (onder meer §2.2/§3.3 voor `sms-default-texts.json`
+en de HTTPS-afdwinging in §3.2/§3.3); alleen dit versieanker volgde nog
+niet._
 
 _Dit document is geen juridisch advies, verwerkingsregister, goedgekeurde DPIA
 of vervanging van het privacy- en informatiebeveiligingsdossier van de

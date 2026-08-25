@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-08-16. Repository facts refer to stable DocBot 2.2 (`main`, tag `v2.2`) and the start of the 2.3 development line unless noted otherwise._
+_Last updated: 2026-08-25. Repository facts refer to stable DocBot 2.3 (`main`, tag `v2.3`) and the start of the 2.4 development line unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -514,7 +514,7 @@ Retention is enforced per log entry, not per file: `RunDiagnosticsMaintenance()`
 
 ### 15.2 Integrated problem reporting and extended logging
 
-The current DocBot 2.2 code contains the `Probleem melden...`
+The current DocBot 2.3 code contains the `Probleem melden...`
 flow. Help and the tray menu open the same reporting GUI and session state.
 `ProblemReportSession` is held in memory and tracks the phase, consented logging
 state, start time, user description, temporary log path, and finalization lock.

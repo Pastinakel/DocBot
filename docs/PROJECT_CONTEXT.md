@@ -1,6 +1,6 @@
 # DocBot — Project Context
 
-_Last updated: 2026-08-25. This document combines the repository state around the DocBot 2.2 release and the 2.3 development/release-candidate line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
+_Last updated: 2026-08-25. This document combines the repository state around the DocBot 2.3 release and the start of the 2.4 development line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
 
 ## 1. Purpose
 
@@ -46,42 +46,27 @@ Windows.
 
 Repository state checked on 2026-08-25:
 
-- `main` is the production line and represents stable **DocBot 2.2**, merged
-  from `release/2.2-rc` via PR #27 (merge commit `a156dfe`) and tagged
-  `v2.2` on that commit. No further work is expected on `main` outside an
+- `main` is the production line and represents stable **DocBot 2.3**, merged
+  from `release/2.3-rc` via PR #51 (merge commit `dbe4c52`) and tagged
+  `v2.3` on that commit. No further work is expected on `main` outside an
   explicitly requested hotfix.
-- `release/2.2-rc` and `release/2.2-finalize` are the historical release
-  branches for 2.2; no further work is expected on them.
-- `develop` was brought back in line with the released `main` via PR #28
-  and started the 2.3 development line at `AppVersion = 2.3-dev.1`. Since
-  then, PRs #30–#44 (`claude/docs-sync-and-ci-decision`,
-  `claude/https-only-telephony-sms`, `claude/diagnostics-retention`,
-  `claude/docs-review-d044-rewrite-wz9ogd`,
-  `claude/https-acceptance-evidence-confirmed`,
-  `claude/fix-todo-infra-reference`,
-  `claude/hotstring-user-instruction-hcv2jw`,
-  `claude/schema-migrations-setup-waiigd`,
-  `claude/hotstring-package-load-logging-w4cc5a`,
-  `claude/schema-migrations-windows-validated`,
-  `claude/sms-default-text-config-oigp28`,
-  `claude/sms-window-reopen-bug-mmx5ln`,
-  `claude/profielselectie-build-vorm-bdkt6j`,
-  `claude/docbot-epd-batch-questions-t1rf6j` and
-  `claude/sms-window-baseline-logging`) landed the rest of the 2.3 feature
-  set described in the README `### 2.3 — In ontwikkeling` changelog
-  section. `develop` is currently at `AppVersion = 2.3-dev.9` — verify this
-  against `global AppVersion` in `DocBot.ahk` before relying on it.
-- `release/2.3-rc` (branched from `develop` at `dev.9`) is currently at
-  `AppVersion = 2.3-rc.3` and carries further RC-only fixes not yet merged
-  back to `develop` (`docs/DECISIONS.md` D-057, D-058). No pull request into
-  `main` is open for it yet.
+- `release/2.3-rc` and `release/2.3-finalize` are the historical release
+  branches for 2.3; both have been deleted after merging, no further work
+  is expected on them. The full 2.3 feature/fix set is recorded in the
+  README `### 2.3 — Huidige stabiele release` changelog section — treat
+  that section, not this one, as the authoritative feature list.
+- `develop` was brought back in line with the released `main` via PR #52
+  (`chore/bring-back-2.3-to-develop`, mirroring PR #28 for 2.2) and started
+  the 2.4 development line at `AppVersion = 2.4-dev.1` (direct commit on
+  `develop`, mirroring commit `35d3937` after the 2.2 release). Verify this
+  against `global AppVersion` in `DocBot.ahk` before relying on it, since
+  this section is a point-in-time snapshot and further branches may have
+  merged since.
 - `feature/extended-logging` is no longer the branch to test or integrate;
   its work shipped as part of 2.2.
-- See `docs/TODO.md`, section "P0 — Release plan: finalize stable DocBot
-  2.3", for the current release-readiness status, remaining blockers, the
-  2.3-specific acceptance checklist, and the finalization steps — treat that
-  section as the up-to-date successor to the paragraph-form status this
-  section used to carry, and keep both in sync going forward.
+- See `docs/TODO.md` for the current backlog; the "P0 — Release plan:
+  finalize stable DocBot 2.3" section is now a completed record, not an
+  open plan.
 
 Do not infer functional validation from source integration alone for future
 cycles. Both the 2.2 feature work and the D-044 diagnostics-retention work
@@ -225,7 +210,7 @@ Installation-ID durability is important:
 
 ### 4.9 Diagnostics and problem reporting
 
-Baseline diagnostics include a bounded/buffered background log at `%LocalAppData%\DocBot\debug.log` and a developer-only live debug window. The current 2.2 development and RC lines also contain the user-facing `Probleem melden...` flow through Help and the tray menu.
+Baseline diagnostics include a bounded/buffered background log at `%LocalAppData%\DocBot\debug.log` and a developer-only live debug window. The current DocBot code also contains the user-facing `Probleem melden...` flow through Help and the tray menu (shipped as part of 2.2, still present in 2.3).
 
 The implementation has two reporting paths:
 
@@ -239,11 +224,11 @@ The implementation has two reporting paths:
 - Report files were previously bundled into a ZIP via the Explorer shell namespace ("Compressed (zipped) Folders"). That mechanism proved unreliable/unavailable on some group-policy/EDR-hardened workplaces, causing report finalization itself to fail; see `DECISIONS.md` D-041.
 
 The project owner completed the dedicated compiled-Windows validation of the
-problem-reporting flow on RC2 on 2026-08-09, before the switch to loose
-attachments in D-041 — that switch still needs its own compiled-Windows
-validation. RC2 validation closes the specific pre-D-041
-problem-reporting checklist; it does not by itself complete the broader RC3
-acceptance test covering the rest of DocBot.
+problem-reporting flow on RC2 on 2026-08-09, predating the switch to loose
+attachments in D-041. The broader full-RC3 acceptance test, covering the
+loose-attachment behavior together with the rest of the application, was
+subsequently completed and accepted before the 2.2 release (see
+`docs/TODO.md`).
 
 ## 5. Build and deployment constraints
 
