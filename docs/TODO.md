@@ -1,12 +1,160 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-19. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-25. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
 - **P0** — blocks the current release path or risks a broken build.
 - **P1** — should be completed before/around the current release or immediately afterwards.
 - **P2** — valuable engineering improvement; not a reason to destabilize the current release.
+
+---
+
+## P0 — Release plan: finalize stable DocBot 2.3
+
+### Current status (checked 2026-08-25)
+
+- `develop` is at `AppVersion = 2.3-dev.9` and has not advanced since
+  `release/2.3-rc` was cut from it; every commit on `develop` is also on
+  `release/2.3-rc`, but not the reverse.
+- `release/2.3-rc` (origin, no open PR yet against `main`) is at
+  `AppVersion = 2.3-rc.3` and carries RC-only fixes not yet merged back to
+  `develop`: the CRLF line-ending fix for `Build-EPD_Machine.bat`
+  (`docs/DECISIONS.md` D-057), removal of the best-effort `attrib`-based
+  user-data-folder pin (D-058), `Build-EPD_Machine.bat` asking all its
+  interactive questions up front, and accompanying `packages/anest.json`
+  updates.
+- The README `### 2.3 — In ontwikkeling` changelog section on
+  `release/2.3-rc` already lists the full feature/fix set for this release
+  (profile selection by build form, HTTPS-only telephony/SMS, SMS default
+  text, package share-dir change, diagnostics/report-artifact retention,
+  the hotstring-content Help instruction, `tests/SelfTests.ahk` plus
+  `DocBot.ahk --selftest`, and the two RC-only fixes above). Treat that
+  section, not this file, as the authoritative feature list for the
+  release notes.
+- No stable-release work (`AppVersion 2.3`, README finalization, tag) has
+  happened yet. This section is the plan for getting there; it does not by
+  itself perform any of the steps.
+
+### Remaining blockers before merging `release/2.3-rc` into `main`
+
+- [x] "P1 — Baseline debug output for repeated SMS window/tab reopening"
+  (below): the project owner attempted to reproduce the reopening issue on
+  a real compiled build and could not trigger it. The baseline logging that
+  would capture the decision path if/when it does recur is in place and
+  ships as-is. **Decision: does not block the release** — the remaining
+  "Investigate" line becomes a known follow-up, only actionable if/when the
+  issue actually recurs in the field with the new logging active.
+- [x] `tests/SelfTests.ahk` confirmed via both an interpreted
+  `AutoHotkey64.exe DocBot.ahk --selftest` run (24/24 on 2026-08-19) and a
+  compiled `DocBot.exe --selftest` run (2026-08-25): the console showed no
+  output, as expected for a GUI-subsystem executable (`docs/DECISIONS.md`
+  D-053, `tests/README.md`), but `%TEMP%\docbot-selftest-results.txt`
+  recorded "32 tests, 32 geslaagd, 0 mislukt". The higher count than the
+  24/24 interpreted run is expected, not a discrepancy: `TestGetUserDataProfile`
+  added 8 assertions for the D-056 profile-selection matrix after that
+  24/24 run was recorded.
+- [x] The hotstring-content Help instruction (D-045): confirmed good on a
+  compiled build (fifth accordion section, Tekstvervanging hint in both
+  editor states, Hotstrings/Telefonie/Over card bottom alignment).
+- [x] Both remaining rows of the profile-selection test matrix (D-056)
+  validated on Windows: existing `DocBot-test`/`DocBot-dev` folders are not
+  repopulated/overwritten by the new selection logic, and stored
+  hotstring/settings/package/speeddial paths resolve correctly in the
+  selected profile.
+- [x] `claude/todo-itemcount-package-check` (filed 2026-08-25 against
+  `develop`, adds a P2 TODO item only — see below): opened as its own
+  docs-only PR into `develop`, PR #48, per project-owner decision, rather
+  than folding it into next-cycle backlog silently. Merge PR #48 before
+  treating `develop`/`release/2.3-rc` docs as back in sync.
+- [x] Confirmed: no other feature/fix branches are unmerged against
+  `develop`/`release/2.3-rc` besides the one above.
+
+Every item in this list is now resolved; see "Finalizing the stable
+release" below for the remaining work.
+
+### Acceptance checklist for what changed since 2.2
+
+Run this in addition to, not instead of, the full 2.2 RC3 regression
+checklist above — that checklist still covers unchanged behavior end to
+end.
+
+- [ ] Compiled build reads its `packages` folder from next to the
+  executable (`A_ScriptDir`) on the correct network share; a local-copy
+  launch (e.g. via Ivanti) still honors `LocalConfig["Packages"]["ShareDir"]`
+  as an explicit override (D-048/D-049).
+- [ ] Package manifest entries with only `id`/`file` still load correctly;
+  an optional package `owner` field displays next to the package name in
+  **Pakketten** (D-054).
+- [ ] Closing the package manager while conflict status for a large package
+  is still being calculated no longer errors (D-051).
+- [ ] `Build-EPD_Machine.bat` populates a `packages` folder next to every
+  deployed executable, asking before overwriting an existing one (D-052);
+  it asks all interactive questions before compilation starts, where Enter
+  means "Ja" and only an explicit "N" means "Nee"; and it runs correctly
+  from a fresh checkout now that `.gitattributes` forces CRLF (D-057).
+- [x] Non-stable installs pick `DocBot-test` when compiled and `DocBot-dev`
+  when run from source, regardless of the `-dev`/`-rc`/feature-name
+  prerelease label (D-056) — validated on Windows. `DocBot.ahk --selftest`
+  passed both interpreted (24/24) and compiled (32/32, see blocker above).
+- [ ] Telephony `BaseUrl` and every `SmsCallAction.Url` are rejected at
+  startup when not `https://` (D-043) — re-confirm once more on the final
+  RC build.
+- [ ] An SMS page configured with `TextFieldId` offers a per-page multiline
+  default text under **Instellingen > SMS actie** (hard enters preserved)
+  that is filled into the message field after the phone number (D-055).
+- [x] The standard log/live debug window now shows, without an active
+  extended-logging session, which SMS window/tab path was attempted and
+  why (`RunSmsCallAction()` and friends). Confirmed present; the actual
+  reopening issue itself was not reproducible on a real compiled build
+  (see "P1 — Baseline debug output..." below).
+- [ ] Standard log entries older than seven days (including legacy
+  pre-"v2" lines) are pruned from both the active log and `.oud`; the
+  ~2 MB size-rotation behavior is unaffected (D-044).
+- [ ] Abandoned problem-report directories/extended logs older than seven
+  days are cleaned up automatically, with the "Probleemrapportmap
+  opschonen" log line appearing even when nothing was found; cancel/
+  Outlook/manual-fallback cleanup behaves as documented.
+- [ ] DocBot starts without triggering an application-whitelisting security
+  dialog on a hardened workstation now that the `attrib`-based folder pin
+  is removed entirely (D-058).
+- [ ] `docs/MIGRATIONS.md` still matches actual schema-version behavior for
+  all four loaders.
+
+### Finalizing the stable release (per the branch/version rules in `CLAUDE.md`/`AGENTS.md`)
+
+- [ ] On `release/2.3-rc`, set `global AppVersion` from the final
+  `2.3-rc.N` to stable `2.3` in the definitive release commit (this changes
+  `DocBot.ahk`, so the AppVersion rule applies; branch type = release
+  branch).
+- [ ] Update README status wording from release-candidate/"in ontwikkeling"
+  to stable 2.3 wording.
+- [ ] Finalize `### 2.3` in the README Changelog (drop "— In ontwikkeling");
+  it remains the only maintained version-history source — do not hand-edit
+  `BuildAboutText()`.
+- [ ] Verify the README `Telemetrie` section still exactly matches the
+  shipped payload and interval (no payload change is currently planned for
+  2.3 — confirm nothing slipped in unreviewed).
+- [ ] Verify license/documentation references (PolyForm Noncommercial plus
+  the ThirdParty MIT notices) are still accurate.
+- [ ] Open a pull request from `release/2.3-rc` into `main`; merge with
+  **Create a merge commit**, and only after the project owner has explicitly
+  reviewed and approved the RC.
+- [ ] After merging, create the annotated tag `v2.3` on the stable release
+  commit — this needs its own explicit go-ahead from the project owner
+  first, separate from approval of the merge itself (per `CLAUDE.md`,
+  §"Verantwoording bij versie- en tagwijzigingen"); do not treat tagging as
+  implied by release approval.
+- [ ] Push the tag to `origin` and confirm it is visible there before
+  treating it as done.
+- [ ] Bring the release-only fixes back into `develop` via their own pull
+  request/merge commit (mirrors PR #28 for 2.2).
+- [ ] Start the next development version on `develop`
+  (`AppVersion = 2.4-dev.1`) once the merge-back above lands.
+- [ ] Delete the temporary release branch(es) after merging, once their
+  content lives on in `main`/`develop` history and tag `v2.3`.
+- [ ] Update `docs/PROJECT_CONTEXT.md` §3 (branch/release status) and mark
+  the corresponding items resolved in this file, in the same change.
 
 ---
 
@@ -126,7 +274,7 @@ history and tag `v2.2`.
 
 ---
 
-## P1 — Baseline debug output for repeated SMS window/tab reopening
+## P1 — Baseline debug output for repeated SMS window/tab reopening (not release-blocking; attempted reproduction inconclusive)
 
 Reported by the project owner (2026-08-19): sometimes a new SMS Edge
 window/tab is opened even though a matching tab is already open on the
@@ -180,22 +328,21 @@ missed.
   internal-number match within a title would still be redacted; no new
   category of content is logged, so `docs/DATA_PROTECTION.md`/README were
   not changed beyond the changelog entry.
-- [ ] Investigate, using the new logging, plausible causes for a false
+- [x] Investigate, using the new logging, plausible causes for a false
   "no matching tab" result on an already-open correct tab: title-match
   timing (`TabExist(targetTitle, 2, false)` timeout), a minimized/hidden
   window not enumerated by `GetUsableEdgeBrowserWindows()`, multiple Edge
   windows where the match is checked in the wrong one first and returns
   before scanning the rest, or the tab's title having changed (e.g. after
   page navigation) so it no longer matches the configured `WindowTitle`.
-  Still open: this needs the new logging to actually run against a real
-  reopening incident on Windows/Edge, which is not possible from this
-  environment. Source review during implementation did not find a
+  The project owner attempted to reproduce the reopening issue on a real
+  compiled build with the new baseline logging active (2026-08-25) and
+  could not trigger it. Source review during implementation did not find a
   code-level bug in the loop/window-selection logic itself (a per-window
   non-match already falls through to the next window rather than
-  aborting); the most plausible remaining explanation from source review
-  alone is a post-navigation title change no longer matching the
-  configured `WindowTitle`, but that is not confirmed without the actual
-  log output from a reproduction.
+  aborting). No root cause is confirmed, but the diagnostic gap itself is
+  closed: if the issue recurs, the baseline log now shows which path was
+  tried and why, without needing a consented extended-logging session.
 - [x] Update `docs/DATA_PROTECTION.md`/README only if the new baseline log
   lines add a new category of logged content beyond what is already
   documented for the standard log. Assessed: no new category (see above);
@@ -204,10 +351,12 @@ missed.
 This changes `DocBot.ahk` behavior. Implemented on a dedicated feature/fix
 branch from the then-current `develop` (this task was filed from
 `claude/sms-window-reopen-bug-mmx5ln`); the branch-specific `AppVersion` was
-updated in the same commit that changes `DocBot.ahk`. The remaining
-"Investigate" item keeps this P1 entry open until the project owner
-reproduces the issue on a compiled build with the new baseline logging and
-records what it shows.
+updated in the same commit that changes `DocBot.ahk`. **Release decision
+(2026-08-25):** this P1 entry does not block the 2.3 release — the
+underlying reopening issue was not reproducible on a real compiled build,
+and the observability gap it was filed to close is already shipped. Treat
+any future recurrence as a new, separately filed bug report, now armed with
+baseline logging from the start.
 
 ---
 
@@ -472,12 +621,12 @@ Do not copy end-user changelog content into these docs verbatim; link concepts a
 
 ---
 
-## P2 — Change user-data profile selection to build mode
+## P2 — Change user-data profile selection to build mode (done)
 
-**Status: implemented** (`docs/DECISIONS.md` D-056, supersedes D-009) on
-branch `claude/profielselectie-build-vorm-bdkt6j`. Kept here until Windows
-functional validation (D-037) confirms the test matrix below; remove this
-item once validated.
+**Status: implemented and fully validated** (`docs/DECISIONS.md` D-056,
+supersedes D-009) on branch `claude/profielselectie-build-vorm-bdkt6j`. Both
+remaining Windows-functional-validation rows (D-037) were confirmed by the
+project owner on 2026-08-25; kept here as a record rather than removed.
 
 _Downgraded from P1 to P2 on 2026-08-17: this closes a real gap in D-009's
 data-isolation intent (an uncompiled `develop`/`-rc` script run currently
@@ -522,11 +671,11 @@ Stable has priority: a stable numeric `AppVersion` uses `DocBot` regardless of w
 
 ### Required test matrix
 
-The first eight rows are now covered by pure-logic self-tests
+The first eight rows are covered by pure-logic self-tests
 (`TestGetUserDataProfile` in `tests/SelfTests.ahk`, run via
-`DocBot.ahk --selftest`). The last two rows involve real file-system
-bootstrap/migration and still need Windows functional validation (D-037)
-before this item can be removed from the TODO.
+`DocBot.ahk --selftest`). The last two rows involved real file-system
+bootstrap/migration and needed Windows functional validation (D-037);
+confirmed by the project owner on 2026-08-25.
 
 - [x] Stable `2.3`, compiled -> `Documents\DocBot`. (self-test)
 - [x] Stable `2.3`, noncompiled -> `Documents\DocBot`. (self-test)
@@ -536,8 +685,8 @@ before this item can be removed from the TODO.
 - [x] `2.3-dev.N`, noncompiled -> `Documents\DocBot-dev`. (self-test)
 - [x] `2.3-rc.N`, noncompiled -> `Documents\DocBot-dev`. (self-test)
 - [x] Feature/fix prerelease, noncompiled -> `Documents\DocBot-dev`. (self-test)
-- [ ] Existing `DocBot-test` and `DocBot-dev` directories are never repopulated/overwritten merely because selection rules changed. (needs Windows validation, D-037)
-- [ ] Stored hotstring/settings/package/speeddial paths still migrate or resolve correctly in the selected profile. (needs Windows validation, D-037)
+- [x] Existing `DocBot-test` and `DocBot-dev` directories are never repopulated/overwritten merely because selection rules changed. (validated on Windows, 2026-08-25)
+- [x] Stored hotstring/settings/package/speeddial paths still migrate or resolve correctly in the selected profile. (validated on Windows, 2026-08-25)
 
 ### Version/preflight requirement when implementing
 
@@ -606,8 +755,13 @@ D-053). High-value testable areas:
   `claude/schema-migrations-setup-waiigd` (`AppVersion
   2.3-schema-migraties.1`); confirmed by the project owner on real Windows
   (interpreted `AutoHotkey64.exe DocBot.ahk --selftest`, 24/24 passing,
-  2026-08-19, see `docs/DECISIONS.md` D-053). Still open: the same check
-  against a **compiled** `DocBot.exe --selftest` specifically.
+  2026-08-19, see `docs/DECISIONS.md` D-053). A compiled
+  `DocBot.exe --selftest` run (2026-08-25) confirmed the same via
+  `%TEMP%\docbot-selftest-results.txt`: "32 tests, 32 geslaagd, 0 mislukt"
+  (the higher count reflects the D-056 profile-selection assertions added
+  since the 24/24 run, not a discrepancy). Console output stayed empty in
+  both cases, as expected for a GUI-subsystem executable per this same
+  D-053 caveat.
 - [ ] package conflict resolution and status calculation;
 - [ ] telemetry payload serialization/redaction boundaries;
 - [ ] telemetry InstallationId persistence state machine using controlled file conditions;
@@ -639,7 +793,7 @@ already tracked below ("Consider gradual modularization after 2.2").
 
 ---
 
-## P2 — Add a user instruction for safe hotstring content (implemented, pending Windows validation)
+## P2 — Add a user instruction for safe hotstring content (done)
 
 Create and maintain an end-user instruction for personal hotstrings. The
 instruction must:
@@ -666,12 +820,13 @@ Aligned with `docs/DATA_PROTECTION.md` §3.4 (updated in the same change) and
 organizational onboarding — the in-product instruction is intended to cover
 that on its own.
 
-- [ ] Validate on a compiled build on a managed Windows workstation: the new
+- [x] Validate on a compiled build on a managed Windows workstation: the new
   Help section (including that a fifth accordion section still fits above
   the "Probleem melden..." button), the always-visible hint on
   Tekstvervanging in both the compact and expanded editor state, and that
   the Hotstrings/Telefonie/Over cards now end at a consistent y=648 without
-  visual overlap or clipping.
+  visual overlap or clipping. Confirmed good by the project owner,
+  2026-08-25.
 
 ---
 
