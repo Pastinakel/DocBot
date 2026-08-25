@@ -93,7 +93,7 @@ Start pomp volgens PIEB protocol: 1 maal per uur 10 ml bolus Epimix; bupivacaine
       "enabledByDefault": true
     },
     {
-      "id": "anest-0006",
+      "id": "anest-0008",
       "trigger": "edp8",
       "replacement": "Preassessment: ASA 2 obv zwangerschap. Geen contra-indicaties voor epiduraal
 
