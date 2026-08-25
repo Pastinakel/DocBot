@@ -1,5 +1,10 @@
 @echo off
 setlocal EnableExtensions
+rem Dit bestand moet CRLF-regeleindes behouden (afgedwongen via
+rem .gitattributes). cmd.exe kan met LF-regeleindes onbetrouwbaar zijn
+rem bij het vinden van GOTO/CALL-labels verderop in het bestand ("The
+rem system cannot find the batch label specified"), zie docs/DECISIONS.md
+rem D-057.
 
 rem Werk altijd vanuit de map waarin dit batchbestand staat.
 cd /d "%~dp0"
