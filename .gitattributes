@@ -1,0 +1,7 @@
+# Windows batch-bestanden moeten CRLF-regeleindes hebben. cmd.exe's
+# GOTO/CALL-labelherkenning is onbetrouwbaar op een .bat-bestand met
+# Unix-regeleindes (LF): dat gaf hier "The system cannot find the batch
+# label specified" bij het compileren via Build-EPD_Machine.bat, ook al
+# staat het label wel degelijk in het bestand. Dit voorkomt dat een editor
+# op macOS/Linux dat opnieuw stilzwijgend naar LF omzet.
+*.bat text eol=crlf

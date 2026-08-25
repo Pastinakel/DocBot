@@ -17,14 +17,11 @@ ook toegepast. De software heeft geen beoogd medisch doel: zij verricht geen
 medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft
 geen diagnose-, behandel-, doserings- of monitoringsadvies.
 
-Deze README beschrijft de ontwikkeling van DocBot 2.3 op de
-`develop`-branch. Versie 2.2 is de huidige stabiele productieversie op
-`main`; nieuwe functionaliteit wordt eerst via afzonderlijke
-featurebranches en het testprofiel beproefd.
+Deze README beschrijft de stabiele release 2.3 op `main`.
 
 Bestanden
 ---------
-- `DocBot.ahk` — ontwikkelversie 2.3 met de huidige GUI,
+- `DocBot.ahk` — stabiele release 2.3 met de huidige GUI,
   telefoniefunctionaliteit, hotstrings, snelkiesnummers en pakketbeheer.
 - `packages/` — versieerbare ingebouwde hotstringpakketten plus manifest.
 - `ThirdParty/ColorButton/` — custom-draw ondersteuning voor de moderne
@@ -478,7 +475,15 @@ risicoanalyse.
 Changelog
 ---------
 
-### 2.3 — In ontwikkeling
+### 2.3 — Huidige stabiele release
+- DocBot probeert de gebruikersdatamap bij het opstarten niet langer lokaal
+  te pinnen tegen OneDrive Files On-Demand (`MarkUserStorageAlwaysAvailable()`
+  is verwijderd, samen met de aanroep ervan). Op een werkplek met
+  applicatie-whitelisting blokkeerde het starten van het onderliggende
+  externe proces (eerst via `cmd.exe`, daarna rechtstreeks via `attrib.exe`)
+  zelf al, met een storend beveiligingsscherm bij elke start van DocBot tot
+  gevolg — voor een best-effort optimalisatie die nooit noodzakelijk was
+  voor de werking van DocBot (`docs/DECISIONS.md` D-058).
 - Het venster-/tabselectiepad voor een SMS-actie (`RunSmsCallAction()`,
   `ActivateSmsEdgeWindowByTitle()`, `ActivateSmsEdgeTabByTitle()`,
   `OpenSmsPage()`) logt de belangrijkste beslispunten voortaan ook naar het
@@ -596,7 +601,7 @@ Changelog
   door een crash of geforceerd afsluiten wordt achtergelaten, ruimt DocBot
   op dezelfde manier uiterlijk na zeven dagen op.
 
-### 2.2 — Huidige stabiele release
+### 2.2 — Vorige stabiele release
 - Start van de volgende ontwikkelcyclus na de stabiele release van DocBot 2.1.
 - Nieuwe gebruikersflow **Probleem melden...** via zowel het systeemvakmenu
   als een knop die de bestaande Help-footer vervangt. Beide openen dezelfde
