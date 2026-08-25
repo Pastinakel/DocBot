@@ -38,31 +38,42 @@ _Last updated: 2026-08-25. This file is a handover backlog, not a promise that e
 
 ### Remaining blockers before merging `release/2.3-rc` into `main`
 
-- [ ] "P1 — Baseline debug output for repeated SMS window/tab reopening"
-  (below) still has one open "Investigate" item: it needs the project owner
-  to reproduce the reopening issue on a real compiled build with the new
-  logging and record what it shows. Decide whether this blocks the release
-  or ships as a known follow-up.
-- [ ] `tests/SelfTests.ahk` (24/24) has only been confirmed via an
-  interpreted `AutoHotkey64.exe DocBot.ahk --selftest` run; the same check
-  against a **compiled** `DocBot.exe --selftest` is still open.
-- [ ] The hotstring-content Help instruction (D-045) is implemented but
-  still needs Windows validation of the new fifth accordion section, the
-  Tekstvervanging hint in both editor states, and the Hotstrings/Telefonie/
-  Over card bottom alignment.
-- [ ] Two rows of the profile-selection test matrix (D-056) still need real
-  Windows functional validation rather than self-tests: existing
-  `DocBot-test`/`DocBot-dev` folders must not be repopulated/overwritten by
-  the new selection logic, and stored hotstring/settings/package/speeddial
-  paths must still resolve correctly in the selected profile.
-- [ ] Decide what to do with the unmerged branch
-  `claude/todo-itemcount-package-check` (filed 2026-08-25 against
-  `develop`, adds a P2 TODO item only — see below): merge it as its own
-  docs-only PR into `develop`, or fold it into next-cycle backlog. It is not
-  itself release-blocking.
-- [ ] Confirm no other feature/fix branches are still unmerged against
-  `develop`/`release/2.3-rc` before cutting the final release commit (this
-  file is a point-in-time snapshot; re-check branches/PRs first).
+- [x] "P1 — Baseline debug output for repeated SMS window/tab reopening"
+  (below): the project owner attempted to reproduce the reopening issue on
+  a real compiled build and could not trigger it. The baseline logging that
+  would capture the decision path if/when it does recur is in place and
+  ships as-is. **Decision: does not block the release** — the remaining
+  "Investigate" line becomes a known follow-up, only actionable if/when the
+  issue actually recurs in the field with the new logging active.
+- [ ] `tests/SelfTests.ahk` (24/24) confirmed via an interpreted
+  `AutoHotkey64.exe DocBot.ahk --selftest` run. A compiled
+  `DocBot.exe --selftest` run produced **no visible output** — before
+  treating this as a pass or a bug, check the two outputs the code itself
+  treats as authoritative rather than the console: the process exit code
+  (`0` = all tests passed, `1` = at least one failure/error) and
+  `%TEMP%\docbot-selftest-results.txt` (overwritten on every run). Absence
+  of console text is expected and already documented as unconfirmed
+  behavior for a GUI-subsystem executable (`docs/DECISIONS.md` D-053,
+  `tests/README.md`) — it is not itself a failure signal. Still open until
+  the exit code and/or results file are actually checked and recorded.
+- [x] The hotstring-content Help instruction (D-045): confirmed good on a
+  compiled build (fifth accordion section, Tekstvervanging hint in both
+  editor states, Hotstrings/Telefonie/Over card bottom alignment).
+- [x] Both remaining rows of the profile-selection test matrix (D-056)
+  validated on Windows: existing `DocBot-test`/`DocBot-dev` folders are not
+  repopulated/overwritten by the new selection logic, and stored
+  hotstring/settings/package/speeddial paths resolve correctly in the
+  selected profile.
+- [x] `claude/todo-itemcount-package-check` (filed 2026-08-25 against
+  `develop`, adds a P2 TODO item only — see below): opened as its own
+  docs-only PR into `develop`, PR #48, per project-owner decision, rather
+  than folding it into next-cycle backlog silently. Merge PR #48 before
+  treating `develop`/`release/2.3-rc` docs as back in sync.
+- [x] Confirmed: no other feature/fix branches are unmerged against
+  `develop`/`release/2.3-rc` besides the one above.
+
+Only the compiled `--selftest` exit-code/results-file check remains open in
+this list.
 
 ### Acceptance checklist for what changed since 2.2
 
@@ -84,19 +95,23 @@ end.
   it asks all interactive questions before compilation starts, where Enter
   means "Ja" and only an explicit "N" means "Nee"; and it runs correctly
   from a fresh checkout now that `.gitattributes` forces CRLF (D-057).
-- [ ] Non-stable installs pick `DocBot-test` when compiled and `DocBot-dev`
+- [x] Non-stable installs pick `DocBot-test` when compiled and `DocBot-dev`
   when run from source, regardless of the `-dev`/`-rc`/feature-name
-  prerelease label (D-056); run `DocBot.ahk --selftest` on both an
-  interpreted and a compiled build and confirm all self-tests pass.
+  prerelease label (D-056) — validated on Windows. `DocBot.ahk --selftest`
+  passed interpreted (24/24); the compiled `DocBot.exe --selftest` run
+  still needs its exit code / `%TEMP%\docbot-selftest-results.txt` checked
+  (see blocker above) before this line is fully closed.
 - [ ] Telephony `BaseUrl` and every `SmsCallAction.Url` are rejected at
   startup when not `https://` (D-043) — re-confirm once more on the final
   RC build.
 - [ ] An SMS page configured with `TextFieldId` offers a per-page multiline
   default text under **Instellingen > SMS actie** (hard enters preserved)
   that is filled into the message field after the phone number (D-055).
-- [ ] The standard log/live debug window now shows, without an active
+- [x] The standard log/live debug window now shows, without an active
   extended-logging session, which SMS window/tab path was attempted and
-  why (`RunSmsCallAction()` and friends).
+  why (`RunSmsCallAction()` and friends). Confirmed present; the actual
+  reopening issue itself was not reproducible on a real compiled build
+  (see "P1 — Baseline debug output..." below).
 - [ ] Standard log entries older than seven days (including legacy
   pre-"v2" lines) are pruned from both the active log and `.oud`; the
   ~2 MB size-rotation behavior is unaffected (D-044).
@@ -263,7 +278,7 @@ history and tag `v2.2`.
 
 ---
 
-## P1 — Baseline debug output for repeated SMS window/tab reopening
+## P1 — Baseline debug output for repeated SMS window/tab reopening (not release-blocking; attempted reproduction inconclusive)
 
 Reported by the project owner (2026-08-19): sometimes a new SMS Edge
 window/tab is opened even though a matching tab is already open on the
@@ -317,22 +332,21 @@ missed.
   internal-number match within a title would still be redacted; no new
   category of content is logged, so `docs/DATA_PROTECTION.md`/README were
   not changed beyond the changelog entry.
-- [ ] Investigate, using the new logging, plausible causes for a false
+- [x] Investigate, using the new logging, plausible causes for a false
   "no matching tab" result on an already-open correct tab: title-match
   timing (`TabExist(targetTitle, 2, false)` timeout), a minimized/hidden
   window not enumerated by `GetUsableEdgeBrowserWindows()`, multiple Edge
   windows where the match is checked in the wrong one first and returns
   before scanning the rest, or the tab's title having changed (e.g. after
   page navigation) so it no longer matches the configured `WindowTitle`.
-  Still open: this needs the new logging to actually run against a real
-  reopening incident on Windows/Edge, which is not possible from this
-  environment. Source review during implementation did not find a
+  The project owner attempted to reproduce the reopening issue on a real
+  compiled build with the new baseline logging active (2026-08-25) and
+  could not trigger it. Source review during implementation did not find a
   code-level bug in the loop/window-selection logic itself (a per-window
   non-match already falls through to the next window rather than
-  aborting); the most plausible remaining explanation from source review
-  alone is a post-navigation title change no longer matching the
-  configured `WindowTitle`, but that is not confirmed without the actual
-  log output from a reproduction.
+  aborting). No root cause is confirmed, but the diagnostic gap itself is
+  closed: if the issue recurs, the baseline log now shows which path was
+  tried and why, without needing a consented extended-logging session.
 - [x] Update `docs/DATA_PROTECTION.md`/README only if the new baseline log
   lines add a new category of logged content beyond what is already
   documented for the standard log. Assessed: no new category (see above);
@@ -341,10 +355,12 @@ missed.
 This changes `DocBot.ahk` behavior. Implemented on a dedicated feature/fix
 branch from the then-current `develop` (this task was filed from
 `claude/sms-window-reopen-bug-mmx5ln`); the branch-specific `AppVersion` was
-updated in the same commit that changes `DocBot.ahk`. The remaining
-"Investigate" item keeps this P1 entry open until the project owner
-reproduces the issue on a compiled build with the new baseline logging and
-records what it shows.
+updated in the same commit that changes `DocBot.ahk`. **Release decision
+(2026-08-25):** this P1 entry does not block the 2.3 release — the
+underlying reopening issue was not reproducible on a real compiled build,
+and the observability gap it was filed to close is already shipped. Treat
+any future recurrence as a new, separately filed bug report, now armed with
+baseline logging from the start.
 
 ---
 
@@ -609,12 +625,12 @@ Do not copy end-user changelog content into these docs verbatim; link concepts a
 
 ---
 
-## P2 — Change user-data profile selection to build mode
+## P2 — Change user-data profile selection to build mode (done)
 
-**Status: implemented** (`docs/DECISIONS.md` D-056, supersedes D-009) on
-branch `claude/profielselectie-build-vorm-bdkt6j`. Kept here until Windows
-functional validation (D-037) confirms the test matrix below; remove this
-item once validated.
+**Status: implemented and fully validated** (`docs/DECISIONS.md` D-056,
+supersedes D-009) on branch `claude/profielselectie-build-vorm-bdkt6j`. Both
+remaining Windows-functional-validation rows (D-037) were confirmed by the
+project owner on 2026-08-25; kept here as a record rather than removed.
 
 _Downgraded from P1 to P2 on 2026-08-17: this closes a real gap in D-009's
 data-isolation intent (an uncompiled `develop`/`-rc` script run currently
@@ -659,11 +675,11 @@ Stable has priority: a stable numeric `AppVersion` uses `DocBot` regardless of w
 
 ### Required test matrix
 
-The first eight rows are now covered by pure-logic self-tests
+The first eight rows are covered by pure-logic self-tests
 (`TestGetUserDataProfile` in `tests/SelfTests.ahk`, run via
-`DocBot.ahk --selftest`). The last two rows involve real file-system
-bootstrap/migration and still need Windows functional validation (D-037)
-before this item can be removed from the TODO.
+`DocBot.ahk --selftest`). The last two rows involved real file-system
+bootstrap/migration and needed Windows functional validation (D-037);
+confirmed by the project owner on 2026-08-25.
 
 - [x] Stable `2.3`, compiled -> `Documents\DocBot`. (self-test)
 - [x] Stable `2.3`, noncompiled -> `Documents\DocBot`. (self-test)
@@ -673,8 +689,8 @@ before this item can be removed from the TODO.
 - [x] `2.3-dev.N`, noncompiled -> `Documents\DocBot-dev`. (self-test)
 - [x] `2.3-rc.N`, noncompiled -> `Documents\DocBot-dev`. (self-test)
 - [x] Feature/fix prerelease, noncompiled -> `Documents\DocBot-dev`. (self-test)
-- [ ] Existing `DocBot-test` and `DocBot-dev` directories are never repopulated/overwritten merely because selection rules changed. (needs Windows validation, D-037)
-- [ ] Stored hotstring/settings/package/speeddial paths still migrate or resolve correctly in the selected profile. (needs Windows validation, D-037)
+- [x] Existing `DocBot-test` and `DocBot-dev` directories are never repopulated/overwritten merely because selection rules changed. (validated on Windows, 2026-08-25)
+- [x] Stored hotstring/settings/package/speeddial paths still migrate or resolve correctly in the selected profile. (validated on Windows, 2026-08-25)
 
 ### Version/preflight requirement when implementing
 
@@ -743,8 +759,13 @@ D-053). High-value testable areas:
   `claude/schema-migrations-setup-waiigd` (`AppVersion
   2.3-schema-migraties.1`); confirmed by the project owner on real Windows
   (interpreted `AutoHotkey64.exe DocBot.ahk --selftest`, 24/24 passing,
-  2026-08-19, see `docs/DECISIONS.md` D-053). Still open: the same check
-  against a **compiled** `DocBot.exe --selftest` specifically.
+  2026-08-19, see `docs/DECISIONS.md` D-053). Still open: a compiled
+  `DocBot.exe --selftest` run (2026-08-25) showed no visible console
+  output — expected per this same D-053 caveat for a GUI-subsystem
+  executable, not itself a failure signal — but the process exit code and
+  `%TEMP%\docbot-selftest-results.txt` (the two outputs the code treats as
+  authoritative) have not yet been checked against the compiled build. This
+  line stays open until one of those two is actually read and recorded.
 - [ ] package conflict resolution and status calculation;
 - [ ] telemetry payload serialization/redaction boundaries;
 - [ ] telemetry InstallationId persistence state machine using controlled file conditions;
@@ -776,7 +797,7 @@ already tracked below ("Consider gradual modularization after 2.2").
 
 ---
 
-## P2 — Add a user instruction for safe hotstring content (implemented, pending Windows validation)
+## P2 — Add a user instruction for safe hotstring content (done)
 
 Create and maintain an end-user instruction for personal hotstrings. The
 instruction must:
@@ -803,12 +824,13 @@ Aligned with `docs/DATA_PROTECTION.md` §3.4 (updated in the same change) and
 organizational onboarding — the in-product instruction is intended to cover
 that on its own.
 
-- [ ] Validate on a compiled build on a managed Windows workstation: the new
+- [x] Validate on a compiled build on a managed Windows workstation: the new
   Help section (including that a fifth accordion section still fits above
   the "Probleem melden..." button), the always-visible hint on
   Tekstvervanging in both the compact and expanded editor state, and that
   the Hotstrings/Telefonie/Over cards now end at a consistent y=648 without
-  visual overlap or clipping.
+  visual overlap or clipping. Confirmed good by the project owner,
+  2026-08-25.
 
 ---
 
