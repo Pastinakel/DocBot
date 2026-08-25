@@ -90,23 +90,22 @@ The current startup flow in `DocBot.ahk` is approximately:
 2. calculate `AppVersion` and choose user-data profile;
 3. initialize global UI/config/state objects;
 4. `InitializeUserStorage()`;
-5. best-effort pin the user-data folder locally (`MarkUserStorageAlwaysAvailable()`);
-6. initialize bundled package cache/data;
-7. load application settings;
-8. initialize personal hotstring storage/migrations;
-9. initialize package settings/migrations;
-10. initialize speed-dial storage/migrations;
-11. initialize SMS default-text storage (`sms-default-texts.json`);
-12. register/reload runtime hotstrings;
-13. initialize telemetry;
-14. process update-restart command-line state if present;
-15. build the main GUI and tray menu;
-16. register Windows messages and exit handler;
-17. show GUI and apply custom visual rendering;
-18. start clipboard polling;
-19. start registration-button countdown timer;
-20. request telephony registration and start chained event polling;
-21. start/check `signal.txt` update/shutdown coordination.
+5. initialize bundled package cache/data;
+6. load application settings;
+7. initialize personal hotstring storage/migrations;
+8. initialize package settings/migrations;
+9. initialize speed-dial storage/migrations;
+10. initialize SMS default-text storage (`sms-default-texts.json`);
+11. register/reload runtime hotstrings;
+12. initialize telemetry;
+13. process update-restart command-line state if present;
+14. build the main GUI and tray menu;
+15. register Windows messages and exit handler;
+16. show GUI and apply custom visual rendering;
+17. start clipboard polling;
+18. start registration-button countdown timer;
+19. request telephony registration and start chained event polling;
+20. start/check `signal.txt` update/shutdown coordination.
 
 Changing this order can have user-data, UI, or network side effects. Treat initialization order as behavior, not formatting.
 

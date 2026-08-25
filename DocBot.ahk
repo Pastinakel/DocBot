@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.3-dev.9"
+global AppVersion := "2.3-remove-attrib-pin.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -258,7 +258,6 @@ global PackageManagerStatusText := 0
 global RuntimeHotstrings := Map()
 
 InitializeUserStorage()
-MarkUserStorageAlwaysAvailable(UserDataDir)
 InitializeBundledPackages()
 LoadAppSettings()
 InitializeHotstringStorage()
@@ -8416,38 +8415,6 @@ InitializeUserStorage() {
     }
 }
 
-
-MarkUserStorageAlwaysAvailable(directory) {
-    if !DirExist(directory)
-        return false
-
-    try {
-        exitCode := RunWait(
-            A_ComSpec ' /d /c attrib -U +P "' directory '"',
-            ,
-            "Hide"
-        )
-        if exitCode = 0
-            return true
-
-        DebugLog(
-            "!",
-            "OneDrive-map lokaal houden",
-            "attrib -U +P gaf exitcode " exitCode ": " directory
-        )
-    } catch as pinError {
-        DebugLog(
-            "!",
-            "OneDrive-map lokaal houden",
-            directory "`n" pinError.Message
-        )
-    }
-
-    ; Niet fataal: gewone lokale mappen en organisatiebeleid mogen de start
-    ; van DocBot niet blokkeren. De echte schrijfacties houden hun eigen
-    ; gerichte foutafhandeling.
-    return false
-}
 
 RebaseCopiedHotstringPath(sourceDir) {
     global ConfigFile, UserDataDir
