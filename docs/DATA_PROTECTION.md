@@ -60,6 +60,7 @@ Afhankelijk van het releasekanaal staan deze bestanden onder
 | `hotstrings.json` | Persoonlijke afkortingen en vervangteksten | Mogelijke persoonsgegevens van de medewerker, zoals naam, telefoonnummer of e-mailadres; klinische tekst is generiek en niet patiëntgebonden |
 | `package-settings.json` | Pakketstatussen en conflictkeuzes | Normaal geen directe persoonsgegevens |
 | `speeddial.json` | Namen, nummers en actiefstatus | Persoons-, medewerker- of organisatienummers |
+| `sms-default-texts.json` | Door de medewerker ingestelde standaardtekst per SMS-pagina | Vrije tekst; kan persoonsgegevens van de medewerker bevatten (zoals naam of contactgegevens in een vaste afsluiting), niet bedoeld voor patiëntidentificerende inhoud (zie §3.3) |
 
 Schrijfroutines gebruiken waar geïmplementeerd tijdelijke bestanden,
 validatie en `.bak`-back-ups. DocBot richt geen eigen versleuteling of
@@ -70,9 +71,9 @@ OneDrive en organisatorisch werkplekbeheer.
 
 | Locatie | Inhoud | Technische begrenzing/verwijdering |
 | --- | --- | --- |
-| `%LocalAppData%\DocBot\debug.log` | Centraal geredigeerde diagnostiek | Rotatie boven circa 2 MB naar één `.oud`-bestand; tijdsgebonden verwijdering van regels ouder dan zeven dagen is als TODO vastgelegd |
-| `%LocalAppData%\DocBot\<tijdelijk uitgebreid log>` | Ongeredigeerde diagnostiek tijdens toegestane sessie | Verwijderd bij afsluiten, nieuwe sessie en na succesvolle rapportvoorbereiding |
-| `%TEMP%\DocBot_diagnose_<tijdstip>\` | Losse bestanden: beschrijving, standaardlog en optioneel uitgebreid log | Blijft na voorbereiding beschikbaar voor e-mail/handmatige verzending |
+| `%LocalAppData%\DocBot\debug.log` | Centraal geredigeerde diagnostiek | Rotatie boven circa 2 MB naar één `.oud`-bestand; regels ouder dan zeven dagen worden sinds `docs/DECISIONS.md` D-044 automatisch verwijderd (bij opstart en daarna dagelijks), uit zowel het actieve als het `.oud`-bestand |
+| `%LocalAppData%\DocBot\<tijdelijk uitgebreid log>` | Ongeredigeerde diagnostiek tijdens toegestane sessie | Verwijderd bij afsluiten, nieuwe sessie en na succesvolle rapportvoorbereiding; een bestand dat door een crash/geforceerd afsluiten wordt achtergelaten, ruimt DocBot sinds D-044 uiterlijk na zeven dagen automatisch op |
+| `%TEMP%\DocBot_diagnose_<tijdstip>\` | Losse bestanden: beschrijving, standaardlog en optioneel uitgebreid log | Verwijderd na een geverifieerde Outlook-bijlage; bij de handmatige fallback expliciet gevraagd (standaard "Nee"); een vergeten map wordt sinds D-044 uiterlijk na zeven dagen automatisch opgeruimd |
 | `%LocalAppData%\DocBot[-dev]\packages` | Uitgepakte ingebouwde pakketten | Pakketinhoud, normaal geen gebruikers- of patiëntgegevens |
 
 ## 3. Gegevensstromen
@@ -157,15 +158,18 @@ logging kunnen oorspronkelijke waarden in het tijdelijke log komen.
 | Onderdeel | Vastgesteld uit repository | OPENSTAAND |
 | --- | --- | --- |
 | Ontvanger | Lokaal geconfigureerde interne telefonieserver | Juridische entiteit, beheerder en eventuele verwerker |
-| Transport | Protocol volgt `IPTConfig["URL"]`; voorbeeldconfiguratie gebruikt `https://` | Code dwingt HTTPS nog niet af; productieprotocol, TLS-versie, certificaatcontrole en netwerksegmentatie bevestigen |
+| Transport | Protocol volgt `IPTConfig["URL"]`; `ValidateLocalConfiguration()` weigert sinds `docs/DECISIONS.md` D-043 een niet-HTTPS `Telephony.BaseUrl` bij het opstarten | Productie-TLS-versie, certificaatcontrole en netwerksegmentatie op de beheerde werkplek nog bevestigen |
 | Authenticatie | Geen applicatie-eigen gebruikersauthenticatie zichtbaar; technisch `sid`-veld wordt gebruikt | Serverauthenticatie, autorisatiemodel en misbruikbeveiliging |
 | Serverlogging | Niet zichtbaar in repository | Inhoud, toegang, bewaartermijn en verwijdering |
 | Doorgifte buiten EER | Niet zichtbaar | Bevestigen dat geen doorgifte plaatsvindt, of grondslag/waarborgen vastleggen |
 
-De voorbeeldconfiguratie stuurt nu naar HTTPS. Een openstaande projecttaak
-verlangt daarnaast technische HTTPS-validatie voor telefonie en blokkering van
-HTTP. Totdat dit functioneel is geïmplementeerd en in productie is bevestigd,
-blijft transportbeveiliging een expliciet risico.
+DocBot weigert sinds `docs/DECISIONS.md` D-043 een lokale telefonieconfiguratie
+met een `http://`-`BaseUrl` al bij het opstarten. Dit is applicatieniveau-
+afdwinging; de productie-TLS-configuratie (hostnaam, certificaatketen,
+TLS-versie, poort) en serverauthenticatie op de beheerde Windows-werkplek
+moeten nog afzonderlijk worden bevestigd (zie `docs/TODO.md`). Tot die
+bevestiging blijft transportbeveiliging in productie een openstaand punt,
+ook al kan een niet-HTTPS-configuratie DocBot zelf niet meer laten starten.
 
 ### 3.3 SMS-assistentie via Edge
 
@@ -174,20 +178,37 @@ SMS-webpagina invullen.
 
 DocBot activeert of opent een lokaal geconfigureerde Edge-pagina, zoekt het
 telefoonveld via UI Automation en vult het nummer in. JavaScript is een
-fallback. DocBot maakt en verzendt zelf geen SMS-bericht.
+fallback. Is voor de gekozen pagina ook een tekstveld geconfigureerd
+(`TextFieldId`) en heeft de medewerker daar zelf een standaardtekst voor
+ingesteld, dan vult DocBot na het telefoonnummer op dezelfde manier
+best-effort ook dat berichtveld. DocBot maakt en verzendt zelf geen
+SMS-bericht; het vullen van het berichtveld is nog steeds alleen een
+vooraf ingevulde suggestie die de medewerker zelf controleert en al dan niet
+verzendt.
 
-**Gegevens:** mobiel telefoonnummer, technische paginatitel, URL en veld-ID.
+**Gegevens:** mobiel telefoonnummer, technische paginatitel, URL, veld-ID en,
+indien ingesteld, de door de medewerker zelf opgestelde standaardtekst voor
+het berichtveld.
 
 **Ontvanger:** de geconfigureerde SMS-webapplicatie en de organisatie of
 leverancier die deze beheert.
 
-**Transport:** de voorbeeldconfiguratie gebruikt een HTTPS-URL. De code
-controleert alleen of `SmsCallAction.Url` is ingevuld en dwingt HTTPS nog niet
-af. Een lokaal geconfigureerde HTTP-pagina kan daardoor worden geopend en door
-DocBot met een telefoonnummer worden gevuld.
+**Transport:** `ValidateSmsCallActionItem()` weigert sinds `docs/DECISIONS.md`
+D-043 elke `SmsCallAction.Url` die niet met `https://` begint al bij het
+opstarten van DocBot. Een lokaal geconfigureerde HTTP-pagina kan daardoor niet
+meer worden geopend of met een telefoonnummer worden gevuld.
 
-**Bewaring door DocBot:** geen afzonderlijke persistente SMS-opslag. Bij
-uitgebreide logging kunnen nummer- of technische foutdetails tijdelijk worden
+**Bewaring door DocBot:** het telefoonnummer zelf krijgt geen afzonderlijke
+persistente SMS-opslag (zie hierboven). De optionele standaardtekst voor het
+berichtveld is wél persistent: die staat, per SMS-pagina, in
+`sms-default-texts.json` in het gebruikersprofiel (§2.2), tot de medewerker
+die zelf wijzigt of verwijdert. Dat bestand is functioneel vergelijkbaar met
+`hotstrings.json`: net als bij hotstrings (§3.4, D-045) is patiëntidentificerende
+of patiëntspecifieke inhoud niet beoogd als standaardtekst en controleert
+DocBot de inhoud van het vrije tekstveld niet automatisch; de medewerker
+blijft zelf verantwoordelijk voor wat daar wordt opgeslagen. Bij uitgebreide
+logging kunnen nummer- of technische foutdetails, en bij een mislukte
+tekstinvulling ook technische details over die mislukking, tijdelijk worden
 vastgelegd.
 
 **Naam en rol leverancier:** de SMS-webapplicatie wordt geleverd als
@@ -248,12 +269,13 @@ Tijdelijke uitgebreide logging en probleemrapportage volgen paragraaf 3.7.
 Bewaring in browser-, server-, verzend-, audit- en back-uplogs is onbekend en
 moet contractueel en technisch worden vastgesteld.
 
-**TLS-eisen:** de voorbeeldconfiguratie gebruikt HTTPS, maar DocBot dwingt dit
-nog niet af. De browser voert bij HTTPS de normale certificaatcontrole uit en
-de DocBot-code bevat geen bewuste omzeiling daarvan. Vereist beleid: uitsluitend
-`https://`, geen HTTP-fallback of genegeerde certificaatfouten, een passende
-TLS-versie en cipherconfiguratie, een geldig certificaat voor de productiehost
-en beheer van certificaatvernieuwing. Deze eisen moeten na implementatie op de
+**TLS-eisen:** DocBot weigert sinds `docs/DECISIONS.md` D-043 een niet-HTTPS
+`SmsCallAction.Url` al bij het opstarten. De browser voert bij HTTPS
+daarnaast de normale certificaatcontrole uit en de DocBot-code bevat geen
+bewuste omzeiling daarvan. Vereist beleid: uitsluitend `https://`, geen
+HTTP-fallback of genegeerde certificaatfouten, een passende TLS-versie en
+cipherconfiguratie, een geldig certificaat voor de productiehost en beheer
+van certificaatvernieuwing. Deze eisen moeten na implementatie op de
 beheerde Windows-werkplek worden getest.
 
 **Doorgifte buiten de EER:** niet uit de repository vast te stellen. De
@@ -327,13 +349,20 @@ van gebruikerstoegang betekent niet noodzakelijk dat de bestanden en back-ups
 direct worden verwijderd; daarvoor geldt het retentie- en verwijderbeleid van
 de organisatie.
 
+De gebruikersinstructie die patiëntidentificerende en patiëntspecifieke
+hotstringinhoud uitsluit, staat sinds `docs/DECISIONS.md` D-045 in DocBot
+zelf: een Help-sectie ("Wat mag ik wel en niet in een hotstring zetten?")
+en een altijd zichtbare hint op de Tekstvervanging-pagina, met een
+bijbehorende samenvatting in `README.md`. Eigenaarschap en periodieke
+review van de inhoud liggen bij de projecteigenaar; er is bewust geen
+aparte organisatorische onboarding voor dit onderwerp, de in-product
+instructie is bedoeld om dit zelf af te dekken.
+
 **OPENSTAAND:** concrete organisatorische bewaartermijnen voor het actieve
 OneDrive-profiel en back-ups, moment en wijze van definitieve verwijdering na
 uitdiensttreding, herbeoordeling van toegang bij functiewijziging,
 inhoudseigenaarschap van medische pakketten en toepasselijke grondslag voor
-eventuele medewerkergegevens. Het opstellen van een gebruikersinstructie die
-patiëntidentificerende en patiëntspecifieke hotstringinhoud uitsluit, is als
-vervolgactie opgenomen in `docs/TODO.md`.
+eventuele medewerkergegevens.
 
 ### 3.5 Snelkiesnummers en instellingen
 
@@ -382,16 +411,18 @@ De standaardlog:
 - schermt URL's en herkenbare telefoon-/interne nummers af;
 - neemt bepaalde gestructureerde inhoud en serverresponses niet op;
 - kapt individuele geschoonde teksten boven 2.000 tekens af;
-- roteert `debug.log` boven circa 2 MB naar `debug.log.oud`.
+- roteert `debug.log` boven circa 2 MB naar `debug.log.oud`;
+- verwijdert regels ouder dan zeven dagen automatisch uit zowel `debug.log`
+  als `debug.log.oud` (`docs/DECISIONS.md` D-044).
 
 De applicatie verwijdert historische logs met een ouder, mogelijk
 ongeredegeerd formaat bij initialisatie.
 
-**Bewaring:** de standaardlog wordt momenteel op bestandsgrootte geroteerd,
-maar nog niet op ouderdom van afzonderlijke logregels opgeschoond. Als
-technische vervolgactie moet DocBot logregels ouder dan zeven dagen
-automatisch verwijderen. Deze gewenste termijn is opgenomen in
-`docs/TODO.md`.
+**Bewaring:** de standaardlog wordt op bestandsgrootte geroteerd (circa
+2 MB) én sinds D-044 op ouderdom opgeschoond: `PruneExpiredDebugLogEntries()`
+verwijdert individuele regels ouder dan zeven dagen, op basis van de
+tijdstempel van de regel zelf. Dit draait bij opstart en daarna dagelijks,
+zodat een langdurig actieve sessie niet op een herstart hoeft te wachten.
 
 **Ontvangers en autorisatie:** de lokale gebruiker kan de standaardlog op de
 eigen werkplek benaderen. Tijdens de huidige opstartfase is de enige
@@ -407,11 +438,12 @@ worden daar automatisch verwijderd. Of verwijderde berichten daarna nog in
 herstelvoorzieningen, archieven of back-ups worden bewaard, volgt het
 Microsoft-/mailboxbeleid van de organisatie.
 
-**OPENSTAAND:** implementeer de automatische lokale verwijdering van logregels
-ouder dan zeven dagen; leg de beveiliging en eventuele aanvullende retentie
-van het organisatorische mailtransport vast; leg vast dat er bij afwezigheid
-geen waarneming is; en beoordeel de ontvangerconfiguratie opnieuw wanneer de
-enige ontwikkelaar van functie wijzigt of uit dienst treedt.
+**OPENSTAAND:** leg de beveiliging en eventuele aanvullende retentie van het
+organisatorische mailtransport vast; leg vast dat er bij afwezigheid geen
+waarneming is; en beoordeel de ontvangerconfiguratie opnieuw wanneer de
+enige ontwikkelaar van functie wijzigt of uit dienst treedt. De automatische
+lokale verwijdering van logregels ouder dan zeven dagen is geïmplementeerd en
+op een beheerde Windows-werkplek/compiled build gevalideerd (D-044).
 
 ### 3.7 Uitgebreide logging en probleemrapportage
 
@@ -435,18 +467,26 @@ bestanden (geen ZIP):
 
 `settings.ini`, `hotstrings.json`, pakketconfiguratie en lokale
 configuratiebestanden worden niet toegevoegd. Het uitgebreide log wordt
-verwijderd volgens de beschreven sessielogica. De rapportmap blijft
-beschikbaar en de bestanden worden los aan een Classic-Outlook-concept
-gekoppeld, of de map wordt in Verkenner geopend voor handmatige toevoeging.
-De gebruiker verzendt het e-mailbericht zelf. (Eerdere versies bouwden hier
-een ZIP via de Explorer-shellextensie "Compressed (zipped) Folders"; die
-bleek op sommige beheerde werkplekken onbetrouwbaar/onbeschikbaar, zie
-`docs/DECISIONS.md` D-041.)
+verwijderd volgens de beschreven sessielogica. De bestanden worden los aan
+een Classic-Outlook-concept gekoppeld, of de map wordt in Verkenner geopend
+voor handmatige toevoeging. De gebruiker verzendt het e-mailbericht zelf.
+(Eerdere versies bouwden hier een ZIP via de Explorer-shellextensie
+"Compressed (zipped) Folders"; die bleek op sommige beheerde werkplekken
+onbetrouwbaar/onbeschikbaar, zie `docs/DECISIONS.md` D-041.)
+
+Sinds D-044 blijft de rapportmap niet meer onbeperkt staan: bij een geslaagd
+Outlook-concept verwijdert DocBot de map zodra geverifieerd is dat Outlook
+alle bijlagen heeft overgenomen; bij de handmatige fallback vraagt DocBot
+expliciet of de map opgeruimd mag worden (standaard "Nee", zodat er niets
+verdwijnt vóór verzending); en een map die overblijft (bijvoorbeeld omdat de
+gebruiker "Nee" koos, of door een crash tussen aanmaken en afronden) wordt
+uiterlijk na zeven dagen automatisch verwijderd door dezelfde dagelijkse
+opschoonronde als de standaardlog-retentie.
 
 | Onderwerp | Vastgesteld | OPENSTAAND |
 | --- | --- | --- |
 | Supportontvanger | In de huidige opstartfase uitsluitend de enige ontwikkelaar, lokaal/configuratief bepaald | Er is momenteel geen waarneming of vervanger; bij afwezigheid wacht de rapportage op terugkeer van de ontwikkelaar. Bij functiewijziging of uitdiensttreding moet de configuratie opnieuw worden beoordeeld |
-| Rapportmap op werkplek | Blijft in `%TEMP%` staan | TODO: verwijder de rapportmap en overige tijdelijke rapportbestanden automatisch na succesvolle afronding/overdracht van het rapport en bij annulering |
+| Rapportmap op werkplek | Verwijderd na geverifieerde Outlook-bijlage, of na expliciete bevestiging bij de handmatige fallback; anders uiterlijk na zeven dagen automatisch opgeruimd (D-044) | Gevalideerd op een beheerde Windows-werkplek/compiled build |
 | E-mail | Outlook-concept; verzending door gebruiker; speciale diagnostiekmap verwijdert berichten ouder dan zeven dagen automatisch | Mailtransport en eventuele langere retentie in herstelvoorzieningen, archieven en back-ups |
 | Toegang | Gebruiker en, na verzending, uitsluitend de enige ontwikkelaar via het organisatorische Outlook-account | Geen afzonderlijke continuïteitsmaatregel in de opstartfase; toegang volgt het organisatieaccount en wordt bij functie- of uitdiensttreding door de organisatie ingetrokken |
 | Incidentproces | Datalekken van DocBot vallen onder het algemene incident- en datalekproces van de organisatie en worden door de CISO afgehandeld | Verwijs naar de interne meldroute en procedure |
@@ -603,9 +643,10 @@ eventuele back-up- of securitydienstverleners.
 | SMS-webappgegevens | Buiten repository | OPENSTAAND |
 | Persoonlijke hotstrings | Tot wijziging/verwijdering/profielbeheer; `.bak` kan vorige versie bevatten | OPENSTAAND |
 | Snelkiesnummers en instellingen | Tot wijziging/verwijdering/profielbeheer | OPENSTAAND |
-| Standaardlog | Actief plus één geroteerd bestand; rotatie bij circa 2 MB; automatische verwijdering van regels ouder dan zeven dagen staat als TODO open | Gewenste maximale termijn: zeven dagen |
-| Uitgebreid log | Tijdelijk gedurende rapportsessie; volgens sessielogica verwijderd | Technische regel bevestigen in beheer-/testbewijs |
-| Probleemrapportmap | Blijft nu in `%TEMP%` na voorbereiding | TODO: automatisch verwijderen na succesvolle overdracht/afronding en bij annulering, met een veilige opruimroute voor de handmatige fallback |
+| SMS-standaardtekst per pagina | Tot wijziging/verwijdering/profielbeheer; geen automatische reconciliatie/verwijdering bij een gewijzigde paginaconfiguratie | OPENSTAAND |
+| Standaardlog | Actief plus één geroteerd bestand; rotatie bij circa 2 MB; regels ouder dan zeven dagen worden automatisch verwijderd (D-044) | Maximale termijn zeven dagen — geïmplementeerd en op een beheerde Windows-werkplek gevalideerd |
+| Uitgebreid log | Tijdelijk gedurende rapportsessie; volgens sessielogica verwijderd, met sinds D-044 een vangnet van uiterlijk zeven dagen voor een bestand dat door een crash/geforceerd afsluiten wordt achtergelaten | Geïmplementeerd en op een beheerde Windows-werkplek gevalideerd |
+| Probleemrapportmap | Verwijderd na geverifieerde Outlook-bijlage of expliciete bevestiging bij de handmatige fallback; anders uiterlijk na zeven dagen automatisch opgeruimd (D-044) | Geïmplementeerd en op een beheerde Windows-werkplek/compiled build gevalideerd |
 | Supportmail/ticket | Speciale Outlook-map verwijdert diagnostische berichten ouder dan zeven dagen automatisch | Eventuele aanvullende retentie in herstelvoorzieningen, archieven en back-ups bevestigen |
 | Telemetrie lokaal | Installatie-ID en tellers in `settings.ini` | OPENSTAAND |
 | Telemetrie extern | Power Automate/Teams-omgeving; registraties ouder dan één jaar worden verwijderd | Maximale termijn één jaar; toepassing op exports en back-ups bevestigen |
@@ -649,12 +690,12 @@ uitdiensttreding.
 
 | Stroom | Huidige technische maatregel | Openstaand risico/actie |
 | --- | --- | --- |
-| Telefonie | Interne netwerkdienst; POST; voorbeeldconfiguratie gebruikt HTTPS | HTTPS in configuratie afdwingen, HTTP blokkeren, TLS/certificaat/authenticatie bevestigen |
-| SMS | Voorbeeld-URL is HTTPS; Edge/browsercontext | HTTPS in iedere SMS-configuratie afdwingen, HTTP blokkeren, leverancier en browserbeveiliging vastleggen |
+| Telefonie | Interne netwerkdienst; POST; `ValidateLocalConfiguration()` blokkeert een niet-HTTPS `BaseUrl` bij opstarten (D-043) | Productie-TLS/certificaat/netwerksegmentatie en serverauthenticatie op de beheerde werkplek bevestigen |
+| SMS | `ValidateSmsCallActionItem()` blokkeert een niet-HTTPS `SmsCallAction.Url` bij opstarten (D-043); Edge/browsercontext | Leverancier- en browserbeveiliging (verwerkersovereenkomst, TLS bij de SMS-webapplicatie zelf) vastleggen |
 | Telemetrie | Code vereist een `https://`-webhook | Tenant, TLS-inspectie, ontvangers en retentie vastleggen |
 | Probleemrapport per e-mail | Classic Outlook-concept of handmatige fallback | Mailtransport, classificatie, encryptie en externe ontvangers vastleggen |
 | Documents/OneDrive | Windows-profiel en beheerde opslag | ACL's, tenant, synchronisatie, back-up en versleuteling bevestigen |
-| LocalAppData/%TEMP% | Windows-profiel | Schijfversleuteling, endpointbeheer, verwijdering van de tijdelijke rapportmap bevestigen |
+| LocalAppData/%TEMP% | Windows-profiel; automatische verwijdering van de tijdelijke rapportmap na verzending/bevestiging of uiterlijk na zeven dagen, bevestigd op een beheerde Windows-werkplek (D-044) | Schijfversleuteling, endpointbeheer |
 
 Aanvullend moeten secure development, kwetsbaarhedenbeheer, incidentrespons,
 sleutel-/secretbeheer en logging van beheerhandelingen worden gekoppeld aan
@@ -732,7 +773,7 @@ Persoonsgegevens nodig is.
 | Ontvangers- en verwerkersregister invullen | OPENSTAAND | OPENSTAAND | Open |
 | Bewaar- en verwijdertermijnen goedkeuren | OPENSTAAND | OPENSTAAND | Open |
 | Autorisatiematrix opstellen en controleren | OPENSTAAND | OPENSTAAND | Open |
-| Productietransport telefonie en SMS beoordelen en HTTPS afdwingen | OPENSTAAND | OPENSTAAND | Open |
+| Productietransport telefonie en SMS beoordelen (applicatie dwingt HTTPS al af sinds D-043; productie-TLS/certificaat/authenticatie nog bevestigen) | OPENSTAAND | OPENSTAAND | Open |
 | SMS-, Microsoft-, mail- en OneDrive-contractketen vastleggen | OPENSTAAND | OPENSTAAND | Open |
 | DPIA-dekking of afzonderlijke DPIA met FG vaststellen | OPENSTAAND | OPENSTAAND | Open |
 | Uitkomst koppelen aan verwerkingsregister en NEN 7510-risicoanalyse | OPENSTAAND | OPENSTAAND | Open |

@@ -6,6 +6,9 @@ Persistent true
 #Include Telemetry.ahk
 #Include ThirdParty\UIA-v2\UIA.ahk
 #Include ThirdParty\UIA-v2\UIA_Browser.ahk
+; Alleen functiedefinities; wordt pas uitgevoerd via de --selftest-poort
+; hieronder, ná geldige lokale configuratie. Zie docs/MIGRATIONS.md.
+#Include tests\SelfTests.ahk
 
 ; De echte lokale configuratie wordt bewust niet door Git gevolgd. Tijdens
 ; compilatie neemt Ahk2Exe dit include-bestand wel in de executable op.
@@ -24,7 +27,18 @@ catch as configError {
     ExitApp()
 }
 
-global AppVersion := "2.2"
+; Poort voor het losstaande zelftestpakket (tests/SelfTests.ahk): alleen
+; actief met het expliciete argument --selftest, ná geldige lokale
+; configuratie maar vóór elke GUI-, netwerk- of gebruikersdatatoegang. Een
+; normale start (dubbelklik of de gecompileerde executable zonder
+; argumenten) bereikt deze tak nooit. Zie docs/MIGRATIONS.md en
+; tests/README.md.
+if HasCommandLineArgument("--selftest") {
+    exitCode := RunSelfTests()
+    ExitApp(exitCode)
+}
+
+global AppVersion := "2.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -32,11 +46,14 @@ global IsDevMode := (A_UserName = "n.feenstra")
 global StartupWindowState := GetRequestedStartupWindowState()
 
 ; Gebruikersgegevens staan buiten de programmamap en zijn bewust per
-; releasekanaal gescheiden. Stable gebruikt DocBot, de centrale develop-
-; versies met -dev of -rc gebruiken DocBot-test en feature-/fixbranches
-; gebruiken DocBot-dev. Een prereleasebuild kan zo nooit productiedata migreren.
+; releasekanaal gescheiden. Stable gebruikt DocBot. Binnen elke niet-stabiele
+; versie bepaalt de buildvorm (A_IsCompiled), niet het prereleaselabel, of
+; DocBot-test of DocBot-dev wordt gebruikt: een gecompileerde prerelease test
+; de opleverbare vorm en deelt daarom het centrale testprofiel, een
+; niet-gecompileerde prerelease is broncode-ontwikkeling en blijft
+; geïsoleerd. Een prereleasebuild kan zo nooit productiedata migreren.
 global AppDataFolderName := "DocBot"
-global UserDataProfile := GetUserDataProfile(AppVersion)
+global UserDataProfile := GetUserDataProfile(AppVersion, A_IsCompiled)
 global ProductionUserDataDir := A_MyDocuments "\" AppDataFolderName
 global TestUserDataDir := ProductionUserDataDir "-test"
 global DevelopmentUserDataDir := ProductionUserDataDir "-dev"
@@ -47,6 +64,7 @@ global ConfigFile := UserDataDir "\settings.ini"
 global DefaultHotstringFile := UserDataDir "\hotstrings.json"
 global DefaultPackageSettingsFile := UserDataDir "\package-settings.json"
 global DefaultSpeedDialFile := UserDataDir "\speeddial.json"
+global DefaultSmsDefaultTextFile := UserDataDir "\sms-default-texts.json"
 
 ; =============================================================================
 ; DocBot
@@ -121,11 +139,23 @@ global TraySpeedDialMaxEntries := 10
 global SpeedDialEntries := DefaultSpeedDialEntries()
 global Hotstrings := DefaultPersonalHotstrings()
 
+; Standaardtekst per SMS-pagina, functionele sleutel = Title (lowercase,
+; getrimd). Moet vóór BuildMainGui() gevuld zijn: de Instellingen-pagina
+; toont bij constructie meteen de tekst voor de geselecteerde SMS-pagina.
+global SmsDefaultTextSchemaVersion := 1
+global SmsDefaultTexts := Map()
+
 global MainGui := 0
 global Pages := Map("overzicht", [], "telefonie", [], "tekstvervanging", [], "instellingen", [], "help", [], "over", [])
 global CurrentPage := ""
 global HelpSections := []
 global HelpOpenSection := 1
+; Index binnen HelpSections van "Wat mag ik wel en niet in een hotstring
+; zetten?", gezet in BuildMainGui() direct na die AddHelpAccordionSection()-
+; aanroep. Gebruikt door OpenHotstringHelpSection() zodat de link bij de
+; hint op Tekstvervanging altijd naar de juiste, actuele sectie-index
+; verwijst, ook als de volgorde van accordeonsecties ooit verandert.
+global HotstringHelpSectionIndex := 0
 global HelpLinkControls := Map()
 global NavButtons := Map()
 global NavBars := Map()
@@ -228,12 +258,12 @@ global PackageManagerStatusText := 0
 global RuntimeHotstrings := Map()
 
 InitializeUserStorage()
-MarkUserStorageAlwaysAvailable(UserDataDir)
 InitializeBundledPackages()
 LoadAppSettings()
 InitializeHotstringStorage()
 InitializePackageSettings()
 InitializeSpeedDialStorage()
+InitializeSmsDefaultTextStorage()
 ReloadRuntimeHotstrings()
 Telemetry_Initialize(ConfigFile, AppVersion, GetTelemetryStatus)
 InitializeDiagnosticLogging()
@@ -290,6 +320,7 @@ BuildMainGui() {
     global HotEditorCompactCard, HotEditorExpandedCard, HotSaveButton
     global SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText
     global SpeedDialLV, SpeedDialEnabledCheck, SpeedDialNameEdit, SpeedDialNumberEdit
+    global HelpSections, HotstringHelpSectionIndex
 
     MainGui := Gui("-MaximizeBox", "DocBot")
     MainGui.BackColor := C["Window"]
@@ -423,6 +454,7 @@ BuildMainGui() {
     AddFlatButton("telefonie", 702, 436, 42, 36, Chr(0xE70E), MoveSpeedDialUp, false)
     AddFlatButton("telefonie", 752, 436, 42, 36, Chr(0xE70D), MoveSpeedDialDown, false)
 
+    ; y=500 h=148 eindigt op y=648; Hotstrings en Over sluiten hier op aan.
     AddCard("telefonie", 236, 500, 736, 148)
     AddCardLabel("telefonie", 260, 520, 300, 24, "Snelkiesnummer bewerken", "s12 bold c" C["Text"])
     SpeedDialEnabledCheck := MainGui.AddCheckbox("x260 y560 w82 h24 Background" C["Card"], "Actief")
@@ -475,8 +507,14 @@ BuildMainGui() {
     AddFlatButton("tekstvervanging", 402, 388, 140, 36, Chr(0xE70F) "  Wijzig", EditSelectedHotstring, false)
     AddFlatButton("tekstvervanging", 552, 388, 140, 36, Chr(0xE74D) "  Verwijder", DeleteSelectedHotstring, false)
 
+    ; Beide kaarten eindigen bewust op dezelfde y=648 als de kaart
+    ; "Snelkiesnummer bewerken" op de Telefonie-pagina (y=500 h=148), zodat
+    ; Hotstrings en Telefonie onderaan gelijk aflopen. Het uitgeklapte
+    ; meerregelige veld is daarom iets minder hoog (56 i.p.v. 70) dan vóór
+    ; deze uitlijning, en Opslaan staat op een vaste plek die in beide
+    ; standen past in plaats van te verspringen tussen y=590 en y=626.
     HotEditorCompactCard := AddCard("tekstvervanging", 236, 452, 736, 196)
-    HotEditorExpandedCard := AddCard("tekstvervanging", 236, 452, 736, 230)
+    HotEditorExpandedCard := AddCard("tekstvervanging", 236, 452, 736, 196)
     AddCardLabel("tekstvervanging", 260, 472, 220, 22, "Hotstring bewerken", "s12 bold c" C["Text"])
     AddFlatButton("tekstvervanging", 588, 464, 220, 34, "⚙  Geavanceerde opties...", ShowAdvancedHotstringOptions, false)
     HotEnabledCheck := MainGui.AddCheckbox("x840 y472 w100 h22 Background" C["Card"], "Actief")
@@ -484,15 +522,15 @@ BuildMainGui() {
     AddPageControl("tekstvervanging", HotEnabledCheck)
     AddCardLabel("tekstvervanging", 260, 512, 100, 20, "Afkorting", "s10 c" C["Text"])
     HotTriggerEdit := AddRoundedEdit("tekstvervanging", 370, 504, 586, 34, "")
-    AddCardLabel("tekstvervanging", 260, 552, 100, 20, "Vervanging", "s10 c" C["Text"])
-    HotReplacementSingleGroup := AddRoundedEditGroup("tekstvervanging", 370, 544, 538, 34, "", false, 8)
-    HotReplacementMultiGroup := AddRoundedEditGroup("tekstvervanging", 370, 544, 538, 70, "", true, 6)
+    AddCardLabel("tekstvervanging", 260, 548, 100, 20, "Vervanging", "s10 c" C["Text"])
+    HotReplacementSingleGroup := AddRoundedEditGroup("tekstvervanging", 370, 540, 538, 34, "", false, 8)
+    HotReplacementMultiGroup := AddRoundedEditGroup("tekstvervanging", 370, 540, 538, 56, "", true, 6)
     HotReplacementSingleGroup["Edit"].OnEvent("Change", UpdateHotReplacementDraft)
     HotReplacementMultiGroup["Edit"].OnEvent("Change", UpdateHotReplacementDraft)
     ; Deze twee eenvoudige klikcontrols worden door Windows betrouwbaarder
     ; opnieuw getekend na hide/show dan twee overlappende custom-draw buttons.
     HotReplacementExpandButton := MainGui.AddText(
-        "x920 y544 w36 h34 Center 0x200 Background" C["Button"],
+        "x920 y540 w36 h34 Center 0x200 Background" C["Button"],
         Chr(0xE740)
     )
     HotReplacementExpandButton.SetFont("s12 c" C["Text"], "Segoe MDL2 Assets")
@@ -503,7 +541,7 @@ BuildMainGui() {
     )
 
     HotReplacementCollapseButton := MainGui.AddText(
-        "x920 y544 w36 h34 Center 0x200 Background" C["Button"],
+        "x920 y540 w36 h34 Center 0x200 Background" C["Button"],
         Chr(0xE73F)
     )
     HotReplacementCollapseButton.SetFont("s12 c" C["Text"], "Segoe MDL2 Assets")
@@ -512,8 +550,27 @@ BuildMainGui() {
     HotReplacementCollapseButton.OnEvent(
         "Click", ToggleHotReplacementEditor.Bind(false)
     )
-    HotSaveButton := AddFlatButton("tekstvervanging", 808, 590, 148, 36, "💾  Opslaan", SaveHotstringFromForm, true)
+    ; Vaste positie (was afhankelijk van HotReplacementExpanded): het
+    ; meerregelige veld eindigt nu altijd ruim vóór y=638, dus Opslaan hoeft
+    ; niet meer te verspringen.
+    HotSaveButton := AddFlatButton("tekstvervanging", 808, 602, 148, 36, "💾  Opslaan", SaveHotstringFromForm, true)
     ApplyHotReplacementEditorState()
+
+    ; y=663 centreert deze 22px-hoge regel verticaal in de 52px-ruimte
+    ; tussen het einde van de kaart hierboven (y=648) en de vensterrand
+    ; (700): 648 + (52-22)/2 = 663, met 15px marge boven en onder. Zelfde
+    ; tekstgrootte (s10) als de GitHub-link op de Over-pagina. Als
+    ; paginabreed element (geen kaartinhoud) blijft de melding zichtbaar in
+    ; zowel de compacte als de uitgeklapte weergave van de hotstringeditor.
+    HotPrivacyHint := MainGui.AddLink(
+        "x260 y663 w650 h22 Background" C["Window"],
+        'ℹ️  Zet geen patiëntgegevens in hotstrings. Bekijk de richtlijn op de <a href="help">Help</a>-pagina.'
+    )
+    HotPrivacyHint.SetFont("s10 c" C["Muted"], "Segoe UI")
+    ; Opent Help mét de bijbehorende accordeonsectie al uitgeklapt, in
+    ; plaats van alleen naar de Help-pagina te navigeren.
+    HotPrivacyHint.OnEvent("Click", OpenHotstringHelpSection)
+    AddPageControl("tekstvervanging", HotPrivacyHint)
 
     ; -------------------------------------------------------------------------
     ; PAGINA: INSTELLINGEN
@@ -534,7 +591,7 @@ BuildMainGui() {
     AddFlatButton("instellingen", 692, 230, 132, 36, "📂  Laden", ManualLoadHotstrings.Bind(filePathEdit), false)
     AddFlatButton("instellingen", 832, 230, 132, 36, "💾  Opslaan", ManualSaveHotstrings.Bind(filePathEdit), true)
 
-    AddCard("instellingen", 236, 304, 736, 202)
+    AddCard("instellingen", 236, 304, 736, 314)
     AddCardLabel("instellingen", 260, 326, 250, 24, "SMS actie", "s14 bold c" C["Text"])
     AddCardLabel("instellingen", 260, 366, 200, 20, "SMS-pagina", "s10 c" C["Muted"])
 
@@ -560,18 +617,50 @@ BuildMainGui() {
         "Deze pagina wordt gebruikt bij de belactie 'Bellen of sms kiezen'.",
         "s9 c" C["Muted"]
     )
-    smsAvailabilityText := smsActionTitles.Length = 1
-        ? "1 SMS-pagina beschikbaar via lokale configuratie."
-        : smsActionTitles.Length " SMS-pagina's beschikbaar via lokale configuratie."
-    if smsActionTitles.Length = 0
-        smsAvailabilityText := "Geen SMS-pagina beschikbaar; de bijbehorende belactie is uitgeschakeld."
-    AddCardLabel("instellingen", 260, 462, 688, 20, smsAvailabilityText, "s9 c" C["Muted"])
+
+    ; Standaardtekst per SMS-pagina: meerregelig, harde enters toegestaan
+    ; (zelfde Multi/VScroll-opzet als het hotstring-Replacement-veld
+    ; hierboven, dat WantReturn al niet nodig blijkt te hebben). Label en
+    ; toelichting staan samen op één regel om ruimte te winnen voor het
+    ; tekstveld zelf; de losse "N SMS-pagina('s) beschikbaar"-regel is
+    ; geschrapt omdat de dropdown daarboven dat al laat zien.
+    AddCardLabel(
+        "instellingen",
+        260, 460, 688, 34,
+        "Standaardtekst (wordt samen met het telefoonnummer ingevuld in het berichtveld van deze SMS-pagina):",
+        "s10 c" C["Muted"]
+    )
+    smsDefaultTextGroup := AddRoundedEditGroup("instellingen", 260, 494, 688, 100, "", true, 6)
+    smsDefaultTextEdit := smsDefaultTextGroup["Edit"]
+    ; Blijft leeg zolang de standaardtekst gewoon bruikbaar is; toont anders
+    ; waarom het veld is uitgeschakeld (zie ApplySmsDefaultTextFieldState()).
+    smsDefaultTextHint := AddCardLabel("instellingen", 260, 598, 688, 16, "", "s9 c" C["Muted"])
+
+    ; Niet-opgeslagen tekst blijft per SMS-pagina in het geheugen staan
+    ; zolang de Instellingen-pagina open is, ook als tussendoor van
+    ; SMS-pagina wordt gewisseld. Pas op Opslaan wordt alles weggeschreven
+    ; naar sms-default-texts.json, net als de rest van deze pagina.
+    pendingSmsDefaultTexts := Map()
+    smsDefaultTextUiState := Map(
+        "LastTitle", HasConfiguredSmsCallActions() ? ResolveSmsCallActionTitle(State["SmsCallActionTitle"]) : ""
+    )
+    ApplySmsDefaultTextFieldState(smsActionDropDown, smsDefaultTextEdit, smsDefaultTextHint, pendingSmsDefaultTexts)
+    smsActionDropDown.OnEvent(
+        "Change",
+        SmsActionSelectionChanged.Bind(
+            smsActionDropDown, smsDefaultTextEdit, smsDefaultTextHint,
+            pendingSmsDefaultTexts, smsDefaultTextUiState
+        )
+    )
 
     AddFlatButton(
         "instellingen",
-        824, 526, 140, 38,
+        824, 638, 140, 38,
         "Opslaan",
-        SaveSettings.Bind(autoSaveCheck, filePathEdit, smsActionDropDown),
+        SaveSettings.Bind(
+            autoSaveCheck, filePathEdit, smsActionDropDown,
+            smsDefaultTextEdit, pendingSmsDefaultTexts, smsDefaultTextUiState
+        ),
         true,
         C["Window"]
     )
@@ -625,6 +714,36 @@ BuildMainGui() {
         ["Overzicht", "Tekstvervanging", "Hotstrings"],
         Map("Overzicht", "overzicht", "Hotstrings", "tekstvervanging")
     )
+    AddHelpAccordionSection(
+        "Wat mag ik wel en niet in een hotstring zetten?",
+        "Hotstrings zijn bedoeld voor generieke, herbruikbare tekst: vaste zinnen, "
+        "standaardformuleringen of afkortingen die je voor meerdere situaties gebruikt."
+        "`r`n`r`nZet nooit patiëntidentificerende of patiëntspecifieke gegevens in een "
+        "hotstring, zoals een patiëntnaam, geboortedatum, BSN of dossiernummer, of een "
+        "tekst die alleen op één patiënt van toepassing is. Hotstrings staan in "
+        "hotstrings.json op je eigen computer en zijn niet bedoeld als plek voor "
+        "dossierinformatie."
+        "`r`n`r`nGenerieke klinische formuleringen die niet aan een identificeerbare "
+        "patiënt gekoppeld zijn, mag je wel gebruiken, bijvoorbeeld 'geen afwijkingen' "
+        "of 'Op {{datum}} zag ik uw patiënt'. Zulke tekst wordt pas patiëntspecifiek op "
+        "het moment dat jij ze in een dossier invoegt en aanvult, niet door de hotstring "
+        "zelf."
+        "`r`n`r`nOok je eigen naam, telefoonnummer, e-mailadres of ondertekening in een "
+        "hotstring kan persoonsgegevens zijn. Dat is toegestaan voor praktisch gebruik, "
+        "zoals een vaste afsluiting, maar valt onder het reguliere privacybeleid van je "
+        "organisatie."
+        "`r`n`r`nDocBot controleert de inhoud van je hotstrings niet automatisch op "
+        "patiëntgegevens. Je blijft dus zelf verantwoordelijk voor wat je opslaat."
+        "`r`n`r`nBeheer je persoonlijke hotstrings op de pagina Hotstrings in DocBot.",
+        [
+            "hotstrings.json",
+            "patiëntidentificerende of patiëntspecifieke gegevens",
+            "controleert de inhoud van je hotstrings niet automatisch",
+            "Hotstrings"
+        ],
+        Map("Hotstrings", "tekstvervanging")
+    )
+    HotstringHelpSectionIndex := HelpSections.Length
     RefreshHelpAccordion()
 
     ; De bestaande footer wordt volledig vervangen door een herkenbare
@@ -643,25 +762,28 @@ BuildMainGui() {
 
     AddPageHeader("over", "Over", "Informatie over DocBot.")
 
-    AddCard("over", 236, 92, 736, 500)
+    ; Kaarthoogte 556 (i.p.v. voorheen 500) laat deze kaart, net als
+    ; Hotstrings en Telefonie, op y=648 eindigen. De GitHub-link hieronder
+    ; staat verticaal gecentreerd in de ruimte daaronder.
+    AddCard("over", 236, 92, 736, 556)
 
-    aboutShell := MainGui.AddText("x260 y116 w688 h452 Background" C["Border"], "")
+    aboutShell := MainGui.AddText("x260 y116 w688 h508 Background" C["Border"], "")
     AddRound(aboutShell, 12)
     AddPageControl("over", aboutShell)
 
     aboutEdit := MainGui.AddEdit(
-        "x262 y118 w684 h448 ReadOnly VScroll Multi -E0x200 BackgroundFFFFFF",
+        "x262 y118 w684 h504 ReadOnly VScroll Multi -E0x200 BackgroundFFFFFF",
         BuildAboutText()
     )
     aboutEdit.SetFont("s10 c" C["Text"], "Segoe UI")
     AddRound(aboutEdit, 10)
     AddPageControl("over", aboutEdit)
 
-    ; Zelfde hoogte als de "Probleem melden..."-knop op de Help-pagina
-    ; (x786 y654 w170 h34), maar gespiegeld naar links, in de al onbenutte
-    ; ruimte onder de kaart. Laat de kaart/aboutEdit hierboven ongemoeid.
+    ; y=662 centreert deze 24px-hoge link verticaal in de 52px-ruimte
+    ; tussen het einde van de kaart hierboven (y=648) en de vensterrand
+    ; (700): 648 + (52-24)/2 = 662, met 14px marge boven en onder.
     githubLink := MainGui.AddLink(
-        "x262 y654 w300 h34",
+        "x262 y662 w300 h24",
         'Bekijk DocBot op <a href="https://github.com/Pastinakel/DocBot">GitHub</a>'
     )
     githubLink.SetFont("s10 c" C["Text"], "Segoe UI")
@@ -731,8 +853,11 @@ AddHelpAccordionSection(title, bodyText, boldTerms := [], linkTargets := 0) {
 
     ; Beide kaartformaten worden vooraf als GDI+-bitmap opgebouwd. Bij het
     ; openen wisselen we alleen zichtbaarheid en positie, waardoor de
-    ; afgeronde hoeken ook na paginawisselingen stabiel blijven.
-    collapsedCard := AddCard("help", 236, 104, 720, 64)
+    ; afgeronde hoeken ook na paginawisselingen stabiel blijven. De hoogtes
+    ; hier moeten gelijk blijven aan collapsedHeight/expandedHeight in
+    ; RefreshHelpAccordion() — dat bepaalt alleen de tussenruimte, niet de
+    ; werkelijke kaartgrootte.
+    collapsedCard := AddCard("help", 236, 104, 720, 54)
     expandedCard := AddCard("help", 236, 104, 720, 258)
     expandedCard.Opt("+Hidden")
 
@@ -763,6 +888,10 @@ AddHelpAccordionSection(title, bodyText, boldTerms := [], linkTargets := 0) {
     )
     bodyEdit.SetFont("s10 c" C["Text"], "Segoe UI")
     FormatHelpBody(bodyEdit, bodyText, boldTerms, linkTargets)
+    ; Ook zonder linkTargets moet HelpRichEditSubclass() klikken kunnen
+    ; afvangen, anders zou zo'n sectie alsnog een blauwe tekstselectie
+    ; kunnen tonen (zie EnsureHelpRichEditSubclass()).
+    EnsureHelpRichEditSubclass(bodyEdit)
     AddRound(bodyEdit, 8)
     bodyEdit.Opt("+Hidden")
     AddPageControl("help", bodyEdit)
@@ -924,7 +1053,29 @@ RegisterHelpLinkControl(bodyCtrl, linkRanges) {
         "Control", bodyCtrl,
         "Ranges", linkRanges
     )
+    InstallHelpRichEditSubclass(bodyCtrl)
+}
 
+; Zorgt dat ook een accordeonsectie zónder linkTargets de subclass krijgt
+; die HelpRichEditSubclass() gebruikt om iedere klik/dubbelklik af te
+; vangen (zie daar). Zonder deze aanroep zou zo'n sectie geen entry in
+; HelpLinkControls hebben en zou een klik alsnog RichEdit's standaard
+; tekstselectie starten. Idempotent: doet niets als RegisterHelpLinkControl
+; deze hwnd al heeft geregistreerd.
+EnsureHelpRichEditSubclass(bodyCtrl) {
+    global HelpLinkControls
+
+    if HelpLinkControls.Has(bodyCtrl.Hwnd)
+        return
+
+    HelpLinkControls[bodyCtrl.Hwnd] := Map(
+        "Control", bodyCtrl,
+        "Ranges", []
+    )
+    InstallHelpRichEditSubclass(bodyCtrl)
+}
+
+InstallHelpRichEditSubclass(bodyCtrl) {
     ; Subclass het RichEdit-venster zelf. Daarmee komt WM_LBUTTONDOWN altijd
     ; langs onze handler, onafhankelijk van EN_LINK/EN_MSGFILTER.
     static subclassCallback := 0
@@ -939,7 +1090,7 @@ RegisterHelpLinkControl(bodyCtrl, linkRanges) {
         "Ptr", 0,
         "Int"
     )
-        throw Error("De navigatielinks in Help konden niet worden geactiveerd.")
+        throw Error("De klikafhandeling in Help kon niet worden geactiveerd.")
 }
 
 HelpRichEditSubclass(
@@ -953,9 +1104,15 @@ HelpRichEditSubclass(
     global HelpLinkControls
 
     static WM_LBUTTONDOWN := 0x0201
+    static WM_LBUTTONDBLCLK := 0x0203
     static WM_NCDESTROY := 0x0082
     static EM_CHARFROMPOS := 0x00D7
 
+    ; De hulptekst is alleen-lezen uitlegtekst, geen invoerveld: een klik of
+    ; dubbelklik mag nooit een blauwe tekstselectie achterlaten. Alleen een
+    ; klik op een geregistreerde linktekst wordt doorgelaten (als navigatie,
+    ; niet als selectie); elke andere klik/dubbelklik wordt hier volledig
+    ; afgevangen zodat RichEdit's standaard selectiegedrag nooit start.
     if message = WM_LBUTTONDOWN
         && IsSet(HelpLinkControls)
         && IsObject(HelpLinkControls)
@@ -986,7 +1143,15 @@ HelpRichEditSubclass(
                 return 0
             }
         }
+
+        return 0
     }
+
+    if message = WM_LBUTTONDBLCLK
+        && IsSet(HelpLinkControls)
+        && IsObject(HelpLinkControls)
+        && HelpLinkControls.Has(hwnd)
+        return 0
 
     if message = WM_NCDESTROY
         && IsSet(HelpLinkControls)
@@ -1013,12 +1178,30 @@ ToggleHelpSection(sectionIndex, *) {
     RedrawMainGui()
 }
 
+; Klikhandler voor de hint op de Tekstvervanging-pagina: navigeert naar
+; Help en klapt meteen de bijbehorende accordeonsectie open, in plaats van
+; de gebruiker die zelf te laten zoeken/aanklikken. ShowPage("help") ververst
+; de accordeon en de afgeronde hoeken zelf al, dus dat hoeft hier niet nog
+; eens.
+OpenHotstringHelpSection(*) {
+    global HelpOpenSection, HotstringHelpSectionIndex
+
+    HelpOpenSection := HotstringHelpSectionIndex
+    ShowPage("help")
+}
+
 RefreshHelpAccordion() {
     global HelpSections, HelpOpenSection
 
+    ; collapsedHeight is bewust kleiner dan de kaarthoogte die
+    ; AddHelpAccordionSection() voor iedere ingeklapte kaart aanmaakt (64):
+    ; met vijf secties en één opengeklapte sectie (258) moet de opsomming
+    ; nog boven de "Probleem melden..."-knop op y=654 eindigen. Bij
+    ; collapsedHeight=54 eindigt de langste combinatie (258 + 4×54 + 5×12)
+    ; op y=638, met 16px marge tot die knop.
     y := 104
     gap := 12
-    collapsedHeight := 64
+    collapsedHeight := 54
     expandedHeight := 258
 
     for index, section in HelpSections {
@@ -1036,12 +1219,44 @@ RefreshHelpAccordion() {
         if isOpen {
             section["Body"].Move(260, y + 58, 672, 184)
             section["Body"].Opt("-Hidden")
+            ClearHelpBodySelection(section["Body"])
+            ; Directe aanroep is niet altijd genoeg: bij navigatie vanaf een
+            ; andere control (zoals de hint op Tekstvervanging) komt de
+            ; ongewenste selectie soms pas iets later binnen, via een
+            ; bericht dat nog in de wachtrij stond op het moment van deze
+            ; aanroep. Een eenmalige herhaling na de huidige berichtenronde
+            ; wint dan alsnog van dat late bericht.
+            SetTimer(ClearHelpBodySelection.Bind(section["Body"]), -50)
         } else {
             section["Body"].Opt("+Hidden")
         }
 
         y += (isOpen ? expandedHeight : collapsedHeight) + gap
     }
+}
+
+; FormatHelpBody() al collapt zijn eigen opmaakselectie na het vet maken
+; van termen/links, maar dat gebeurt eenmalig bij het bouwen van de GUI.
+; Een sectie die via OpenHotstringHelpSection() wordt geopend terwijl de
+; klik nog op een ándere control (de link op Tekstvervanging) plaatsvond,
+; kan de hele hoofdtekst blauw geselecteerd tonen zodra het RichEdit-veld
+; zichtbaar wordt en onverwacht focus krijgt — vermoedelijk doordat Windows
+; automatisch focus verplaatst naar de nu zichtbare RichEdit wanneer de
+; eerder gefocuste linkcontrol wegvalt, gecombineerd met een leftover
+; muisstatus van die klik. Deze selectie blijft dan zichtbaar staan tot de
+; volgende gebruikersinteractie. Dit wist elke keer dat een sectie
+; opengaat expliciet de selectie, ongeacht de precieze oorzaak.
+ClearHelpBodySelection(bodyCtrl) {
+    static EM_SETSEL := 0x00B1
+
+    DllCall(
+        "SendMessageW",
+        "Ptr", bodyCtrl.Hwnd,
+        "UInt", EM_SETSEL,
+        "Ptr", 0,
+        "Ptr", 0,
+        "Ptr"
+    )
 }
 
 ; Geen navigatiepagina — dit sluit de hele applicatie af, inclusief het
@@ -2677,6 +2892,118 @@ InitializeDiagnosticLogging() {
     } catch {
         ; Diagnostiek mag de normale start van DocBot nooit blokkeren.
     }
+
+    ; Opschonen mag nooit de rest van de opstart blokkeren en staat daarom
+    ; los van het try-blok hierboven; RunDiagnosticsMaintenance() vangt
+    ; fouten per onderdeel zelf af.
+    RunDiagnosticsMaintenance()
+    SetTimer(RunDiagnosticsMaintenance, 86400000)
+}
+
+; Draait bij opstart en daarna eenmaal per dag: schoont het standaardlog op
+; naar bewaartermijn en ruimt vergeten tijdelijke probleemrapport- en
+; uitgebreide-logbestanden op. Eén gedeelde timer in plaats van losse timers
+; per onderdeel.
+RunDiagnosticsMaintenance() {
+    PruneExpiredDebugLogEntries()
+    PruneAbandonedProblemReportDirs()
+    PruneAbandonedExtendedLogFiles()
+}
+
+; Verwijdert individuele standaardlogregels ouder dan DebugLogRetentionDays,
+; in zowel het actieve logbestand als het geroteerde .oud-bestand. Werkt per
+; regel (op basis van de tijdstempel vooraan iedere regel), niet op
+; bestandsniveau, zodat een actief bestand met zowel oude als recente regels
+; correct wordt opgeschoond. Draait bij opstart en daarna eenmaal per dag,
+; zodat een langdurig actieve sessie niet wacht op een herstart.
+PruneExpiredDebugLogEntries() {
+    logPath := GetStandardDebugLogPath()
+    try PruneExpiredDebugLogFile(logPath, "actieve standaardlog")
+    try PruneExpiredDebugLogFile(logPath ".oud", "geroteerd .oud-standaardlog")
+}
+
+PruneExpiredDebugLogFile(path, label) {
+    static delimiter := "───`r`n"
+    static DebugLogRetentionDays := 7
+
+    if !FileExist(path)
+        return
+
+    try {
+        content := FileRead(path, "UTF-8")
+    } catch {
+        return
+    }
+
+    if Trim(content) = ""
+        return
+
+    delen := StrSplit(content, delimiter)
+    if delen.Length <= 1
+        return  ; alleen het kopblok (of niets herkenbaars): niets te knippen
+
+    cutoff := DateAdd(A_Now, -DebugLogRetentionDays, "Days")
+    nieuweInhoud := delen[1] delimiter  ; het kopblok blijft altijd staan
+    verwijderdAantal := 0
+
+    loop delen.Length - 1 {
+        chunk := delen[A_Index + 1]
+        if Trim(chunk) = ""
+            continue  ; lege staart na de laatste scheidingsregel
+
+        if RegExMatch(chunk, "^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})", &m) {
+            entryStamp := m[1] m[2] m[3] m[4] m[5] m[6]
+            if (entryStamp < cutoff) {
+                verwijderdAantal += 1
+                continue  ; regel is ouder dan de bewaartermijn: laat vervallen
+            }
+            nieuweInhoud .= chunk delimiter
+            continue
+        }
+
+        ; Regels van vóór de "v2"-opschoning (tot en met commit 5f72613,
+        ; 2026-08-07) hadden geen datum, alleen "HH:mm:ss.mmm", en werden
+        ; nooit URL-geschoond. Zo'n regel kan hier alleen staan als een
+        ; oudere, niet-geschoonde build ooit naar hetzelfde bestand heeft
+        ; geschreven nadat de v2-kopregel al aanwezig was — de
+        ; formaatcontrole in InitializeDiagnosticLogging() leest bij opstart
+        ; alleen de eerste 256 bytes en ziet dit dus niet. Zo'n regel is per
+        ; definitie (ver) ouder dan de bewaartermijn: onvoorwaardelijk laten
+        ; vervallen in plaats van voor altijd te bewaren.
+        if RegExMatch(chunk, "^\d{2}:\d{2}:\d{2}\.\d{1,3} ") {
+            verwijderdAantal += 1
+            continue
+        }
+
+        ; Overige onherkenbare inhoud (bijv. een afgebroken/beschadigde
+        ; regel): voor de zekerheid ongewijzigd behouden in plaats van te
+        ; gokken.
+        nieuweInhoud .= chunk delimiter
+    }
+
+    if (verwijderdAantal = 0)
+        return
+
+    tempPath := path ".tmp"
+    try {
+        if FileExist(tempPath)
+            FileDelete(tempPath)
+        FileAppend(nieuweInhoud, tempPath, "UTF-8")
+        FileMove(tempPath, path, true)
+        DebugLog(
+            "i",
+            "Standaardlog opschonen",
+            verwijderdAantal " verlopen regel(s) verwijderd uit " label "."
+        )
+    } catch as writeError {
+        if FileExist(tempPath)
+            try FileDelete(tempPath)
+        DebugLog(
+            "!",
+            "Standaardlog opschonen",
+            "Wegschrijven van opgeschoond " label " mislukt: " writeError.Message
+        )
+    }
 }
 
 FlushDebugLog() {
@@ -3376,12 +3703,22 @@ OpenProblemReportEmail(package, description, usedExtended) {
         mail.Body := body
         for attachmentPath in files
             mail.Attachments.Add(attachmentPath)
+        if mail.Attachments.Count != files.Length
+            throw Error("Outlook heeft niet alle bestanden als bijlage overgenomen.")
         mail.Display()
         try {
             inspector := mail.GetInspector
             inspector.Activate()
         } catch {
         }
+
+        ; Outlook heeft de bijlagen nu in het conceptbericht overgenomen (het
+        ; aantal is hierboven geverifieerd) en het venster staat open; de
+        ; tijdelijke rapportmap op schijf is vanaf hier niet meer nodig. Dit
+        ; gebeurt bewust na Display() en niet direct na Attachments.Add(), zodat
+        ; een latere fout in dit blok nog steeds via de catch naar de
+        ; handmatige fallback kan met een intacte rapportmap.
+        try DirDelete(reportDir, true)
 
         DebugLog(
             "✓",
@@ -3467,7 +3804,29 @@ OpenProblemReportFallback(
         "Icon!"
     )
 
-    return mailOpened || DirExist(reportDir)
+    ; De rapportmap blijft bewust staan tot de gebruiker heeft aangegeven
+    ; klaar te zijn: op dit moment kan de e-mail nog onverzonden open staan.
+    ; Bij twijfel (bijvoorbeeld dit venster gewoon wegklikken) is "Nee" de
+    ; standaardknop, zodat er nooit per ongeluk bestanden verdwijnen vóór
+    ; verzending.
+    completed := mailOpened || DirExist(reportDir)
+
+    if DirExist(reportDir) {
+        cleanupChoice := MsgBox(
+            "Is de e-mail met het probleemrapport verzonden, of heb je de "
+            "bestanden niet meer nodig?"
+            . "`n`nJa: ruim de rapportmap nu op."
+            . "`nNee: laat de rapportmap staan (bijvoorbeeld omdat je de "
+            "bijlagen nog moet toevoegen en verzenden). DocBot ruimt een "
+            "vergeten rapportmap later automatisch op.",
+            "DocBot - Probleem melden",
+            "YesNo Icon? Default2"
+        )
+        if cleanupChoice = "Yes"
+            try DirDelete(reportDir, true)
+    }
+
+    return completed
 }
 
 UriEncode(text) {
@@ -3498,6 +3857,139 @@ DeleteProblemReportExtendedLog() {
     extendedPath := ProblemReportSession["ExtendedLogPath"]
     if extendedPath != "" && FileExist(extendedPath)
         try FileDelete(extendedPath)
+}
+
+; Vangnet voor tijdelijke rapportmappen (BuildProblemReportPackage()) die om
+; welke reden dan ook nooit zijn opgeruimd: de handmatige fallback waarbij de
+; gebruiker "Nee" koos of het venster wegklikte, een crash tussen het
+; aanmaken van de map en het afronden van de melding, of het afsluiten van
+; DocBot midden in de flow. Gebruikt de tijdstempel die DocBot zelf in de
+; mapnaam codeert (niet de bestandssysteem-wijzigingstijd), zodat een latere
+; kopieer- of scanactie op de map de bewaartermijn niet per ongeluk verlengt.
+; Alleen mappen die aan een bekend eigen naampatroon voldoen worden
+; verwijderd. Het millisecondesuffix is optioneel: vóór commit 2a8127e
+; (2026-08-08) heette de map "DocBot_diagnose_yyyyMMdd_HHmmss" zonder dat
+; suffix. Zulke mappen konden destijds achterblijven wanneer het (inmiddels
+; met D-041 verwijderde) ZIP-opbouwproces mislukte vóórdat de map werd
+; opgeruimd — bevestigd aanwezig op een echte testmachine.
+PruneAbandonedProblemReportDirs() {
+    static maxAgeDays := 7
+
+    cutoff := DateAdd(A_Now, -maxAgeDays, "Days")
+    SplitPath(A_Temp, &tempMapnaam)  ; alleen de laatste mapnaam, geen volledig pad (privacygevoelig)
+    gezien := 0
+    onherkend := 0
+    voorbeeldOnherkend := ""
+    verlopen := 0
+    verwijderd := 0
+    mislukt := 0
+    laatsteFout := ""
+
+    try {
+        Loop Files, A_Temp "\DocBot_diagnose_*", "D" {
+            gezien += 1
+            if !RegExMatch(A_LoopFileName, "^DocBot_diagnose_(\d{8})_(\d{6})(?:_\d+)?$", &m) {
+                onherkend += 1
+                if (voorbeeldOnherkend = "")
+                    voorbeeldOnherkend := A_LoopFileName
+                continue  ; onbekende mapnaam: niet aanraken
+            }
+
+            stamp := m[1] m[2]
+            if (stamp < cutoff) {
+                verlopen += 1
+                try {
+                    DirDelete(A_LoopFileFullPath, true)
+                    verwijderd += 1
+                } catch as dirError {
+                    mislukt += 1
+                    laatsteFout := dirError.Message
+                }
+            }
+        }
+    } catch as sweepError {
+        DebugLog(
+            "!",
+            "Probleemrapportmap opschonen",
+            "Doorzoeken van %TEMP% mislukt: " sweepError.Message
+        )
+        return
+    }
+
+    ; Altijd loggen, ook bij 0 gezien: bevestigd via een reëel testrapport
+    ; (zie docs/DECISIONS.md D-044 addendum 3) dat dit onderscheid nodig is
+    ; om te kunnen zien of de sweep daadwerkelijk draait. De projecteigenaar
+    ; wil deze regel bovendien bewust als dagelijks/opstart-bewijs dat de
+    ; opschoning werkt, niet alleen als foutopsporingshulpmiddel.
+    ; "doorzocht in ...\<mapnaam>" toont alleen de laatste mapnaam van A_Temp
+    ; (bijv. "Temp" of "2"), niet het volledige pad, om geen gebruikersnaam
+    ; of ander lokaal pad in het log te zetten.
+    samenvatting := Format(
+        "{1} map(pen) gezien, {2} niet herkend op naampatroon, {3} verlopen (>7 dagen), {4} verwijderd, {5} mislukt. Doorzocht in ...\{6}\.",
+        gezien, onherkend, verlopen, verwijderd, mislukt, tempMapnaam
+    )
+    if (onherkend > 0)
+        samenvatting .= " Voorbeeld onherkende naam: " SanitizeLogText(voorbeeldOnherkend)
+    if (mislukt > 0)
+        samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
+    DebugLog("i", "Probleemrapportmap opschonen", samenvatting)
+}
+
+; Vangnet voor het losse uitgebreide-logbestand van StartExtendedProblemLogging()
+; (%LocalAppData%\DocBot\problem-report-<tijdstip>.log). DeleteProblemReportExtendedLog()
+; ruimt dat bestand alleen op vanuit het lopende ProblemReportSession — na een
+; crash, geforceerd afsluiten of Windows-herstart tijdens een actieve sessie
+; is er geen enkele andere plek die dat bestand nog kent. Zelfde aanpak als
+; PruneAbandonedProblemReportDirs(): tijdstempel uit de bestandsnaam, niet de
+; bestandssysteem-wijzigingstijd.
+PruneAbandonedExtendedLogFiles() {
+    static maxAgeDays := 7
+
+    cutoff := DateAdd(A_Now, -maxAgeDays, "Days")
+    logDir := EnvGet("LocalAppData") "\DocBot"
+    gezien := 0
+    verlopen := 0
+    verwijderd := 0
+    mislukt := 0
+    laatsteFout := ""
+
+    try {
+        Loop Files, logDir "\problem-report-*.log" {
+            gezien += 1
+            if !RegExMatch(A_LoopFileName, "^problem-report-(\d{8})-(\d{6})\.log$", &m)
+                continue  ; onbekende bestandsnaam: niet aanraken
+
+            stamp := m[1] m[2]
+            if (stamp < cutoff) {
+                verlopen += 1
+                try {
+                    FileDelete(A_LoopFileFullPath)
+                    verwijderd += 1
+                } catch as fileError {
+                    mislukt += 1
+                    laatsteFout := fileError.Message
+                }
+            }
+        }
+    } catch as sweepError {
+        DebugLog(
+            "!",
+            "Uitgebreid log opschonen",
+            "Doorzoeken van " logDir " mislukt: " sweepError.Message
+        )
+        return
+    }
+
+    ; Altijd loggen, ook bij 0 gezien: zelfde afweging als bij
+    ; PruneAbandonedProblemReportDirs() — bewijst dat de opschoning draait,
+    ; niet alleen een foutopsporingshulpmiddel.
+    samenvatting := Format(
+        "{1} bestand(en) gezien, {2} verlopen (>7 dagen), {3} verwijderd, {4} mislukt.",
+        gezien, verlopen, verwijderd, mislukt
+    )
+    if (mislukt > 0)
+        samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
+    DebugLog("i", "Uitgebreid log opschonen", samenvatting)
 }
 
 ResetProblemReportAfterCompletion() {
@@ -4008,15 +4500,27 @@ RunSmsCallAction(smsConfig, number) {
     )
 
     try {
+        gebruiktPad := "WinActivate(WindowTitle)"
         edge := ActivateSmsEdgeWindowByTitle(smsConfig["WindowTitle"])
 
-        if !IsObject(edge)
+        if !IsObject(edge) {
+            gebruiktPad := "UIA-tabselectie"
             edge := ActivateSmsEdgeTabByTitle(smsConfig["WindowTitle"])
-
-        if !IsObject(edge)
-            edge := OpenSmsPage(smsConfig["Url"], smsConfig["WindowTitle"])
+        }
 
         if !IsObject(edge) {
+            gebruiktPad := "URL-fallback (nieuw venster/tab)"
+            edge := OpenSmsPage(smsConfig["Url"], smsConfig["WindowTitle"])
+        }
+
+        if !IsObject(edge) {
+            DebugLog(
+                "✕",
+                "SMS vensterselectie",
+                "Geen van de drie paden (WinActivate, UIA-tabselectie, URL-fallback) "
+                    "vond een bruikbare Edge-tab voor WindowTitle '"
+                    smsConfig["WindowTitle"] "'."
+            )
             ExtendedDebugLog(
                 "✕",
                 "SMS vensterselectie",
@@ -4025,25 +4529,36 @@ RunSmsCallAction(smsConfig, number) {
             return false
         }
 
-        if FillSmsPhoneFieldWithUIA(edge, smsConfig["FieldId"], number) {
+        DebugLog(
+            "✓",
+            "SMS vensterselectie",
+            "Pad '" gebruiktPad "' leverde de gebruikte Edge-tab voor WindowTitle '"
+                smsConfig["WindowTitle"] "'."
+        )
+
+        phoneFilled := FillSmsFieldWithUIA(edge, smsConfig["FieldId"], number)
+        if phoneFilled {
             ExtendedDebugLog(
                 "✓",
                 "SMS veldinvulling",
                 "AutomationId '" smsConfig["FieldId"] "' via UI Automation ingevuld."
             )
-            return true
+        } else {
+            ExtendedDebugLog(
+                "→",
+                "SMS veldinvulling",
+                "UIA Edit-element niet gevonden; JavaScriptfallback wordt uitgevoerd."
+            )
+            phoneFilled := FillSmsDomFieldWithJavaScript(edge, smsConfig["FieldId"], number)
         }
 
-        ExtendedDebugLog(
-            "→",
-            "SMS veldinvulling",
-            "UIA Edit-element niet gevonden; JavaScriptfallback wordt uitgevoerd."
-        )
-        return FillSmsDomFieldWithJavaScript(
-            edge,
-            smsConfig["FieldId"],
-            number
-        )
+        ; Standaardtekst is best-effort: een mislukte tekstinvulling mag een
+        ; al geslaagde telefoonnummerinvulling niet tot een mislukte
+        ; SMS-actie maken.
+        if phoneFilled
+            FillSmsDefaultTextField(edge, smsConfig)
+
+        return phoneFilled
     } finally {
         SetTitleMatchMode(previousTitleMatchMode)
         DetectHiddenWindows(previousDetectHiddenWindows)
@@ -4056,6 +4571,11 @@ ActivateSmsEdgeWindowByTitle(targetTitle) {
 
     try WinActivate(targetTitle)
     catch as activateError {
+        DebugLog(
+            "←",
+            "SMS WinActivate",
+            "Geen titelmatch voor WindowTitle '" targetTitle "'."
+        )
         ExtendedDebugLog(
             "←",
             "SMS WinActivate",
@@ -4067,6 +4587,11 @@ ActivateSmsEdgeWindowByTitle(targetTitle) {
 
     hwnd := WinWaitActive(targetTitle, , 1)
     if !hwnd {
+        DebugLog(
+            "←",
+            "SMS WinActivate",
+            "Titelmatch voor WindowTitle '" targetTitle "' werd niet binnen 1 seconde actief."
+        )
         ExtendedDebugLog(
             "←",
             "SMS WinActivate",
@@ -4077,6 +4602,11 @@ ActivateSmsEdgeWindowByTitle(targetTitle) {
 
     try {
         edge := UIA_Browser(hwnd)
+        DebugLog(
+            "✓",
+            "SMS WinActivate",
+            "Edge-venster met WindowTitle '" targetTitle "' geactiveerd en UIA_Browser gekoppeld."
+        )
         ExtendedDebugLog(
             "✓",
             "SMS WinActivate",
@@ -4085,6 +4615,11 @@ ActivateSmsEdgeWindowByTitle(targetTitle) {
         )
         return edge
     } catch as browserError {
+        DebugLog(
+            "✕",
+            "SMS WinActivate",
+            "Venster met WindowTitle '" targetTitle "' actief, maar UIA_Browser koppelen mislukte."
+        )
         ExtendedDebugLog(
             "✕",
             "SMS WinActivate",
@@ -4119,6 +4654,12 @@ ActivateSmsEdgeTabByTitle(targetTitle) {
     startedAt := A_TickCount
     edgeWindows := GetUsableEdgeBrowserWindows()
 
+    DebugLog(
+        "→",
+        "SMS UIA-tabselectie",
+        edgeWindows.Length " bruikbare Edge-venster(s) gevonden voor WindowTitle '"
+            targetTitle "'."
+    )
     ExtendedDebugLog(
         "→",
         "SMS UIA-tabselectie",
@@ -4133,12 +4674,25 @@ ActivateSmsEdgeTabByTitle(targetTitle) {
 
             edge := UIA_Browser(hwnd)
             tab := edge.TabExist(targetTitle, 2, false)
-            if !tab
+            if !tab {
+                DebugLog(
+                    "←",
+                    "SMS UIA-tabselectie",
+                    "Venster " index "/" edgeWindows.Length
+                        ": geen tab met WindowTitle '" targetTitle "' gevonden."
+                )
                 continue
+            }
 
             edge.SelectTab(tab)
             WinActivate("ahk_id " hwnd)
             if WinWaitActive("ahk_id " hwnd, , 2) {
+                DebugLog(
+                    "✓",
+                    "SMS UIA-tabselectie",
+                    "Venster " index "/" edgeWindows.Length
+                        ": tab met WindowTitle '" targetTitle "' gevonden en geactiveerd."
+                )
                 ExtendedDebugLog(
                     "✓",
                     "SMS UIA-tabselectie",
@@ -4147,7 +4701,20 @@ ActivateSmsEdgeTabByTitle(targetTitle) {
                 )
                 return edge
             }
+
+            DebugLog(
+                "←",
+                "SMS UIA-tabselectie",
+                "Venster " index "/" edgeWindows.Length
+                    ": tab gevonden maar niet binnen 2 seconden actief geworden."
+            )
         } catch as windowError {
+            DebugLog(
+                "←",
+                "SMS UIA-tabselectie",
+                "Venster " index "/" edgeWindows.Length
+                    " overgeslagen (fout bij koppelen/selecteren)."
+            )
             ExtendedDebugLog(
                 "←",
                 "SMS UIA-tabselectie",
@@ -4157,6 +4724,13 @@ ActivateSmsEdgeTabByTitle(targetTitle) {
         }
     }
 
+    DebugLog(
+        "←",
+        "SMS UIA-tabselectie",
+        "Geen passende tab gevonden in " edgeWindows.Length
+            " bruikbare Edge-venster(s) voor WindowTitle '" targetTitle
+            "'; URL-fallback volgt."
+    )
     ExtendedDebugLog(
         "←",
         "SMS UIA-tabselectie",
@@ -4176,6 +4750,7 @@ OpenSmsPage(url, targetTitle) {
 
     try Run('msedge.exe "' url '"')
     catch as runError {
+        DebugLog("✕", "SMS URL-fallback", "Edge starten mislukte.")
         ExtendedDebugLog("✕", "SMS URL-fallback", "Edge starten mislukte: " runError.Message)
         return 0
     }
@@ -4184,6 +4759,12 @@ OpenSmsPage(url, targetTitle) {
     ; een samengestelde query met ahk_exe in deze werkomgeving niet betrouwbaar is.
     hwnd := WinWaitActive(targetTitle, , 10)
     if !hwnd {
+        DebugLog(
+            "✕",
+            "SMS URL-fallback",
+            "Nieuw geopende pagina met WindowTitle '" targetTitle
+                "' werd niet binnen 10 seconden actief."
+        )
         ExtendedDebugLog(
             "✕",
             "SMS URL-fallback",
@@ -4194,9 +4775,19 @@ OpenSmsPage(url, targetTitle) {
 
     try {
         edge := UIA_Browser(hwnd)
+        DebugLog(
+            "✓",
+            "SMS URL-fallback",
+            "Nieuwe Edge-tab met WindowTitle '" targetTitle "' actief en UIA_Browser gekoppeld."
+        )
         ExtendedDebugLog("✓", "SMS URL-fallback", "Nieuwe Edge-tab actief en UIA_Browser gekoppeld.")
         return edge
     } catch as browserError {
+        DebugLog(
+            "✕",
+            "SMS URL-fallback",
+            "UIA_Browser koppelen aan de nieuwe tab met WindowTitle '" targetTitle "' mislukte."
+        )
         ExtendedDebugLog(
             "✕",
             "SMS URL-fallback",
@@ -4206,7 +4797,12 @@ OpenSmsPage(url, targetTitle) {
     }
 }
 
-FillSmsPhoneFieldWithUIA(edge, fieldId, value, timeoutMs := 5000) {
+; Generiek genoeg voor zowel het telefoonnummerveld als het optionele
+; standaardtekstveld: beide zijn UIA "Edit"-elementen (een <textarea>
+; verschijnt in Edge's toegankelijkheidsboom net als een <input> als Edit,
+; met IsMultiLine=true), dus dezelfde AutomationId-opzoeking en
+; Value-toewijzing werkt voor allebei.
+FillSmsFieldWithUIA(edge, fieldId, value, timeoutMs := 5000) {
     deadline := A_TickCount + timeoutMs
     attempts := 0
     lastError := ""
@@ -4247,10 +4843,16 @@ FillSmsDomFieldWithJavaScript(edge, fieldId, value) {
     escapedFieldId := EscapeSmsJavaScriptString(fieldId)
     escapedValue := EscapeSmsJavaScriptString(value)
 
+    ; Het standaardtekstveld is doorgaans een <textarea> in plaats van een
+    ; <input>; de native value-setter zit dan op HTMLTextAreaElement.prototype
+    ; in plaats van HTMLInputElement.prototype. Aanroepen via de verkeerde
+    ; prototype-setter faalt op een element van het andere type, dus wordt de
+    ; setter hier op basis van tagName gekozen in plaats van vast aangenomen.
     js := "(()=>{"
         . "const e=document.getElementById('" escapedFieldId "');"
         . "if(!e){throw new Error('DocBot: SMS-veld niet gevonden');}"
-        . "const s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;"
+        . "const proto=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;"
+        . "const s=Object.getOwnPropertyDescriptor(proto,'value').set;"
         . "s.call(e,'" escapedValue "');"
         . "e.dispatchEvent(new Event('input',{bubbles:true}));"
         . "e.dispatchEvent(new Event('change',{bubbles:true}));"
@@ -4269,6 +4871,38 @@ FillSmsDomFieldWithJavaScript(edge, fieldId, value) {
     } catch as jsError {
         ExtendedDebugLog("✕", "SMS JavaScriptfallback", jsError.Message)
         return false
+    }
+}
+
+; Best-effort: vult het optionele TextFieldId met de standaardtekst van deze
+; SMS-pagina, als beide geconfigureerd zijn. Ontbreekt TextFieldId of is er
+; geen standaardtekst ingesteld, dan gebeurt er bewust niets — de al
+; geslaagde telefoonnummerinvulling blijft dan het enige resultaat.
+FillSmsDefaultTextField(edge, smsConfig) {
+    if !smsConfig.Has("TextFieldId") || Trim(smsConfig["TextFieldId"]) = ""
+        return
+
+    defaultText := GetSmsDefaultText(smsConfig["Title"])
+    if Trim(defaultText) = ""
+        return
+
+    if FillSmsFieldWithUIA(edge, smsConfig["TextFieldId"], defaultText) {
+        ExtendedDebugLog(
+            "✓",
+            "SMS standaardtekst",
+            "AutomationId '" smsConfig["TextFieldId"] "' via UI Automation ingevuld."
+        )
+        return
+    }
+
+    if FillSmsDomFieldWithJavaScript(edge, smsConfig["TextFieldId"], defaultText) {
+        ExtendedDebugLog("✓", "SMS standaardtekst", "Veld ingevuld via JavaScriptfallback.")
+    } else {
+        ExtendedDebugLog(
+            "✕",
+            "SMS standaardtekst",
+            "Kon het geconfigureerde tekstveld niet vinden of vullen; het telefoonnummer is wel ingevuld."
+        )
     }
 }
 
@@ -4306,13 +4940,20 @@ EscapeSmsJavaScriptString(value) {
 ; =============================================================================
 
 ShowPackageManager(*) {
-    global MainGui, C, BundledPackages
+    global MainGui, C, BundledPackages, BundledPackageDir
     global PackageManagerGui, PackageManagerPackageLV, PackageManagerItemLV
     global PackageManagerStatusText
 
     if BundledPackages.Count = 0 {
+        ; De pakketbron wordt hier expliciet op het scherm getoond (niet
+        ; alleen in het standaardlog): dat log schermt lokale/netwerkpaden
+        ; altijd af omdat het ongewijzigd in een probleemrapport terecht kan
+        ; komen, terwijl dit venster alleen zichtbaar is voor wie al achter
+        ; de machine zit. Precies bij nul geladen pakketten is dit pad de
+        ; belangrijkste aanwijzing om te controleren.
         MsgBox(
-            "Er zijn geen meegeleverde hotstringpakketten beschikbaar.",
+            "Er zijn geen meegeleverde hotstringpakketten beschikbaar.`n`n"
+            "Pakketbron: " (BundledPackageDir != "" ? BundledPackageDir : "(onbekend)"),
             "DocBot - Hotstringpakketten",
             "Icon!"
         )
@@ -4341,9 +4982,14 @@ ShowPackageManager(*) {
     )
     title.SetFont("s19 bold c" C["Text"], "Segoe UI")
 
+    ; Statische tekst (nooit overschreven door een selectiewijziging, in
+    ; tegenstelling tot PackageManagerStatusText hieronder) — vandaar dat de
+    ; pakketbron hier staat en niet alleen in het standaardlog, dat
+    ; lokale/netwerkpaden altijd afschermt (`docs/DECISIONS.md` D-050).
     intro := PackageManagerGui.AddText(
-        "x24 y54 w852 h28 Background" C["Window"],
-        "Kies links een pakket en bekijk rechts eerst de inhoud en eventuele conflicten."
+        "x24 y54 w852 h36 Background" C["Window"],
+        "Kies links een pakket en bekijk rechts eerst de inhoud en eventuele conflicten.`n"
+        "Pakketbron: " BundledPackageDir
     )
     intro.SetFont("s9 c" C["Muted"], "Segoe UI")
 
@@ -4813,12 +5459,18 @@ GetPackageItemStatus(packageId, itemId) {
 RefreshPackageManagerItemDetails(*) {
     global BundledPackages, PackageManagerStatusText
 
-    if !IsObject(PackageManagerStatusText)
+    ; De gebruiker kan het venster sluiten terwijl GetPackageItemStatus()/
+    ; FindPackageItemConflict() voor een groot pakket nog aan het rekenen
+    ; is (zie dezelfde opmerking bij RefreshPackageManagerItems()). Toets
+    ; daarom niet alleen bij binnenkomst, maar ook vlak vóór iedere
+    ; schrijfactie opnieuw of de control nog bestaat.
+    if !IsLiveGuiControl(PackageManagerStatusText)
         return
 
     selected := GetSelectedPackageManagerItem()
     if !IsObject(selected) {
-        PackageManagerStatusText.Value := "Selecteer een pakketitem."
+        if IsLiveGuiControl(PackageManagerStatusText)
+            PackageManagerStatusText.Value := "Selecteer een pakketitem."
         return
     }
 
@@ -4829,7 +5481,9 @@ RefreshPackageManagerItemDetails(*) {
     conflict := FindPackageItemConflict(packageId, itemId)
 
     status := GetPackageItemStatus(packageId, itemId)
-    detail := package["name"] " · " status
+    packageOwner := package.Has("owner") ? Trim(package["owner"] "") : ""
+    ownerSuffix := packageOwner != "" ? " (eigenaar: " packageOwner ")" : ""
+    detail := package["name"] ownerSuffix " · " status
 
     switch status {
         case "Inactief":
@@ -4855,7 +5509,8 @@ RefreshPackageManagerItemDetails(*) {
     if packageItem.Has("note") && Trim(packageItem["note"]) != ""
         detail .= " · " packageItem["note"]
 
-    PackageManagerStatusText.Value := detail
+    if IsLiveGuiControl(PackageManagerStatusText)
+        PackageManagerStatusText.Value := detail
 }
 
 ToggleSelectedPackage(*) {
@@ -5050,7 +5705,9 @@ ApplyHotReplacementEditorState() {
     HotEditorExpandedCard.Opt(visible && HotReplacementExpanded ? "-Hidden" : "+Hidden")
     HotReplacementExpandButton.Opt(visible && !HotReplacementExpanded ? "-Hidden" : "+Hidden")
     HotReplacementCollapseButton.Opt(visible && HotReplacementExpanded ? "-Hidden" : "+Hidden")
-    HotSaveButton.Move(808, HotReplacementExpanded ? 626 : 590, 148, 36)
+    ; Opslaan staat sinds de bodemuitlijning met Telefonie/Over op een vaste
+    ; positie (y=602) die in zowel de compacte als de uitgeklapte kaart past,
+    ; dus hoeft hier niet meer te verspringen.
 }
 
 RefreshHotstringList(selectItemId := "", *) {
@@ -5997,53 +6654,69 @@ ManualSaveHotstrings(pathEdit, *) {
 ; MEEGELEVERDE HOTSTRINGPAKKETTEN
 ; =============================================================================
 
+; Levert de map waaruit pakketbestanden rechtstreeks worden gelezen — geen
+; lokale kopie, geen inbakken in de executable. DocBot leest bij iedere
+; start live vanaf deze locatie, zodat een wijziging op de bron (nieuw,
+; aangepast of verwijderd pakketbestand) direct meekomt bij de volgende
+; start, zonder herbouw of herdistributie van de executable.
+;
+; Voor de gecompileerde versie geldt, als die is ingevuld, eerst
+; Packages.ShareDir uit DocBot.local.ahk. Zonder die expliciete override
+; neemt DocBot aan dat de executable zelf al rechtstreeks vanaf de juiste
+; netwerklocatie draait (bijvoorbeeld via een launcher als Ivanti die "vanaf
+; de bron" start, niet een lokale gecachete kopie) en leest packages\ naast
+; zichzelf, af te leiden uit A_ScriptDir — vandaar dat die hieronder altijd
+; wordt gelogd. Start de launcher in plaats daarvan een lokale kopie van de
+; executable, dan wijst A_ScriptDir naar die lokale map in plaats van de
+; share; zet dan Packages.ShareDir expliciet (`docs/DECISIONS.md` D-048,
+; D-049).
 GetBundledPackageDirectory() {
-    localAppData := EnvGet("LocalAppData")
-    if localAppData = ""
-        throw Error("De Windows-map LocalAppData kon niet worden gevonden.")
+    global LocalConfig
 
-    ; Ongecompileerde tests blijven strikt gescheiden van de productcache.
-    cacheName := A_IsCompiled ? "DocBot" : "DocBot-dev"
-    packageDir := localAppData "\\" cacheName "\\packages"
-
-    if !DirExist(packageDir)
-        DirCreate(packageDir)
-
-    InstallBundledPackageFiles(packageDir)
-    return packageDir
-}
-
-InstallBundledPackageFiles(packageDir) {
-    packageFiles := [
-        "manifest.json",
-        "nl-taal.json",
-        "medisch-algemeen.json",
-        "controles.json",
-        "spelfouten-wikipedia.json",
-        "gyn-obst.json"
-    ]
+    DebugLog("i", "Pakketten bron", "A_ScriptDir: " A_ScriptDir)
 
     if A_IsCompiled {
-        ; De bronpaden van FileInstall moeten letterlijk in het script staan,
-        ; zodat Ahk2Exe alle pakketten in de executable kan opnemen.
-        FileInstall "packages\manifest.json", packageDir "\manifest.json", true
-        FileInstall "packages\nl-taal.json", packageDir "\nl-taal.json", true
-        FileInstall "packages\medisch-algemeen.json", packageDir "\medisch-algemeen.json", true
-        FileInstall "packages\controles.json", packageDir "\controles.json", true
-        FileInstall "packages\spelfouten-wikipedia.json", packageDir "\spelfouten-wikipedia.json", true
-        FileInstall "packages\gyn-obst.json", packageDir "\gyn-obst.json", true
-        return
+        shareDir := ""
+        if IsSet(LocalConfig) && LocalConfig is Map && LocalConfig.Has("Packages")
+            && LocalConfig["Packages"] is Map && LocalConfig["Packages"].Has("ShareDir")
+            shareDir := Trim(LocalConfig["Packages"]["ShareDir"])
+
+        if shareDir != "" {
+            DebugLog("i", "Pakketten bron", "Handmatig geconfigureerd (Packages.ShareDir): " shareDir)
+            return shareDir
+        }
+
+        autoDir := A_ScriptDir "\packages"
+        DebugLog("i", "Pakketten bron", "Automatisch afgeleid van A_ScriptDir: " autoDir)
+        return autoDir
     }
 
-    ; Tijdens ontwikkeling worden de bronbestanden naar een aparte cache
-    ; gekopieerd. Daardoor raakt een test nooit de productiecache.
-    for _, fileName in packageFiles {
-        FileCopy(
-            A_ScriptDir "\packages\" fileName,
-            packageDir "\" fileName,
-            true
+    ; Ontwikkelversie leest rechtstreeks uit de broncode-map, zodat een
+    ; lokaal toegevoegd of gewijzigd pakketbestand direct meekomt bij de
+    ; volgende start.
+    return A_ScriptDir "\packages"
+}
+
+; Schema migraties: gedeelde bouwstenen voor het lezen en afwijzen van
+; schemaVersion-waarden, gebruikt door alle vijf de opslagformaten
+; (pakketmanifest, pakketbestanden, package-settings.json, hotstrings.json,
+; speeddial.json). Zie docs/MIGRATIONS.md voor het volledige overzicht per
+; formaat: welke versie welk veld/standaardwaarde toevoegde en welke oude
+; bestandsnamen/formaten nog worden ondersteund.
+ReadSchemaVersion(document) {
+    return document.Has("schemaVersion") ? (document["schemaVersion"] + 0) : 1
+}
+
+RejectNewerSchemaVersion(schemaVersion, currentVersion, subject) {
+    if schemaVersion > currentVersion
+        throw Error(
+            Format(
+                "{1} gebruikt schemaVersion {2}, maar deze DocBot-versie ondersteunt maximaal versie {3}.",
+                subject,
+                schemaVersion,
+                currentVersion
+            )
         )
-    }
 }
 
 InitializeBundledPackages() {
@@ -6052,59 +6725,91 @@ InitializeBundledPackages() {
     try {
         BundledPackageDir := GetBundledPackageDirectory()
         manifestPath := BundledPackageDir "\manifest.json"
+        DebugLog("i", "Pakketten laden", "Manifest: " manifestPath)
         manifest := LoadBundledJsonFile(manifestPath)
 
         if !(manifest is Map)
-            throw Error("Het pakketmanifest moet een JSON-object zijn.")
+            throw Error("Het pakketmanifest moet een JSON-object zijn: " manifestPath)
 
-        schemaVersion := manifest.Has("schemaVersion")
-            ? (manifest["schemaVersion"] + 0)
-            : 1
-
-        if schemaVersion > BundledPackageSchemaVersion {
-            throw Error(
-                Format(
-                    "Het pakketmanifest gebruikt schemaVersion {1}, maar deze DocBot-versie ondersteunt maximaal versie {2}.",
-                    schemaVersion,
-                    BundledPackageSchemaVersion
-                )
-            )
-        }
+        schemaVersion := ReadSchemaVersion(manifest)
+        RejectNewerSchemaVersion(schemaVersion, BundledPackageSchemaVersion, "Het pakketmanifest")
 
         if !manifest.Has("packages") || !(manifest["packages"] is Array)
-            throw Error("Het veld 'packages' ontbreekt in het pakketmanifest.")
+            throw Error("Het veld 'packages' ontbreekt in het pakketmanifest: " manifestPath)
 
         loadedPackages := Map()
+        failedCount := 0
 
+        ; Eén ongeldig pakketbestand mag de overige, wel geldige pakketten
+        ; niet meeslepen. Elk bestand wordt daarom los geprobeerd en gelogd,
+        ; zodat precies zichtbaar is welk bestand faalde en waarom.
         for _, packageEntry in manifest["packages"] {
             if !(packageEntry is Map)
-                throw Error("Een pakketvermelding in het manifest is ongeldig.")
+                throw Error("Een pakketvermelding in het manifest is ongeldig: " manifestPath)
 
             if !packageEntry.Has("id") || !packageEntry.Has("file")
-                throw Error("Een pakketvermelding mist 'id' of 'file'.")
+                throw Error("Een pakketvermelding mist 'id' of 'file': " manifestPath)
 
             packageId := Trim(packageEntry["id"])
             fileName := Trim(packageEntry["file"])
-            package := LoadBundledPackageFile(BundledPackageDir "\\" fileName)
+            filePath := BundledPackageDir "\\" fileName
 
-            if package["id"] != packageId {
-                throw Error(
+            DebugLog("→", "Pakket laden", "Bestand: " fileName " (manifest-id: " packageId ")")
+
+            try {
+                package := LoadBundledPackageFile(filePath)
+
+                if package["id"] != packageId {
+                    throw Error(
+                        Format(
+                            "Pakket-id '{1}' komt niet overeen met manifest-id '{2}': {3}",
+                            package["id"],
+                            packageId,
+                            filePath
+                        )
+                    )
+                }
+
+                if loadedPackages.Has(packageId)
+                    throw Error("Dubbel pakket-id in manifest: " packageId " (" filePath ")")
+
+                loadedPackages[packageId] := package
+                DebugLog(
+                    "✓",
+                    "Pakket geladen",
                     Format(
-                        "Pakket-id '{1}' komt niet overeen met manifest-id '{2}'.",
-                        package["id"],
-                        packageId
+                        "{1} ({2}), versie {3}, {4} items — {5}",
+                        package["name"],
+                        packageId,
+                        package["version"],
+                        package["items"].Length,
+                        fileName
                     )
                 )
+            } catch as packageError {
+                failedCount += 1
+                ReportStorageError(
+                    Format(
+                        "Hotstringpakket '{1}' kon niet worden geladen.`n`n{2}",
+                        fileName,
+                        packageError.Message
+                    ),
+                    false
+                )
             }
-
-            if loadedPackages.Has(packageId)
-                throw Error("Dubbel pakket-id in manifest: " packageId)
-
-            loadedPackages[packageId] := package
         }
 
         BundledPackages := loadedPackages
-        return true
+        DebugLog(
+            failedCount ? "!" : "i",
+            "Pakketten geladen",
+            Format(
+                "{1} pakket(ten) geladen, {2} mislukt.",
+                loadedPackages.Count,
+                failedCount
+            )
+        )
+        return failedCount = 0
     } catch as error {
         BundledPackages := Map()
         ReportStorageError(
@@ -6132,25 +6837,19 @@ LoadBundledPackageFile(path) {
     if !(package is Map)
         throw Error("Een hotstringpakket moet een JSON-object zijn: " path)
 
-    schemaVersion := package.Has("schemaVersion")
-        ? (package["schemaVersion"] + 0)
-        : 1
-
-    if schemaVersion > BundledPackageSchemaVersion {
-        throw Error(
-            Format(
-                "Pakket {1} gebruikt schemaVersion {2}, maximaal ondersteund is {3}.",
-                path,
-                schemaVersion,
-                BundledPackageSchemaVersion
-            )
-        )
-    }
+    schemaVersion := ReadSchemaVersion(package)
+    RejectNewerSchemaVersion(schemaVersion, BundledPackageSchemaVersion, "Pakket " path)
 
     for _, requiredField in ["id", "name", "version", "items"] {
         if !package.Has(requiredField)
             throw Error("Pakket mist verplicht veld '" requiredField "': " path)
     }
+
+    ; 'owner' is optioneel vrije tekst: wie dit pakket aanmaakt of onderhoudt.
+    ; Geen schemaVersion-eis, geen manifest-kopie — het pakketbestand zelf is
+    ; de enige plek waar dit staat (`docs/DECISIONS.md` D-054).
+    if package.Has("owner") && IsObject(package["owner"])
+        throw Error("Pakket " package["id"] ": 'owner' moet tekst zijn, geen object: " path)
 
     if !(package["items"] is Array)
         throw Error("Het veld 'items' moet een lijst zijn: " path)
@@ -6164,7 +6863,7 @@ LoadBundledPackageFile(path) {
 
         for _, requiredField in ["id", "trigger", "replacement"] {
             if !item.Has(requiredField)
-                throw Error("Pakketitem " index " mist veld '" requiredField "'.")
+                throw Error("Pakketitem " index " mist veld '" requiredField "': " path)
         }
 
         itemId := Trim(item["id"])
@@ -6172,7 +6871,7 @@ LoadBundledPackageFile(path) {
         replacement := item["replacement"] ""
 
         if itemId = "" || trigger = "" || replacement = ""
-            throw Error("Pakketitem " index " bevat een lege id, trigger of vervanging.")
+            throw Error("Pakketitem " index " bevat een lege id, trigger of vervanging: " path)
 
         if seenIds.Has(itemId)
             throw Error("Dubbel item-id in pakket: " itemId)
@@ -6243,11 +6942,8 @@ ReconcilePackageSettings(document) {
     if !(document is Map)
         throw Error("package-settings.json moet een JSON-object zijn.")
 
-    schemaVersion := document.Has("schemaVersion")
-        ? (document["schemaVersion"] + 0)
-        : 1
-    if schemaVersion > PackageSettingsSchemaVersion
-        throw Error("Deze versie van package-settings.json wordt nog niet ondersteund.")
+    schemaVersion := ReadSchemaVersion(document)
+    RejectNewerSchemaVersion(schemaVersion, PackageSettingsSchemaVersion, "package-settings.json")
 
     result := DefaultPackageSettings()
     result["schemaVersion"] := PackageSettingsSchemaVersion
@@ -6770,19 +7466,8 @@ LoadHotstringsFromJson(path, showMessage := false) {
         if !(document is Map)
             throw Error("De JSON-hoofdstructuur moet een object zijn.")
 
-        schemaVersion := document.Has("schemaVersion")
-            ? (document["schemaVersion"] + 0)
-            : 1
-
-        if schemaVersion > HotstringSchemaVersion {
-            throw Error(
-                Format(
-                    "Dit bestand gebruikt schemaVersion {1}, maar deze DocBot-versie ondersteunt maximaal versie {2}.",
-                    schemaVersion,
-                    HotstringSchemaVersion
-                )
-            )
-        }
+        schemaVersion := ReadSchemaVersion(document)
+        RejectNewerSchemaVersion(schemaVersion, HotstringSchemaVersion, "Dit bestand")
 
         if !document.Has("hotstrings") || !(document["hotstrings"] is Array)
             throw Error("Het veld 'hotstrings' ontbreekt of is geen lijst.")
@@ -6938,6 +7623,11 @@ AutoSaveHotstrings(*) {
 }
 
 ReportStorageError(message, showMessage := false) {
+    ; Iedere opslagfout moet terug te vinden zijn in het standaardlog, ook
+    ; wanneer de gebruiker de melding zelf nooit ziet (bijv. stille
+    ; achtergrondacties) of wegklikt.
+    DebugLog("✕", "Opslagfout", message)
+
     if showMessage {
         MsgBox(message, "DocBot - JSON", "Icon!")
         return
@@ -7063,19 +7753,8 @@ LoadSpeedDialFromJson(path, showMessage := false) {
         if !(document is Map)
             throw Error("De JSON-hoofdstructuur moet een object zijn.")
 
-        schemaVersion := document.Has("schemaVersion")
-            ? (document["schemaVersion"] + 0)
-            : 1
-
-        if schemaVersion > SpeedDialSchemaVersion {
-            throw Error(
-                Format(
-                    "Dit bestand gebruikt schemaVersion {1}, maar deze DocBot-versie ondersteunt maximaal versie {2}.",
-                    schemaVersion,
-                    SpeedDialSchemaVersion
-                )
-            )
-        }
+        schemaVersion := ReadSchemaVersion(document)
+        RejectNewerSchemaVersion(schemaVersion, SpeedDialSchemaVersion, "Dit bestand")
 
         if !document.Has("entries") || !(document["entries"] is Array)
             throw Error("Het veld 'entries' ontbreekt of is geen lijst.")
@@ -7205,6 +7884,201 @@ SaveSpeedDialToJson(path, showMessage := false) {
     }
 }
 
+; =============================================================================
+; SMS-STANDAARDTEKST — sms-default-texts.json
+; =============================================================================
+; Zelfde opzet als speeddial.json hierboven: schemaVersion + atomair
+; wegschrijven via .tmp/.bak. Functionele sleutel is Title (lowercase,
+; getrimd), net als FindSmsCallActionIndexByTitle() elders in dit bestand.
+; Anders dan package-settings.json wordt hier bewust niets stilzwijgend
+; verwijderd wanneer een Title niet (meer) voorkomt in de huidige
+; SmsCallActions: de GUI toont zo'n item dan simpelweg niet, maar de tekst
+; blijft bewaard voor het geval de titel later terugkeert (bijv. na een
+; tijdelijke configuratiefout).
+
+GetSmsDefaultText(title) {
+    global SmsDefaultTexts
+
+    key := StrLower(Trim(title))
+    return (key != "" && SmsDefaultTexts.Has(key)) ? SmsDefaultTexts[key]["DefaultText"] : ""
+}
+
+SetSmsDefaultText(title, text) {
+    global SmsDefaultTexts
+
+    key := StrLower(Trim(title))
+    if key = ""
+        return
+
+    if Trim(text) = "" {
+        if SmsDefaultTexts.Has(key)
+            SmsDefaultTexts.Delete(key)
+        return
+    }
+
+    SmsDefaultTexts[key] := Map("Title", Trim(title), "DefaultText", text)
+}
+
+BuildSmsDefaultTextDocument() {
+    global SmsDefaultTexts, SmsDefaultTextSchemaVersion
+
+    items := []
+    for _, entry in SmsDefaultTexts
+        items.Push(Map("Title", entry["Title"], "DefaultText", entry["DefaultText"]))
+
+    return Map("schemaVersion", SmsDefaultTextSchemaVersion, "items", items)
+}
+
+InitializeSmsDefaultTextStorage() {
+    global DefaultSmsDefaultTextFile
+
+    if FileExist(DefaultSmsDefaultTextFile) {
+        LoadSmsDefaultTextsFromJson(DefaultSmsDefaultTextFile, false)
+        return
+    }
+
+    ; Bij de eerste start wordt een lege lijst direct aangemaakt.
+    SaveSmsDefaultTextsToJson(DefaultSmsDefaultTextFile, false)
+}
+
+LoadSmsDefaultTextsFromJson(path, showMessage := false) {
+    global SmsDefaultTexts, SmsDefaultTextSchemaVersion
+
+    path := Trim(path)
+    if path = "" {
+        ReportStorageError("Er is geen JSON-bestand ingesteld.", showMessage)
+        return false
+    }
+
+    if !FileExist(path) {
+        ReportStorageError("Het JSON-bestand bestaat niet:`n`n" path, showMessage)
+        return false
+    }
+
+    try {
+        jsonText := FileRead(path, "UTF-8")
+        jsonText := LTrim(jsonText, Chr(0xFEFF))
+        document := Jxon_Load(&jsonText)
+
+        if !(document is Map)
+            throw Error("De JSON-hoofdstructuur moet een object zijn.")
+
+        schemaVersion := ReadSchemaVersion(document)
+        RejectNewerSchemaVersion(schemaVersion, SmsDefaultTextSchemaVersion, "sms-default-texts.json")
+
+        if !document.Has("items") || !(document["items"] is Array)
+            throw Error("Het veld 'items' ontbreekt of is geen lijst.")
+
+        loaded := Map()
+        skipped := 0
+
+        for _, rawItem in document["items"] {
+            if !(rawItem is Map) {
+                skipped += 1
+                continue
+            }
+
+            title := rawItem.Has("Title") ? Trim(rawItem["Title"]) : ""
+            text := rawItem.Has("DefaultText") ? rawItem["DefaultText"] : ""
+
+            if title = "" {
+                skipped += 1
+                continue
+            }
+
+            loaded[StrLower(title)] := Map("Title", title, "DefaultText", text)
+        }
+
+        SmsDefaultTexts := loaded
+
+        if showMessage {
+            MsgBox(
+                Format(
+                    "SMS-standaardteksten geladen: {1}`nOvergeslagen: {2}`n`n{3}",
+                    loaded.Count,
+                    skipped,
+                    path
+                ),
+                "DocBot - SMS-standaardteksten laden",
+                "Iconi"
+            )
+        }
+
+        return true
+    } catch as error {
+        ReportStorageError(
+            Format(
+                "Het JSON-bestand kon niet worden geladen.`n`n{1}`n`n{2}",
+                path,
+                error.Message
+            ),
+            showMessage
+        )
+        return false
+    }
+}
+
+SaveSmsDefaultTextsToJson(path, showMessage := false) {
+    path := Trim(path)
+    if path = "" {
+        ReportStorageError("Er is geen JSON-bestand ingesteld.", showMessage)
+        return false
+    }
+
+    tempPath := path ".tmp"
+    backupPath := path ".bak"
+
+    try {
+        SplitPath(path, , &directory)
+        if directory != "" && !DirExist(directory)
+            DirCreate(directory)
+
+        document := BuildSmsDefaultTextDocument()
+        jsonText := Jxon_Dump(document, 2)
+
+        if FileExist(tempPath)
+            FileDelete(tempPath)
+
+        FileAppend(jsonText, tempPath, "UTF-8-RAW")
+
+        ; Controleer het tijdelijke bestand vóór het bestaande bestand wordt
+        ; vervangen. Zo blijft de vorige versie intact bij corrupte uitvoer.
+        verifyText := FileRead(tempPath, "UTF-8")
+        verifyDocument := Jxon_Load(&verifyText)
+        if !(verifyDocument is Map) || !verifyDocument.Has("items")
+            throw Error("Controle van het tijdelijke JSON-bestand is mislukt.")
+
+        if FileExist(path)
+            FileCopy(path, backupPath, true)
+
+        FileMove(tempPath, path, true)
+
+        if showMessage {
+            MsgBox(
+                "SMS-standaardteksten opgeslagen.`n`n" path
+                (FileExist(backupPath) ? "`n`nBack-up: " backupPath : ""),
+                "DocBot - SMS-standaardteksten opslaan",
+                "Iconi"
+            )
+        }
+
+        return true
+    } catch as error {
+        if FileExist(tempPath)
+            try FileDelete(tempPath)
+
+        ReportStorageError(
+            Format(
+                "De SMS-standaardteksten konden niet worden opgeslagen.`n`n{1}`n`n{2}",
+                path,
+                error.Message
+            ),
+            showMessage
+        )
+        return false
+    }
+}
+
 ClearHotstringEditorIfReady() {
     global HotLV, HotEnabledCheck, HotTriggerEdit
     global HotOptionDraft
@@ -7237,9 +8111,12 @@ ValidateLocalConfiguration() {
         if !telephony.Has(key) || Trim(telephony[key]) = ""
             throw Error("Telephony mist een ingevulde waarde voor '" key "'.")
     }
+    if !RegExMatch(Trim(telephony["BaseUrl"]), "i)^https://")
+        throw Error("Telephony.BaseUrl moet een HTTPS-URL zijn (http:// wordt niet geaccepteerd).")
 
     Telemetry_ValidateConfiguration(LocalConfig)
     ValidateSmsCallActionsConfiguration(LocalConfig)
+    ValidatePackagesConfiguration(LocalConfig)
 
     if !(LocalConfig["DefaultSpeedDials"] is Array)
         throw Error("DefaultSpeedDials moet een Array zijn.")
@@ -7295,6 +8172,38 @@ ValidateSmsCallActionItem(item, index) {
         if !item.Has(key) || Trim(item[key]) = ""
             throw Error("SmsCallAction item " index " mist een ingevulde waarde voor '" key "'.")
     }
+    if !RegExMatch(Trim(item["Url"]), "i)^https://")
+        throw Error("SmsCallAction item " index " ('" item["Title"] "'): Url moet een HTTPS-URL zijn (http:// wordt niet geaccepteerd).")
+
+    ; TextFieldId is optioneel: zonder deze waarde is er simpelweg geen
+    ; doelveld voor een standaardtekst en blijft die functionaliteit voor
+    ; deze pagina uitgeschakeld. Is de sleutel wel aanwezig, dan mag hij
+    ; niet leeg zijn (waarschijnlijk een vergeten placeholder).
+    if item.Has("TextFieldId") && Trim(item["TextFieldId"]) = ""
+        throw Error("SmsCallAction item " index " ('" item["Title"] "'): TextFieldId mag niet leeg zijn als het aanwezig is.")
+}
+
+; De sectie 'Packages' is optioneel: zonder haar leidt de gecompileerde
+; applicatie de pakketlocatie automatisch af uit A_ScriptDir (zie
+; GetBundledPackageDirectory()) en blokkeert een ontbrekende sectie de
+; opstart dus nooit. Staat de sectie er wel — als expliciete override, bijv.
+; omdat een launcher zoals Ivanti een lokale kopie start in plaats van de
+; executable rechtstreeks vanaf de netwerklocatie — dan moet ShareDir wél
+; een ingevuld, geldig UNC-pad zijn; dat vangt een vergeten
+; placeholderwaarde af.
+ValidatePackagesConfiguration(config) {
+    if !config.Has("Packages")
+        return
+
+    packages := config["Packages"]
+    if !(packages is Map)
+        throw Error("LocalConfig['Packages'] moet een Map zijn.")
+
+    if !packages.Has("ShareDir") || Trim(packages["ShareDir"]) = ""
+        throw Error("Packages mist een ingevulde waarde voor 'ShareDir'.")
+
+    if !RegExMatch(Trim(packages["ShareDir"]), "^\\\\")
+        throw Error("Packages.ShareDir moet een netwerkpad zijn dat begint met \\ (UNC-pad).")
 }
 
 GetConfiguredSmsCallActions() {
@@ -7358,27 +8267,71 @@ GetSelectedSmsCallAction() {
     return index > 0 ? SmsCallActions[index] : 0
 }
 
+; Vult het standaardtekst-veld op de Instellingen-pagina voor de op dit
+; moment in de dropdown gekozen SMS-pagina: niet-opgeslagen tekst uit
+; pendingSmsDefaultTexts krijgt voorrang boven de opgeslagen waarde, en het
+; veld wordt uitgeschakeld zolang die pagina geen TextFieldId heeft.
+ApplySmsDefaultTextFieldState(smsActionDropDown, smsDefaultTextEdit, smsDefaultTextHint, pendingSmsDefaultTexts) {
+    global SmsCallActions
+
+    title := HasConfiguredSmsCallActions() ? ResolveSmsCallActionTitle(smsActionDropDown.Text) : ""
+    index := title != "" ? FindSmsCallActionIndexByTitle(title) : 0
+    smsConfig := index > 0 ? SmsCallActions[index] : 0
+    hasTextField := IsObject(smsConfig) && smsConfig.Has("TextFieldId") && Trim(smsConfig["TextFieldId"]) != ""
+
+    if !hasTextField {
+        smsDefaultTextEdit.Value := ""
+        smsDefaultTextEdit.Enabled := false
+        smsDefaultTextHint.Text := title = ""
+            ? "Configureer eerst een SMS-pagina om een standaardtekst in te stellen."
+            : "Voor '" title "' is geen tekstveld geconfigureerd. Vraag de beheerder om TextFieldId toe te voegen aan DocBot.local.ahk."
+        return
+    }
+
+    key := StrLower(title)
+    smsDefaultTextEdit.Value := pendingSmsDefaultTexts.Has(key)
+        ? pendingSmsDefaultTexts[key]
+        : GetSmsDefaultText(title)
+    smsDefaultTextEdit.Enabled := true
+    ; De toelichting staat al in het label boven het veld; hier blijft de
+    ; regel dus leeg zolang er niets mis is.
+    smsDefaultTextHint.Text := ""
+}
+
+; Bewaart de nog niet opgeslagen tekst van de vorige selectie in het geheugen
+; vóórdat de tekst van de nieuw gekozen SMS-pagina wordt geladen.
+SmsActionSelectionChanged(smsActionDropDown, smsDefaultTextEdit, smsDefaultTextHint, pendingSmsDefaultTexts, smsDefaultTextUiState, *) {
+    previousTitle := smsDefaultTextUiState["LastTitle"]
+    if previousTitle != ""
+        pendingSmsDefaultTexts[StrLower(previousTitle)] := smsDefaultTextEdit.Value
+
+    ApplySmsDefaultTextFieldState(smsActionDropDown, smsDefaultTextEdit, smsDefaultTextHint, pendingSmsDefaultTexts)
+
+    smsDefaultTextUiState["LastTitle"] := HasConfiguredSmsCallActions()
+        ? ResolveSmsCallActionTitle(smsActionDropDown.Text)
+        : ""
+}
+
 NormalizeCallAction(value, fallback := 1) {
     value := ParseCallActionSetting(value, fallback)
     return value = 3 && !HasConfiguredSmsCallActions() ? fallback : value
 }
 
-GetUserDataProfile(appVersion) {
+GetUserDataProfile(appVersion, isCompiled) {
     normalizedVersion := StrLower(Trim(appVersion))
 
     ; Een stabiele SemVer bestaat hier uitsluitend uit cijfers en punten.
+    ; Stable heeft voorrang: die gebruikt altijd het productieprofiel,
+    ; ongeacht buildvorm.
     if RegExMatch(normalizedVersion, "^\d+(?:\.\d+)*$")
         return "main"
 
-    ; -dev en -rc direct achter het numerieke versienummer gebruiken het
-    ; testkanaal. Bijvoorbeeld: 2.1-dev, 2.1-dev.15 en 2.1-rc.1.
-    if RegExMatch(normalizedVersion, "^\d+(?:\.\d+)*-(?:dev|rc)(?:\.\d+|\d+)?$")
-        return "test"
-
-    ; Iedere andere prerelease/build met letters is een feature- of fixbuild.
-    ; Ook een onverwachte niet-stabiele notatie valt uit veiligheid in dev,
-    ; zodat zo'n build nooit de productiegegevens gebruikt.
-    return "dev"
+    ; Voor elke niet-stabiele versie bepaalt de buildvorm het profiel, niet
+    ; het prereleaselabel (-dev, -rc of een feature-/fixnaam): een
+    ; gecompileerde build test de opleverbare vorm en deelt daarom het
+    ; centrale testprofiel; een niet-gecompileerde build is
+    ; broncode-ontwikkeling en blijft geïsoleerd in het devprofiel.
+    return isCompiled ? "test" : "dev"
 }
 
 GetUserDataSeedDirectory() {
@@ -7462,38 +8415,6 @@ InitializeUserStorage() {
     }
 }
 
-
-MarkUserStorageAlwaysAvailable(directory) {
-    if !DirExist(directory)
-        return false
-
-    try {
-        exitCode := RunWait(
-            A_ComSpec ' /d /c attrib -U +P "' directory '"',
-            ,
-            "Hide"
-        )
-        if exitCode = 0
-            return true
-
-        DebugLog(
-            "!",
-            "OneDrive-map lokaal houden",
-            "attrib -U +P gaf exitcode " exitCode ": " directory
-        )
-    } catch as pinError {
-        DebugLog(
-            "!",
-            "OneDrive-map lokaal houden",
-            directory "`n" pinError.Message
-        )
-    }
-
-    ; Niet fataal: gewone lokale mappen en organisatiebeleid mogen de start
-    ; van DocBot niet blokkeren. De echte schrijfacties houden hun eigen
-    ; gerichte foutafhandeling.
-    return false
-}
 
 RebaseCopiedHotstringPath(sourceDir) {
     global ConfigFile, UserDataDir
@@ -7638,8 +8559,8 @@ ParseCallActionSetting(value, fallback := 1) {
     return Number(value)
 }
 
-SaveSettings(autoSaveCheck, filePathEdit, smsActionDropDown, *) {
-    global State
+SaveSettings(autoSaveCheck, filePathEdit, smsActionDropDown, smsDefaultTextEdit, pendingSmsDefaultTexts, smsDefaultTextUiState, *) {
+    global State, SmsCallActions, DefaultSmsDefaultTextFile
 
     State["AutoSave"] := autoSaveCheck.Value = 1
     State["HotstringFile"] := Trim(filePathEdit.Value)
@@ -7652,12 +8573,28 @@ SaveSettings(autoSaveCheck, filePathEdit, smsActionDropDown, *) {
         return
     }
 
+    ; De op dit moment zichtbare standaardtekst is nog niet in
+    ; pendingSmsDefaultTexts gezet (dat gebeurt pas bij het wisselen van
+    ; SMS-pagina) — doe dat hier alsnog vóór het wegschrijven.
+    currentTitle := smsDefaultTextUiState["LastTitle"]
+    if currentTitle != ""
+        pendingSmsDefaultTexts[StrLower(currentTitle)] := smsDefaultTextEdit.Value
+
+    for _, action in SmsCallActions {
+        if !action.Has("TextFieldId") || Trim(action["TextFieldId"]) = ""
+            continue
+        key := StrLower(action["Title"])
+        if pendingSmsDefaultTexts.Has(key)
+            SetSmsDefaultText(action["Title"], pendingSmsDefaultTexts[key])
+    }
+
     settingsSaved := SaveAppSettings()
     dataSaved := !State["AutoSave"] || AutoSaveHotstrings()
+    smsTextSaved := SaveSmsDefaultTextsToJson(DefaultSmsDefaultTextFile, false)
 
     BuildTrayMenu()
 
-    if settingsSaved && dataSaved
+    if settingsSaved && dataSaved && smsTextSaved
         MsgBox("Instellingen opgeslagen.", "DocBot", "Iconi")
     else
         MsgBox(
@@ -7887,13 +8824,22 @@ ApplyRoundedControls(visibleOnly := false) {
 }
 
 RoundControl(control, radius := 12) {
+    ; SetWindowRgn shapes de hele vensterrechthoek van het control, niet
+    ; alleen het clientgebied. GetClientRect sluit een scrollbalk echter per
+    ; definitie uit (MSDN: "the client area... not including... scroll
+    ; bars"), dus een regio op basis van GetClientRect viel eerder net te
+    ; smal uit voor elk control met WS_VSCROLL (bodyEdit in de Help-
+    ; accordeon, aboutEdit op de Over-pagina): de scrollbalkstrook viel
+    ; buiten de regio en werd daardoor onzichtbaar geknipt, ook wanneer er
+    ; wel degelijk meer te scrollen was. GetWindowRect neemt de scrollbalk
+    ; wel mee.
     rect := Buffer(16, 0)
 
-    if !DllCall("GetClientRect", "ptr", control.Hwnd, "ptr", rect, "int")
+    if !DllCall("GetWindowRect", "ptr", control.Hwnd, "ptr", rect, "int")
         return
 
-    width := NumGet(rect, 8, "int")
-    height := NumGet(rect, 12, "int")
+    width := NumGet(rect, 8, "int") - NumGet(rect, 0, "int")
+    height := NumGet(rect, 12, "int") - NumGet(rect, 4, "int")
 
     if width <= 0 || height <= 0
         return

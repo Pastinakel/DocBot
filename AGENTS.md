@@ -18,6 +18,8 @@ DocBot is een AutoHotkey v2-hulpmiddel voor medewerkers met twee hoofdfuncties:
 - `ThirdParty/ColorButton/ColorButton.ahk` — knopbibliotheek (Nikola Perovic, MIT).
 - `ThirdParty/UIA-v2/UIA.ahk` — UI Automation-library voor interactie met Edge.
 - `ThirdParty/<library>/LICENSE` — oorspronkelijke licentie van de betreffende externe library.
+- `tests/SelfTests.ahk` — opt-in zelftests voor pure migratielogica, gestart met `DocBot.ahk --selftest`; zie `tests/README.md` en `docs/DECISIONS.md` D-053.
+- `docs/MIGRATIONS.md` — register per opslagformaat: welke schemaversie welk veld/standaardwaarde toevoegde.
 - `README.md` — volledige documentatie over installatie, functionaliteit, telefonie, diagnostiek en wijzigingen.
 - Voeg verwijderde legacybestanden niet opnieuw toe aan actieve branches.
 
@@ -116,21 +118,27 @@ Deze bestanden staan niet in de repository:
 
 - Hotstrings: `%MyDocuments%\DocBot\hotstrings.json`
 - Instellingen: `%MyDocuments%\DocBot\settings.ini`
+- Pakketstatussen: `%MyDocuments%\DocBot\package-settings.json`
+- Snelkiesnummers: `%MyDocuments%\DocBot\speeddial.json`
+- SMS-standaardtekst per pagina: `%MyDocuments%\DocBot\sms-default-texts.json`
 - Debug-log: `%LocalAppData%\DocBot\debug.log`
 
 ## Gebruikersprofielen per releasekanaal
 
-DocBot gebruikt bewust drie gescheiden mappen onder `A_MyDocuments`. De
-versiestring bepaalt het profiel:
+DocBot gebruikt bewust drie gescheiden mappen onder `A_MyDocuments`. Stable
+heeft voorrang; voor elke niet-stabiele versie kiest de buildvorm
+(`A_IsCompiled`), niet het prereleaselabel, tussen `DocBot-test` en
+`DocBot-dev`:
 
 - een versie met uitsluitend cijfers en punten, bijvoorbeeld `2.2`, gebruikt
-  `DocBot` (main/stable);
-- `-dev` of `-rc` direct achter het numerieke versienummer, bijvoorbeeld
-  `2.3-dev.15` of `2.3-rc.1`, gebruikt `DocBot-test` (centrale
-  ontwikkel-, test- en releasecandidateversies);
-- iedere andere prerelease met letters, bijvoorbeeld
-  `2.3-multiline.1` of `2.3-bugs-pakketview.2`, gebruikt `DocBot-dev`
-  (feature- en fixbranches).
+  altijd `DocBot` (main/stable), ongeacht of die build gecompileerd is;
+- iedere niet-stabiele, gecompileerde versie — bijvoorbeeld `2.3-dev.15`,
+  `2.3-rc.1` of `2.3-multiline.1` — gebruikt `DocBot-test`: een gecompileerde
+  prerelease test de opleverbare vorm en deelt daarom het centrale
+  testprofiel, ongeacht welke branch de build maakte;
+- iedere niet-stabiele, niet-gecompileerde versie (rechtstreeks vanuit
+  broncode gestart) gebruikt `DocBot-dev`: dat is broncode-ontwikkeling en
+  blijft geïsoleerd van het gedeelde testprofiel.
 
 Als `DocBot-test` nog niet bestaat, wordt die eenmalig vanuit `DocBot`
 gekopieerd. Als `DocBot-dev` nog niet bestaat, wordt die bij voorkeur vanuit
@@ -149,6 +157,8 @@ Endpoints:
 - `bel-endpoint` — bellen.
 
 Alle aanroepen zijn POST. De configuratie staat in `IPTConfig`; de live status staat in `State["IPT"]`. Beide staan bovenaan `DocBot.ahk`.
+
+`Telephony.BaseUrl` en elke `SmsCallAction.Url` in `DocBot.local.ahk` moeten met `https://` beginnen. `ValidateLocalConfiguration()` respectievelijk `ValidateSmsCallActionItem()` weigeren een `http://`-waarde al bij het opstarten (zie `docs/DECISIONS.md` D-043); voeg hier geen stille HTTP-fallback of certificaatomzeiling aan toe.
 
 ## AutoHotkey v2 en globale variabelen
 
@@ -181,6 +191,29 @@ Controleer met `git status` en `git branch -vv` of de huidige branch nog op de r
 Werk alleen rechtstreeks vanaf `main` wanneer de gebruiker expliciet zegt dat het om een hotfix voor de gedeployde versie gaat. Merge zo’n fix daarna ook naar `develop`, zodat die branch niet achterloopt.
 
 Wijzig develop en main nooit rechtstreeks. Maak altijd een pull request vanuit een feature-, fix- of releasebranch. Merge pas nadat de gebruiker daar expliciet opdracht voor geeft.
+
+### Lokale werkwijze
+
+Gebruik voor bronbewerking een lokale git-clone, niet de GitHub-webeditor/
+-connector en niet een tijdelijke, zichzelf-verwijderende GitHub Actions-
+workflow als editing-workaround (zie `docs/DECISIONS.md` D-036). Gebruik
+GitHub-tooling voor pull requests, reviews en kleinere metadata-acties; val
+alleen op een workflow-as-editor-truc terug als normale git-/
+connectormethoden echt niet beschikbaar zijn.
+
+Controleer `git status` vóór iedere `git pull` of branchwissel. Commit of
+stash bewuste lokale wijzigingen eerst; laat een `pull` nooit lokale
+wijzigingen stilzwijgend overschrijven.
+
+Controleer vóór iedere commit expliciet: het branchtype en de bijbehorende
+`AppVersion`-teller; of `DocBot.ahk` is gewijzigd en zo ja of `AppVersion` in
+dezelfde commit is aangepast; of de README/changelog moet worden bijgewerkt;
+en of de telemetriedocumentatie moet worden bijgewerkt.
+
+Git-bewerking (clonen, branchen, committen, pushen) kan vanaf een Mac,
+maar functionele AutoHotkey v2-validatie vereist Windows. Behandel "de
+patch is bewerkt en gepusht" nooit als bewijs dat DocBot ook daadwerkelijk
+is gevalideerd (zie `docs/DECISIONS.md` D-037).
 
 ### Versienummers per branch
 
@@ -260,7 +293,14 @@ tag telt pas als gereed wanneer die op `origin` zichtbaar is.
 ## Lokale configuratie
 
 Interne telefonieadressen, endpointnamen, standaard-snelkiesnummers en
-standaard-hotstrings staan uitsluitend in `DocBot.local.ahk`. Dit bestand
-wordt door Git genegeerd en mag nooit worden gecommit. Gebruik
-`DocBot.local.example.ahk` als veilige structuurtemplate zonder echte
-waarden. Ahk2Exe neemt de lokale include tijdens compilatie op.
+standaard-hotstrings staan uitsluitend in `DocBot.local.ahk`. Hetzelfde
+geldt voor het optionele UNC-pad van de netwerkshare met meegeleverde
+hotstringpakketten (`LocalConfig["Packages"]["ShareDir"]`): de
+gecompileerde applicatie leidt die locatie standaard automatisch af uit
+`A_ScriptDir` (de map naast de draaiende executable) en heeft dit veld dus
+alleen nodig als expliciete override, bijvoorbeeld wanneer een launcher een
+lokale kopie van de executable start in plaats van rechtstreeks vanaf de
+netwerklocatie. `DocBot.local.ahk` wordt door Git genegeerd en mag nooit
+worden gecommit. Gebruik `DocBot.local.example.ahk` als veilige
+structuurtemplate zonder echte waarden. Ahk2Exe neemt de lokale include
+tijdens compilatie op.

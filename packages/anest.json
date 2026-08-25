@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "id": "anest",
+  "name": "Anesthesiologie & pijngeneeskunde",
+  "version": "1.0.0",
+  "description": "Afkortingen en termen voor anesthesiologie en pijngeneeskunde.",
+  "owner": "Nico Feenstra",
+  "itemCount": 7,
+  "categories": [
+    {
+      "id": "algemeen",
+      "name": "Algemeen",
+      "itemCount": 2
+    }
+  ],
+  "items": [
+    {
+      "id": "anest-0001",
+      "trigger": "eda",
+      "replacement": "epidurale analgesie",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "anest-0002",
+      "trigger": "dsqa",
+      "replacement": "Dentitie status quo ante; zorgvuldig en voorzichtig geintubeerd met aandacht voor het vermijden van gebitsletsel. Na intubatie geen schade zichtbaar.",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "anest-0004",
+      "trigger": "edp4",
+      "replacement": "Preassessment: ASA 2 obv zwangerschap. Geen contra-indicaties voor epiduraal
+
+Patiënte heeft de informatiefolder gelezen en is voorgelicht over risico’s (o.a. hypotensie, hoofdpijn, inadequaat blok). Patiënte akkoord met procedure, geen vragen meer.
+
+Steriele procedure. Huid verdoofd met lidocaine 1% + adrenaline 3 ml. 
+Ongecompliceerde punctie op niveau L2-3, LOR op 4 cm. Liquor-, bloed-, paresthesie-. Catheter zonder weerstand op te voeren tot 4 cm in epidurale ruimte. Totale diepte catheter 4 cm. Aspiratie negatief. Testbolus 3 cc lidocaine 1% + adrenaline zonder spinale effecten.
+
+Opgespoten met 10 ml Epimix 
+
+Start pomp volgens PIEB protocol: 1 maal per uur 10 ml bolus Epimix; bupivacaine 1,25 mg/ml + Fentanyl 2,5 ug/ml. ",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "anest-0005",
+      "trigger": "edp5",
+      "replacement": "Preassessment: ASA 2 obv zwangerschap. Geen contra-indicaties voor epiduraal
+
+Patiënte heeft de informatiefolder gelezen en is voorgelicht over risico’s (o.a. hypotensie, hoofdpijn, inadequaat blok). Patiënte akkoord met procedure, geen vragen meer.
+
+Steriele procedure. Huid verdoofd met lidocaine 1% + adrenaline 3 ml. 
+Ongecompliceerde punctie op niveau L2-3, LOR op 5 cm. Liquor-, bloed-, paresthesie-. Catheter zonder weerstand op te voeren tot 4 cm in epidurale ruimte. Totale diepte catheter 9 cm. Aspiratie negatief. Testbolus 3 cc lidocaine 1% + adrenaline zonder spinale effecten.
+
+Opgespoten met 10 ml Epimix 
+
+Start pomp volgens PIEB protocol: 1 maal per uur 10 ml bolus Epimix; bupivacaine 1,25 mg/ml + Fentanyl 2,5 ug/ml. ",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "anest-0006",
+      "trigger": "edp6",
+      "replacement": "Preassessment: ASA 2 obv zwangerschap. Geen contra-indicaties voor epiduraal
+
+Patiënte heeft de informatiefolder gelezen en is voorgelicht over risico’s (o.a. hypotensie, hoofdpijn, inadequaat blok). Patiënte akkoord met procedure, geen vragen meer.
+
+Steriele procedure. Huid verdoofd met lidocaine 1% + adrenaline 3 ml. 
+Ongecompliceerde punctie op niveau L2-3, LOR op 6 cm. Liquor-, bloed-, paresthesie-. Catheter zonder weerstand op te voeren tot 4 cm in epidurale ruimte. Totale diepte catheter 10 cm. Aspiratie negatief. Testbolus 3 cc lidocaine 1% + adrenaline zonder spinale effecten.
+
+Opgespoten met 10 ml Epimix 
+
+Start pomp volgens PIEB protocol: 1 maal per uur 10 ml bolus Epimix; bupivacaine 1,25 mg/ml + Fentanyl 2,5 ug/ml. ",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "anest-0007",
+      "trigger": "edp7",
+      "replacement": "Preassessment: ASA 2 obv zwangerschap. Geen contra-indicaties voor epiduraal
+
+Patiënte heeft de informatiefolder gelezen en is voorgelicht over risico’s (o.a. hypotensie, hoofdpijn, inadequaat blok). Patiënte akkoord met procedure, geen vragen meer.
+
+Steriele procedure. Huid verdoofd met lidocaine 1% + adrenaline 3 ml. 
+Ongecompliceerde punctie op niveau L2-3, LOR op 7 cm. Liquor-, bloed-, paresthesie-. Catheter zonder weerstand op te voeren tot 4 cm in epidurale ruimte. Totale diepte catheter 11 cm. Aspiratie negatief. Testbolus 3 cc lidocaine 1% + adrenaline zonder spinale effecten.
+
+Opgespoten met 10 ml Epimix 
+
+Start pomp volgens PIEB protocol: 1 maal per uur 10 ml bolus Epimix; bupivacaine 1,25 mg/ml + Fentanyl 2,5 ug/ml. ",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    },
+    {
+      "id": "anest-0008",
+      "trigger": "edp8",
+      "replacement": "Preassessment: ASA 2 obv zwangerschap. Geen contra-indicaties voor epiduraal
+
+Patiënte heeft de informatiefolder gelezen en is voorgelicht over risico’s (o.a. hypotensie, hoofdpijn, inadequaat blok). Patiënte akkoord met procedure, geen vragen meer.
+
+Steriele procedure. Huid verdoofd met lidocaine 1% + adrenaline 3 ml. 
+Ongecompliceerde punctie op niveau L2-3, LOR op 8 cm. Liquor-, bloed-, paresthesie-. Catheter zonder weerstand op te voeren tot 4 cm in epidurale ruimte. Totale diepte catheter 12 cm. Aspiratie negatief. Testbolus 3 cc lidocaine 1% + adrenaline zonder spinale effecten.
+
+Opgespoten met 10 ml Epimix 
+
+Start pomp volgens PIEB protocol: 1 maal per uur 10 ml bolus Epimix; bupivacaine 1,25 mg/ml + Fentanyl 2,5 ug/ml. ",
+      "category": "Algemeen",
+      "enabledByDefault": true
+    }
+  ]
+}

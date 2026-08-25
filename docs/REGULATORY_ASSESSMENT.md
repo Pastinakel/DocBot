@@ -237,11 +237,13 @@ verzonden probleemrapport. De ontwikkelaar gebruikt hiervoor een door de
 organisatie beheerd Outlook-account en een speciale diagnostiekmap waarin
 berichten ouder dan zeven dagen automatisch worden verwijderd. Er is geen
 waarnemer of vervanger bij afwezigheid. Langere retentie in herstelvoorzieningen
-of back-ups volgt het organisatorische Microsoft-/mailboxbeleid. De lokale
-standaardlog wordt nog alleen op bestandsgrootte geroteerd; automatische
-verwijdering van logregels ouder dan zeven dagen is een openstaande technische
-actie. Ook automatische verwijdering van de tijdelijke probleemrapportmap na
-veilige overdracht of annulering staat nog open.
+of back-ups volgt het organisatorische Microsoft-/mailboxbeleid. Sinds
+`docs/DECISIONS.md` D-044 verwijdert DocBot regels ouder dan zeven dagen
+automatisch uit de lokale standaardlog (naast de bestaande omvangrotatie), en
+ruimt het de tijdelijke probleemrapportmap op na een geverifieerde
+Outlook-bijlage, na expliciete bevestiging bij de handmatige fallback, of
+anders uiterlijk na zeven dagen via een dagelijkse achtergrondsweep. Dit is
+op een gecompileerde testbuild bevestigd werkend.
 
 De optionele telemetrie bevat onder meer een installatie-ID,
 Windows-gebruikersnaam, applicatieversie, tijden, functionele status en
@@ -531,11 +533,13 @@ conformiteit met een norm of de MDR.
 4. Tekst wordt naar de actieve applicatie gestuurd zonder aantoonbare
    patiënt-, applicatie- of veldcontrole.
 5. Direct bellen kan na klemborddetectie zonder nieuwe bevestiging plaatsvinden.
-6. De voorbeeldconfiguratie gebruikt HTTPS voor telefonie en SMS, maar
-   `ValidateLocalConfiguration()` controleert voor deze URL's alleen of een
-   waarde is ingevuld. Een lokale `http://`-configuratie wordt dus nog niet
-   technisch geweigerd en de feitelijke productiebeveiliging is niet uit de
-   repository vast te stellen.
+6. `ValidateLocalConfiguration()` en `ValidateSmsCallActionItem()` weigeren
+   sinds `docs/DECISIONS.md` D-043 een niet-HTTPS `Telephony.BaseUrl` of
+   `SmsCallAction.Url` al bij het opstarten. Dit is applicatieniveau-
+   afdwinging; de feitelijke productiebeveiliging (TLS-versie, certificaat,
+   netwerksegmentatie, serverauthenticatie op de beheerde Windows-werkplek)
+   is niet uit de repository vast te stellen en blijft een openstaande
+   infrastructuurvraag (zie `docs/TODO.md`).
 7. Lokale INI/JSON/logbestanden hebben geen applicatie-eigen versleuteling of
    zichtbare ACL-inrichting; de feitelijke bescherming berust op Windows,
    OneDrive en organisatorisch werkplekbeheer en moet aantoonbaar worden
@@ -548,9 +552,11 @@ conformiteit met een norm of de MDR.
     productiehosting en -TLS, enkele concrete back-up-/verwijdertermijnen en
     het DPIA-besluit zijn nog niet organisatorisch vastgesteld of als bewijs
     aan de repository gekoppeld.
-11. De lokale standaardlog verwijdert nog niet automatisch regels ouder dan
-    zeven dagen en de tijdelijke probleemrapportmap wordt na overdracht of
-    annulering nog niet automatisch opgeruimd.
+11. `InitializeDiagnosticLogging()` beoordeelt bij opstart alleen de eerste
+    256 bytes van `debug.log` om te bepalen of het bestand een verouderd
+    formaat heeft en moet worden gewist; een nog onbekend toekomstig
+    logformaat zou zo alsnog langs de zeven-dagenopschoning van
+    `docs/DECISIONS.md` D-044 kunnen glippen (zie `docs/TODO.md` P2).
 12. De Windows-gebruikersnaam in telemetrie heeft een tijdelijk supportdoel
     tijdens de opstartfase, maar er is nog geen objectief eindcriterium of
     vastgelegde herbeoordelingsdatum voor verwijdering vastgesteld. Het
@@ -580,9 +586,10 @@ conformiteit met een norm of de MDR.
    vierogencontrole, versiebeheer en regressietests.
 7. Onderzoek doelapplicatie-/venstercontrole, extra bevestiging bij risicovolle
    acties en waar mogelijk een controle van de juiste patiëntcontext.
-8. Implementeer de zeven-dagenverwijdering voor lokale standaardlogregels en
-   ruim tijdelijke probleemrapportmappen veilig op na overdracht of
-   annulering.
+8. Verhard de formatherkenning die bepaalt of `debug.log` bij opstart moet
+   worden gewist (nu alleen de eerste 256 bytes) zodat een toekomstig,
+   nog onbekend logformaat niet ongemerkt langs de zeven-dagenopschoning van
+   D-044 kan glippen (`docs/TODO.md` P2).
 9. Stel de gebruikersinstructie voor veilige, niet-patiëntspecifieke
    hotstringinhoud op en wijs een eigenaar voor klinische pakketinhoud aan.
 10. Definieer het einde van de telemetrie-opstartfase en herbeoordeel dan de

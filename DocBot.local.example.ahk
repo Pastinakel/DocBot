@@ -12,6 +12,24 @@ global LocalConfig := Map(
         "DialEndpoint", "VUL-HIER-HET-BEL-ENDPOINT-IN"
     ),
 
+    ; Optioneel en alleen gebruikt door de gecompileerde applicatie. Zonder
+    ; deze sectie leest DocBot meegeleverde hotstringpakketten automatisch
+    ; uit een map "packages" naast de draaiende executable zelf
+    ; (A_ScriptDir) — logisch als DocBot.exe al rechtstreeks vanaf de juiste
+    ; netwerklocatie wordt gestart (bijv. via een launcher als Ivanti die
+    ; "vanaf de bron" start, niet een lokale gecachete kopie). Start de
+    ; launcher in plaats daarvan een lokale kopie van de executable, dan
+    ; wijst A_ScriptDir naar die lokale map in plaats van de share; vul dan
+    ; hieronder het echte UNC-pad in als expliciete override (manifest.json
+    ; + pakketbestanden direct in die map, geen submap). Ontbreekt deze
+    ; sectie of is de uiteindelijke locatie niet bereikbaar, dan laadt
+    ; DocBot die sessie gewoon geen pakketten; persoonlijke hotstrings
+    ; blijven altijd werken.
+    ;
+    ; "Packages", Map(
+    ;     "ShareDir", "\\VUL-HIER-DE-NETWERKSHARE-VOOR-PAKKETTEN-IN\packages"
+    ; ),
+
     ; Configuratie voor de eerste CallAction/SMS-proof-of-concept.
     ; De echte interne URL blijft uitsluitend in DocBot.local.ahk.
     ; Voeg voor iedere extra SMS-pagina een nieuw Map-item toe aan deze Array,
@@ -22,6 +40,12 @@ global LocalConfig := Map(
             "Url", "https://VUL-HIER-DE-SMS-PAGINA-IN/",
             "FieldId", "number",
             "WindowTitle", "SMS opnameplein Funatic"
+            ; TextFieldId is optioneel: het AutomationId/element-id van het
+            ; berichtveld op deze SMS-pagina (vaak een <textarea>). Zonder
+            ; deze regel kan de gebruiker voor deze pagina geen
+            ; standaardtekst instellen bij Instellingen — het bijbehorende
+            ; veld staat dan uitgeschakeld.
+            ; , "TextFieldId", "message"
         )
     ],
 

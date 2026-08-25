@@ -1,6 +1,6 @@
 # DocBot — Project Context
 
-_Last updated: 2026-08-14. This document combines the repository state around the DocBot 2.2 release and the start of the 2.3 development line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
+_Last updated: 2026-08-25. This document combines the repository state around the DocBot 2.2 release and the 2.3 development/release-candidate line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
 
 ## 1. Purpose
 
@@ -29,40 +29,68 @@ Current top-level structure:
 - `ThirdParty/ColorButton/` — button library and original license.
 - `ThirdParty/JXON/` — JSON library and original license.
 - `ThirdParty/UIA-v2/` — UI Automation library and original license.
+- `tests/SelfTests.ahk` — opt-in self-test suite for pure migration-support logic, run via `DocBot.ahk --selftest`; see `tests/README.md` and `docs/DECISIONS.md` D-053.
 - `README.md` — end-user/developer documentation and the only maintained changelog.
 - `AGENTS.md` and `CLAUDE.md` — repository workflow rules for coding agents.
 - `LICENSE` — DocBot's own license.
 
-There is currently no conventional `tests/` directory and no `migrations/` directory. Data migrations are implemented in application code through schema-version logic. Functional validation is therefore still heavily dependent on running AutoHotkey v2 on Windows.
+There is no `migrations/` directory; data migrations are implemented in
+application code through schema-version logic, documented in
+`docs/MIGRATIONS.md`. There is no conventional test-runner-based `tests/`
+directory either — `tests/SelfTests.ahk` is a narrow, opt-in exception
+(pure logic only, see D-053), not a general test harness. Functional
+validation is therefore still heavily dependent on running AutoHotkey v2 on
+Windows.
 
 ## 3. Branch and release status at handover
 
-Repository state checked on 2026-08-14, after the DocBot 2.2 release:
+Repository state checked on 2026-08-25:
 
 - `main` is the production line and represents stable **DocBot 2.2**, merged
   from `release/2.2-rc` via PR #27 (merge commit `a156dfe`) and tagged
-  `v2.2` on that commit.
-- The full RC3 acceptance test (`docs/TODO.md`) was completed and accepted
-  by the project owner before this merge; the release-finalization steps
-  (AppVersion, README, regulatory/data-protection documentation, tag) are
-  recorded as done in `docs/TODO.md`.
+  `v2.2` on that commit. No further work is expected on `main` outside an
+  explicitly requested hotfix.
 - `release/2.2-rc` and `release/2.2-finalize` are the historical release
   branches for 2.2; no further work is expected on them.
-- `develop` is being brought back in line with the released `main` (merging
-  the release-only fixes, per `docs/DECISIONS.md` D-005) and will start the
-  next development line as `AppVersion = 2.3-dev.1`.
+- `develop` was brought back in line with the released `main` via PR #28
+  and started the 2.3 development line at `AppVersion = 2.3-dev.1`. Since
+  then, PRs #30–#44 (`claude/docs-sync-and-ci-decision`,
+  `claude/https-only-telephony-sms`, `claude/diagnostics-retention`,
+  `claude/docs-review-d044-rewrite-wz9ogd`,
+  `claude/https-acceptance-evidence-confirmed`,
+  `claude/fix-todo-infra-reference`,
+  `claude/hotstring-user-instruction-hcv2jw`,
+  `claude/schema-migrations-setup-waiigd`,
+  `claude/hotstring-package-load-logging-w4cc5a`,
+  `claude/schema-migrations-windows-validated`,
+  `claude/sms-default-text-config-oigp28`,
+  `claude/sms-window-reopen-bug-mmx5ln`,
+  `claude/profielselectie-build-vorm-bdkt6j`,
+  `claude/docbot-epd-batch-questions-t1rf6j` and
+  `claude/sms-window-baseline-logging`) landed the rest of the 2.3 feature
+  set described in the README `### 2.3 — In ontwikkeling` changelog
+  section. `develop` is currently at `AppVersion = 2.3-dev.9` — verify this
+  against `global AppVersion` in `DocBot.ahk` before relying on it.
+- `release/2.3-rc` (branched from `develop` at `dev.9`) is currently at
+  `AppVersion = 2.3-rc.3` and carries further RC-only fixes not yet merged
+  back to `develop` (`docs/DECISIONS.md` D-057, D-058). No pull request into
+  `main` is open for it yet.
 - `feature/extended-logging` is no longer the branch to test or integrate;
   its work shipped as part of 2.2.
-- The `.github/workflows/ahk-syntax-check.yml` CI syntax-only gate (see
-  D-040 and `docs/ARCHITECTURE.md` §19) reached `main` as part of the 2.2
-  release and is being brought back to `develop` in the same step as the
-  rest of the release-only fixes.
+- See `docs/TODO.md`, section "P0 — Release plan: finalize stable DocBot
+  2.3", for the current release-readiness status, remaining blockers, the
+  2.3-specific acceptance checklist, and the finalization steps — treat that
+  section as the up-to-date successor to the paragraph-form status this
+  section used to carry, and keep both in sync going forward.
 
 Do not infer functional validation from source integration alone for future
-cycles. The 2.2 feature work contained repeated AutoHotkey v2
-multiline-concatenation failures during development, which is why a real
-AHK v2 parse/compile/run and functional test on Windows — not just source
-review — was required before accepting the RC.
+cycles. Both the 2.2 feature work and the D-044 diagnostics-retention work
+needed multiple rounds of real Windows/compiled-build testing to catch
+issues that source review alone missed (repeated AutoHotkey v2
+multiline-concatenation failures for 2.2; a stale legacy log format and two
+generations of an unrecognized directory-naming pattern for D-044) — a real
+AHK v2 parse/compile/run and functional test on Windows remains required
+before declaring a change complete, not just source review.
 
 ## 4. Product requirements that must survive refactors
 
@@ -82,7 +110,10 @@ review — was required before accepting the RC.
 ### 4.2 Bundled hotstring packages
 
 - Versioned package sources live under `packages/`; `manifest.json` is the index.
-- Bundled package data is extracted to LocalAppData at runtime/build time and validated.
+- Package data is not embedded or cached; `InitializeBundledPackages()` reads
+  and validates it live on every start, directly from the dev build's own
+  `packages/` or, for the compiled build, an auto-detected or explicitly
+  configured network share (`docs/DECISIONS.md` D-048/D-049).
 - User package choices live separately in `package-settings.json`; package content itself is not copied into that settings file.
 - Personal hotstrings normally win conflicts unless the user explicitly gives a package item priority.
 - Editing/saving a package item creates a full personal copy with stable ID/origin metadata.
@@ -117,6 +148,8 @@ Requirements for the SMS path:
 - First try to activate the matching Edge window/tab; UI Automation is the main background-tab/fill mechanism.
 - JavaScript is only a fallback, not the primary implementation.
 - DocBot fills the telephone number but does not send the SMS. Final checking and sending stay with the user.
+- An `SmsCallAction` may optionally set `TextFieldId`, the field id of a second, message-body field on the same SMS page. Where set, and where the user has configured a default text for that page's `Title` on Instellingen (`sms-default-texts.json`), DocBot best-effort-fills that field too, right after the phone-number fill succeeds — a failed text fill never turns an otherwise-successful SMS action into a reported failure, and is only logged.
+- The default-text field on Instellingen is multiline and preserves real newlines (hard Enters), reusing the same control already used for the multiline hotstring Replacement editor.
 - The cancel/SMS/call dialog is keyboard-operable with left/right plus Enter and must paint its initial visual selection correctly.
 - Only one call-action dialog (confirmation, or the cancel/SMS/call choice) may be open at a time. A newer clipboard-detected number always closes a still-open older dialog first — with a short notification — regardless of which action the new number then triggers (a new dialog, an immediate call, or no action). Do not reintroduce stacking dialogs by adding a new outcome path that skips this close step.
 - `State["IPT"]["ClipBoardNumber"]` is cleared immediately once the current action is handed off, completed, or cancelled (call placed, SMS started, dialog cancelled/closed, or no action configured) — not left until the next number is detected or the app exits.
@@ -130,11 +163,11 @@ Requirements for the SMS path:
 
 ### 4.6 Storage profiles
 
-User data is deliberately isolated by release channel so prerelease builds cannot migrate production data:
+User data is deliberately isolated by release channel so prerelease builds cannot migrate production data. Stable versions take priority; for every non-stable version, build form (`A_IsCompiled`), not the prerelease label, selects the profile:
 
-- stable numeric versions such as `2.1` -> `%MyDocuments%\DocBot`;
-- central `-dev` and `-rc` versions -> `%MyDocuments%\DocBot-test`;
-- other lettered prereleases such as feature/fix builds -> `%MyDocuments%\DocBot-dev`.
+- stable numeric versions such as `2.1` -> `%MyDocuments%\DocBot`, regardless of build form;
+- any non-stable, compiled version (`-dev`, `-rc`, or a feature/fix build) -> `%MyDocuments%\DocBot-test`;
+- any non-stable, noncompiled version -> `%MyDocuments%\DocBot-dev`.
 
 When a target profile does not yet exist, it is copied once from the most appropriate predecessor and then normal schema migrations run. Existing target folders are never overwritten by this profile bootstrap.
 
@@ -143,7 +176,8 @@ Key user files include:
 - `settings.ini`;
 - `hotstrings.json`;
 - `package-settings.json`;
-- `speeddial.json`.
+- `speeddial.json`;
+- `sms-default-texts.json`.
 
 Debug logging lives under LocalAppData, not the Documents profile.
 
@@ -154,8 +188,11 @@ A real production issue occurred because one user's Documents/OneDrive location 
 Current intended behavior:
 
 - do not block the whole application with a generic startup write test;
-- best-effort mark the user data folder as always locally available with `attrib -U +P`;
-- failure of that pin operation must not block startup;
+- do not attempt to pin the user data folder locally via an external process
+  (`attrib`/`cmd.exe`); removed (`docs/DECISIONS.md` D-058) after
+  application-whitelisting on a managed workstation blocked the process
+  launch itself and showed the user an intrusive security dialog on every
+  startup, for a best-effort optimization that was never load-bearing;
 - each actual write path keeps focused error handling;
 - telemetry installation-ID creation has its own retry strategy when persistence is temporarily unavailable.
 

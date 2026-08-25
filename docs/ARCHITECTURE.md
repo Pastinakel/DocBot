@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-08-14. Repository facts refer to stable DocBot 2.2 (`main`, tag `v2.2`) and the start of the 2.3 development line unless noted otherwise._
+_Last updated: 2026-08-16. Repository facts refer to stable DocBot 2.2 (`main`, tag `v2.2`) and the start of the 2.3 development line unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -38,7 +38,7 @@ DocBot.local.ahk   (optional include at source level; required to pass validatio
 
 `DocBot.local.example.ahk` is the only safe versioned template.
 
-The application validates local configuration immediately. Missing/invalid required local values produce a blocking configuration error and exit.
+The application validates local configuration immediately. Missing/invalid required local values produce a blocking configuration error and exit. This includes an HTTPS-only check: `ValidateLocalConfiguration()` rejects a non-`https://` `Telephony.BaseUrl`, and `ValidateSmsCallActionItem()` rejects a non-`https://` `SmsCallAction.Url`, using the same `i)^https://` pattern already used for `Telemetry.WebhookUrl` (see `docs/DECISIONS.md` D-043).
 
 ## 3. AutoHotkey v2 startup-order constraint
 
@@ -90,12 +90,12 @@ The current startup flow in `DocBot.ahk` is approximately:
 2. calculate `AppVersion` and choose user-data profile;
 3. initialize global UI/config/state objects;
 4. `InitializeUserStorage()`;
-5. best-effort pin the user-data folder locally (`MarkUserStorageAlwaysAvailable()`);
-6. initialize bundled package cache/data;
-7. load application settings;
-8. initialize personal hotstring storage/migrations;
-9. initialize package settings/migrations;
-10. initialize speed-dial storage/migrations;
+5. initialize bundled package cache/data;
+6. load application settings;
+7. initialize personal hotstring storage/migrations;
+8. initialize package settings/migrations;
+9. initialize speed-dial storage/migrations;
+10. initialize SMS default-text storage (`sms-default-texts.json`);
 11. register/reload runtime hotstrings;
 12. initialize telemetry;
 13. process update-restart command-line state if present;
@@ -163,15 +163,17 @@ Telemetry separately holds its own asynchronous request object.
 
 ### 7.1 Release-channel profiles
 
-`AppVersion` selects one of three Documents profiles:
+`AppVersion` and `A_IsCompiled` together select one of three Documents profiles. Stability (from `AppVersion`) takes priority; build form (`A_IsCompiled`) only decides between the two non-stable profiles:
 
 ```text
-stable numeric version       -> %MyDocuments%\DocBot
--dev or -rc prerelease       -> %MyDocuments%\DocBot-test
-other named prerelease       -> %MyDocuments%\DocBot-dev
+stable numeric version                  -> %MyDocuments%\DocBot
+non-stable version, compiled            -> %MyDocuments%\DocBot-test
+non-stable version, noncompiled         -> %MyDocuments%\DocBot-dev
 ```
 
-Purpose: a feature/fix or RC build must never mutate/migrate production user data simply because it is launched by a developer/tester.
+The prerelease label itself (`-dev`, `-rc`, or a feature/fix name) no longer independently selects `DocBot-test` versus `DocBot-dev` — only whether the running build is compiled does (`docs/DECISIONS.md` D-056, superseding D-009).
+
+Purpose: a feature/fix or RC build must never mutate/migrate production user data simply because it is launched by a developer/tester, and an uncompiled source run — whichever branch or version string it carries — is always source-level development and must stay isolated from the shared test profile.
 
 Bootstrap behavior:
 
@@ -191,6 +193,7 @@ settings.ini             application settings + telemetry ID/counters
 hotstrings.json          personal hotstrings
 package-settings.json    package enabled/disabled/conflict choices
 speeddial.json           speed-dial entries
+sms-default-texts.json   default SMS message text per configured SMS page
 ```
 
 Storage routines use defensive patterns such as `.bak`, temporary files, validation, and replacement where implemented.
@@ -213,7 +216,8 @@ Current global schema concepts include:
 - personal hotstring schema;
 - bundled-package schema;
 - package-settings schema;
-- speed-dial schema.
+- speed-dial schema;
+- SMS default-text schema.
 
 Rules for migrations/default additions:
 
@@ -224,6 +228,14 @@ Rules for migrations/default additions:
 - preserve backwards compatibility with older storage filenames/formats where explicitly supported.
 
 When adding a new default through local configuration, advance the relevant schema and make the addition conditional on the functional key not already existing.
+
+`docs/MIGRATIONS.md` is the detailed registry: which schema version added
+which field/default per storage format, which legacy filenames are still
+read, and how to add a new migration. `ReadSchemaVersion()` and
+`RejectNewerSchemaVersion()`, defined once in `DocBot.ahk` immediately
+before `InitializeBundledPackages()`, are the shared version-parsing/
+version-ceiling helpers all four loaders use; add a new schema by following
+the same pair of calls rather than reimplementing the check inline.
 
 ## 9. Hotstring runtime architecture
 
@@ -256,11 +268,59 @@ Hotstring execution must never copy replacement text through the Windows clipboa
 
 ## 10. Bundled package architecture
 
-`packages/manifest.json` declares the package catalogue. Package files contain stable IDs and items.
+`packages/manifest.json` declares the package catalogue as a pure `id`/`file`
+index — no other field is read from a manifest entry. Package files are the
+single source of truth for their own metadata (`id`, `name`, `version`,
+`description`, optional free-text `owner`) plus their `items` (D-054).
 
-At runtime/build:
+Source resolution (`GetBundledPackageDirectory()`) — no local cache, no
+build-time embedding; `InitializeBundledPackages()` reads `manifest.json`
+and every package file directly from the resolved directory on each start:
 
-- package files are bundled/extracted;
+- **Uncompiled/dev build:** always the source `packages/` directory next to
+  `DocBot.ahk` (`A_ScriptDir "\packages"`).
+- **Compiled build, auto-detected (default):** also `A_ScriptDir "\packages"`
+  — a `packages` folder next to the running `DocBot.exe`. This resolves to
+  the correct network location automatically when the executable is
+  launched directly from there (e.g. by a launcher such as Ivanti configured
+  to "run from source" rather than staging a local copy first). `A_ScriptDir`
+  is written to the standard log on every start specifically so this can be
+  verified against how the app is actually launched (D-049). That folder
+  does not appear by itself, though: `Build-EPD_Machine.bat`'s `:deploy`
+  places the compiled executable one directory *above* the git checkout
+  (`PARENT_DIR\APP_NAME.exe`, pre-dating this branch), so `A_ScriptDir` for
+  the running deployed copy is `PARENT_DIR`, not the checkout — `:deploy`
+  therefore also calls `:sync_packages` for every deploy target, populating
+  (or, with confirmation, replacing) `PARENT_DIR\packages` from the
+  checkout's own `packages/` (D-052).
+- **Compiled build, explicit override:** `LocalConfig["Packages"]["ShareDir"]`
+  in `DocBot.local.ahk` (a UNC path; `manifest.json` and the package files
+  sit directly in it, no subfolder), used instead of the auto-detected path
+  whenever it is set. Needed if the launcher runs a locally staged copy of
+  the executable, in which case `A_ScriptDir` would resolve to that local
+  copy's directory instead of the real share.
+  `ValidateLocalConfiguration()` checks `ShareDir`'s shape (must be a
+  non-empty UNC path) at startup if the `Packages` section is present, but
+  the section itself is optional — the compiled build works without it via
+  auto-detection.
+- Whichever compiled-build source applies: this is the same share the
+  compiled `DocBot.exe` itself already runs from (auto-detected case) or a
+  path the project owner has confirmed is reachable (explicit-override
+  case), so an unreachable source already means DocBot could not have
+  started — there is deliberately no separate local/embedded fallback
+  package set, since it would not add practical resilience. If the source
+  is unreachable anyway (e.g. dropped mid-session, or a stale override),
+  DocBot logs this and simply loads no bundled packages that session rather
+  than blocking startup — personal hotstrings are unaffected either way.
+- Either way, a package file added, edited, or removed at the source is
+  visible on DocBot's next start, with no `DocBot.ahk` change and no
+  rebuild/redistribution of the compiled executable
+  (`docs/DECISIONS.md` D-048/D-049, superseding D-047's build-time
+  zip-and-embed approach).
+- Each package file's load attempt, success (name/version/item count), or
+  failure is written to the standard log; one invalid or unreachable
+  package file no longer prevents the other, valid packages from loading
+  (`docs/DECISIONS.md` D-046).
 - manifest and package structure are validated;
 - duplicate triggers/item counts/schema consistency are checked;
 - effective conflicts are indexed;
@@ -276,7 +336,11 @@ When a user edits or saves a package item as personal, the application writes a 
 
 - technical configuration: `IPTConfig`;
 - live state: `State["IPT"]`;
-- real URLs/endpoint names: local config only.
+- real URLs/endpoint names: local config only;
+- `IPTConfig["URL"]` is built directly from the validated (HTTPS-only)
+  `Telephony.BaseUrl`, so every request built from `IPTConfig["URL"]`
+  inherits that guarantee without a separate per-call check
+  (`docs/DECISIONS.md` D-043).
 
 ### 11.2 Request lifecycle
 
@@ -345,7 +409,11 @@ Configuration per SMS action includes user-facing and technical fields such as:
 - `Title`;
 - `WindowTitle`;
 - target URL;
-- target field `AutomationId` / field identifier.
+- target field `AutomationId` / field identifier (`FieldId`, the telephone
+  field);
+- optional target field `AutomationId` for a second, message-body field
+  (`TextFieldId`) — absent by default; without it, the default-text feature
+  below is simply unavailable for that SMS page.
 
 Flow:
 
@@ -356,9 +424,38 @@ Flow:
 5. if it does not exist, open the configured URL;
 6. locate the telephone input through UIA and fill it;
 7. JavaScript fallback may be used if UIA cannot complete the field operation;
-8. stop: the user reviews and sends manually.
+8. if `TextFieldId` is configured for this page and a non-empty default text
+   is stored for its `Title` in `sms-default-texts.json`, best-effort fill
+   that field the same way (UIA first, JavaScript fallback); a failure here
+   never turns an already-successful phone-number fill into a failed SMS
+   action, it is only logged;
+9. stop: the user reviews and sends manually.
 
-This preserves a deliberate human-in-the-loop safety boundary.
+This preserves a deliberate human-in-the-loop safety boundary — the
+default-text fill only pre-populates a field, it never submits anything.
+
+### 12.1 SMS default text (`sms-default-texts.json`)
+
+The end user, not the local-configuration owner, sets the default message
+text per SMS page, on the Instellingen page next to the existing SMS-page
+selector. Storage follows the same pattern as `speeddial.json` (§7.2,
+`docs/MIGRATIONS.md`): a `schemaVersion` plus an array of
+`{Title, DefaultText}` items, keyed by `Title` (case-insensitive, matching
+`FindSmsCallActionIndexByTitle()`). Unlike `package-settings.json`, loading
+never silently prunes an item whose `Title` no longer matches a currently
+configured SMS page — the GUI simply does not surface it, but the value is
+kept in case the page's configuration returns (e.g. after a temporary
+misconfiguration).
+
+While the Instellingen page is open, switching the SMS-page dropdown keeps
+any not-yet-saved text for every page visited in that session in memory
+(never written to disk); the existing single "Opslaan" button is what
+persists everything to `sms-default-texts.json`, consistent with how the
+rest of that page already behaves (no per-field autosave).
+
+The multiline field itself reuses the existing `AddRoundedEditGroup(...,
+multiline := true, ...)` control already used for the hotstring Replacement
+editor — real newlines already work there without needing `WantReturn`.
 
 ## 13. GUI and rendering
 
@@ -413,6 +510,8 @@ The normal application maintains a bounded/buffered background debug log and flu
 
 The developer-only debug UI is gated by Windows account in current code.
 
+Retention is enforced per log entry, not per file: `RunDiagnosticsMaintenance()` runs once at startup and then on a repeating 24-hour timer, and `PruneExpiredDebugLogEntries()` removes individual entries older than seven days from both the active `debug.log` and the rotated `debug.log.oud`, based on each entry's own leading timestamp rather than file modification time (see `docs/DECISIONS.md` D-044). This exists independently of, and does not change, the ~2 MB size-based rotation in `FlushDebugLog()`.
+
 ### 15.2 Integrated problem reporting and extended logging
 
 The current DocBot 2.2 code contains the `Probleem melden...`
@@ -452,10 +551,42 @@ Architectural boundaries:
   causing report finalization itself to fail (see `DECISIONS.md` D-041);
 - finalization stops extended logging before Outlook or fallback work, so an
   external mail failure cannot leave the UI claiming that logging is active;
-- successful completion resets the session and removes its detailed log;
-  the temporary report directory remains for the mail/manual-send workflow;
+- successful completion resets the in-memory session and removes its
+  detailed log; the temporary report *directory*'s lifecycle is now
+  independent of that session reset (see below) rather than tied to it;
 - Outlook automation failure degrades to `mailto:` where possible, Explorer
   opening the report directory, and visible manual attachment instructions.
+
+**Report-directory lifecycle (see `docs/DECISIONS.md` D-044):** the
+temporary `%TEMP%\DocBot_diagnose_<stamp>` directory is not kept
+indefinitely. On the Outlook success path, `OpenProblemReportEmail()`
+deletes it only after verifying Outlook's attachment count matches and
+`mail.Display()` has succeeded — at that point the file bytes already live
+inside the mail item, independent of the temp files, and any earlier
+failure in that same code path still reaches the fallback with an intact
+directory. On the manual-fallback path, `OpenProblemReportFallback()`
+deliberately leaves the directory in place (the user may still need to
+attach the files by hand) and instead asks explicitly whether it can be
+cleaned up now, defaulting to "no". Whatever is left behind by either
+path — an abandoned fallback directory, or one orphaned by a crash between
+directory creation and finalization — is bounded by the same daily
+`RunDiagnosticsMaintenance()` timer as the standard-log retention above:
+`PruneAbandonedProblemReportDirs()` deletes any `DocBot_diagnose_*`
+directory older than seven days, based on the timestamp DocBot encodes in
+the directory name itself. The loose extended-log file written by
+`StartExtendedProblemLogging()` (`%LocalAppData%\DocBot\problem-report-<stamp>.log`)
+has the same seven-day backstop via `PruneAbandonedExtendedLogFiles()` — it
+exists because `DeleteProblemReportExtendedLog()` only knows the path of
+the *current* session's file, so a file orphaned by a crash, a forced
+process kill, or a Windows restart mid-session had no other cleanup path.
+All three sweeps log a one-line summary via `DebugLog()`, so their behavior
+is observable in the standard log rather than silent.
+`PruneExpiredDebugLogFile()` logs only when it actually removes entries,
+to avoid daily noise on an already-clean log. `PruneAbandonedProblemReportDirs()`
+and `PruneAbandonedExtendedLogFiles()` log unconditionally on every run —
+deliberately, on project-owner request, so the log itself is ongoing proof
+that the seven-day cleanup ran and found nothing, not just an absence of
+loud failure (see `docs/DECISIONS.md` D-044 addendum 3).
 
 The project owner completed the dedicated compiled-Windows validation of the
 RC2 flow on 2026-08-09, including ZIP behavior, Outlook/fallback cases,
@@ -463,7 +594,9 @@ session state, and sensitive-data boundaries — predating the switch to loose
 attachments in D-041. The broader full-RC3 acceptance test, covering the
 loose-attachment behavior together with the rest of the application, was
 subsequently completed and accepted before the 2.2 release (see
-`docs/TODO.md`).
+`docs/TODO.md`). A compiled test build of the D-044 retention/cleanup
+behavior (2026-08-17) confirmed both the standard-log retention and the two
+directory/file sweeps work correctly on a managed Windows workplace.
 
 ## 16. Update/restart architecture
 
@@ -538,6 +671,23 @@ AutoHotkey to exit on its own. This is a reusable pattern for any future
 CI step that shells out to a Windows GUI executable.
 
 For changes touching internal telephony, SMS/UIA, managed-Windows rendering, build/deployment, or OneDrive behavior, static inspection is not enough.
+
+A second gate, added alongside the schema-migration registry
+(`docs/MIGRATIONS.md`), runs in the same job right after the syntax check:
+`AutoHotkey64.exe DocBot.ahk --selftest`. `tests/SelfTests.ahk` (`#Include`d
+from `DocBot.ahk`, inert unless started with that exact argument) exercises
+pure migration-support logic — `ReadSchemaVersion()`/
+`RejectNewerSchemaVersion()` and the idempotency of
+`AddMissingDefaultHotstrings()`/`AddMissingDefaultSpeedDials()`/
+`NormalizeHotstringItem()` — without touching file I/O, the GUI, or the
+network. This is deliberately narrow: AutoHotkey v2's top-level
+execution-order constraint (§3) means a script that `#Include`s `DocBot.ahk`
+runs its full auto-execute section, so genuine unit-test isolation for
+GUI-/storage-coupled code is not practical without the kind of
+modularization `docs/TODO.md` P2 "Consider gradual modularization after
+2.2" explicitly treats as future, non-casual work. See `tests/README.md` for
+what is and is not covered, and D-037 for why this still does not replace
+manual/Windows functional validation.
 
 ## 20. Safe extension guidelines
 
