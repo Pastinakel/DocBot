@@ -45,17 +45,15 @@ _Last updated: 2026-08-25. This file is a handover backlog, not a promise that e
   ships as-is. **Decision: does not block the release** — the remaining
   "Investigate" line becomes a known follow-up, only actionable if/when the
   issue actually recurs in the field with the new logging active.
-- [ ] `tests/SelfTests.ahk` (24/24) confirmed via an interpreted
-  `AutoHotkey64.exe DocBot.ahk --selftest` run. A compiled
-  `DocBot.exe --selftest` run produced **no visible output** — before
-  treating this as a pass or a bug, check the two outputs the code itself
-  treats as authoritative rather than the console: the process exit code
-  (`0` = all tests passed, `1` = at least one failure/error) and
-  `%TEMP%\docbot-selftest-results.txt` (overwritten on every run). Absence
-  of console text is expected and already documented as unconfirmed
-  behavior for a GUI-subsystem executable (`docs/DECISIONS.md` D-053,
-  `tests/README.md`) — it is not itself a failure signal. Still open until
-  the exit code and/or results file are actually checked and recorded.
+- [x] `tests/SelfTests.ahk` confirmed via both an interpreted
+  `AutoHotkey64.exe DocBot.ahk --selftest` run (24/24 on 2026-08-19) and a
+  compiled `DocBot.exe --selftest` run (2026-08-25): the console showed no
+  output, as expected for a GUI-subsystem executable (`docs/DECISIONS.md`
+  D-053, `tests/README.md`), but `%TEMP%\docbot-selftest-results.txt`
+  recorded "32 tests, 32 geslaagd, 0 mislukt". The higher count than the
+  24/24 interpreted run is expected, not a discrepancy: `TestGetUserDataProfile`
+  added 8 assertions for the D-056 profile-selection matrix after that
+  24/24 run was recorded.
 - [x] The hotstring-content Help instruction (D-045): confirmed good on a
   compiled build (fifth accordion section, Tekstvervanging hint in both
   editor states, Hotstrings/Telefonie/Over card bottom alignment).
@@ -72,8 +70,8 @@ _Last updated: 2026-08-25. This file is a handover backlog, not a promise that e
 - [x] Confirmed: no other feature/fix branches are unmerged against
   `develop`/`release/2.3-rc` besides the one above.
 
-Only the compiled `--selftest` exit-code/results-file check remains open in
-this list.
+Every item in this list is now resolved; see "Finalizing the stable
+release" below for the remaining work.
 
 ### Acceptance checklist for what changed since 2.2
 
@@ -98,9 +96,7 @@ end.
 - [x] Non-stable installs pick `DocBot-test` when compiled and `DocBot-dev`
   when run from source, regardless of the `-dev`/`-rc`/feature-name
   prerelease label (D-056) — validated on Windows. `DocBot.ahk --selftest`
-  passed interpreted (24/24); the compiled `DocBot.exe --selftest` run
-  still needs its exit code / `%TEMP%\docbot-selftest-results.txt` checked
-  (see blocker above) before this line is fully closed.
+  passed both interpreted (24/24) and compiled (32/32, see blocker above).
 - [ ] Telephony `BaseUrl` and every `SmsCallAction.Url` are rejected at
   startup when not `https://` (D-043) — re-confirm once more on the final
   RC build.
@@ -759,13 +755,13 @@ D-053). High-value testable areas:
   `claude/schema-migrations-setup-waiigd` (`AppVersion
   2.3-schema-migraties.1`); confirmed by the project owner on real Windows
   (interpreted `AutoHotkey64.exe DocBot.ahk --selftest`, 24/24 passing,
-  2026-08-19, see `docs/DECISIONS.md` D-053). Still open: a compiled
-  `DocBot.exe --selftest` run (2026-08-25) showed no visible console
-  output — expected per this same D-053 caveat for a GUI-subsystem
-  executable, not itself a failure signal — but the process exit code and
-  `%TEMP%\docbot-selftest-results.txt` (the two outputs the code treats as
-  authoritative) have not yet been checked against the compiled build. This
-  line stays open until one of those two is actually read and recorded.
+  2026-08-19, see `docs/DECISIONS.md` D-053). A compiled
+  `DocBot.exe --selftest` run (2026-08-25) confirmed the same via
+  `%TEMP%\docbot-selftest-results.txt`: "32 tests, 32 geslaagd, 0 mislukt"
+  (the higher count reflects the D-056 profile-selection assertions added
+  since the 24/24 run, not a discrepancy). Console output stayed empty in
+  both cases, as expected for a GUI-subsystem executable per this same
+  D-053 caveat.
 - [ ] package conflict resolution and status calculation;
 - [ ] telemetry payload serialization/redaction boundaries;
 - [ ] telemetry InstallationId persistence state machine using controlled file conditions;
