@@ -79,16 +79,16 @@ Run this in addition to, not instead of, the full 2.2 RC3 regression
 checklist above — that checklist still covers unchanged behavior end to
 end.
 
-- [ ] Compiled build reads its `packages` folder from next to the
+- [x] Compiled build reads its `packages` folder from next to the
   executable (`A_ScriptDir`) on the correct network share; a local-copy
   launch (e.g. via Ivanti) still honors `LocalConfig["Packages"]["ShareDir"]`
   as an explicit override (D-048/D-049).
-- [ ] Package manifest entries with only `id`/`file` still load correctly;
+- [x] Package manifest entries with only `id`/`file` still load correctly;
   an optional package `owner` field displays next to the package name in
   **Pakketten** (D-054).
-- [ ] Closing the package manager while conflict status for a large package
+- [x] Closing the package manager while conflict status for a large package
   is still being calculated no longer errors (D-051).
-- [ ] `Build-EPD_Machine.bat` populates a `packages` folder next to every
+- [x] `Build-EPD_Machine.bat` populates a `packages` folder next to every
   deployed executable, asking before overwriting an existing one (D-052);
   it asks all interactive questions before compilation starts, where Enter
   means "Ja" and only an explicit "N" means "Nee"; and it runs correctly
@@ -97,10 +97,10 @@ end.
   when run from source, regardless of the `-dev`/`-rc`/feature-name
   prerelease label (D-056) — validated on Windows. `DocBot.ahk --selftest`
   passed both interpreted (24/24) and compiled (32/32, see blocker above).
-- [ ] Telephony `BaseUrl` and every `SmsCallAction.Url` are rejected at
+- [x] Telephony `BaseUrl` and every `SmsCallAction.Url` are rejected at
   startup when not `https://` (D-043) — re-confirm once more on the final
   RC build.
-- [ ] An SMS page configured with `TextFieldId` offers a per-page multiline
+- [x] An SMS page configured with `TextFieldId` offers a per-page multiline
   default text under **Instellingen > SMS actie** (hard enters preserved)
   that is filled into the message field after the phone number (D-055).
 - [x] The standard log/live debug window now shows, without an active
@@ -108,17 +108,17 @@ end.
   why (`RunSmsCallAction()` and friends). Confirmed present; the actual
   reopening issue itself was not reproducible on a real compiled build
   (see "P1 — Baseline debug output..." below).
-- [ ] Standard log entries older than seven days (including legacy
+- [x] Standard log entries older than seven days (including legacy
   pre-"v2" lines) are pruned from both the active log and `.oud`; the
   ~2 MB size-rotation behavior is unaffected (D-044).
-- [ ] Abandoned problem-report directories/extended logs older than seven
+- [x] Abandoned problem-report directories/extended logs older than seven
   days are cleaned up automatically, with the "Probleemrapportmap
   opschonen" log line appearing even when nothing was found; cancel/
   Outlook/manual-fallback cleanup behaves as documented.
-- [ ] DocBot starts without triggering an application-whitelisting security
+- [x] DocBot starts without triggering an application-whitelisting security
   dialog on a hardened workstation now that the `attrib`-based folder pin
   is removed entirely (D-058).
-- [ ] `docs/MIGRATIONS.md` still matches actual schema-version behavior for
+- [x] `docs/MIGRATIONS.md` still matches actual schema-version behavior for
   all four loaders.
 
 ### Finalizing the stable release (per the branch/version rules in `CLAUDE.md`/`AGENTS.md`)
