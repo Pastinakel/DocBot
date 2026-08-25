@@ -680,6 +680,60 @@ invoking it automatically and surfacing its existing output).
 
 ---
 
+## P1 — Also offer the EPD_Machine copy question for a stable release, not only `-dev`/`-rc`
+
+Filed by the project owner (2026-08-25). `Build-EPD_Machine.bat` only asks
+"Ook een executable naar de naastgelegen map EPD_Machine kopieren?" when
+`IS_DEVELOP` is set — and `IS_DEVELOP` is only set when `global AppVersion`
+in the source contains `-dev` or `-rc`:
+
+```bat
+rem Alleen de centrale developversie of een RC mag vanaf een directe submap
+rem van DocBot optioneel ook naar de naastgelegen applicatiemap EPD_Machine
+rem worden uitgerold.
+set "IS_DEVELOP="
+findstr /B /C:"global AppVersion" "%SOURCE%" | findstr /C:"-dev" /C:"-rc" >nul
+if not errorlevel 1 set "IS_DEVELOP=1"
+```
+
+A stable numeric `AppVersion` (e.g. `2.3`, no prerelease suffix) never
+matches `-dev`/`-rc`, so `IS_DEVELOP` stays unset and the EPD_Machine
+question — and therefore the whole `EPD_Machine.exe`/packages copy path
+below it — is silently skipped when placing a stable release, even though
+the co-located `EPD_Machine` folder may need the same update.
+
+### Scope
+
+- [ ] Extend the `IS_DEVELOP`-gated condition (or introduce a clearer,
+  separate flag) so a stable numeric `AppVersion` also triggers the
+  "Ook een executable naar de naastgelegen map EPD_Machine kopieren?"
+  question, alongside the existing `-dev`/`-rc` case — not only when a
+  development or release-candidate build is placed.
+- [ ] Decide explicitly, and document the decision here and in a code
+  comment: should this stay scoped to stable + `-dev`/`-rc` only (i.e.
+  still exclude a feature/fix branch's own prerelease build, matching the
+  existing rationale that only the central dev/RC line and now stable
+  releases are expected to also update `EPD_Machine`), or should every
+  `AppVersion` shape ask the question? Default assumption unless the
+  project owner says otherwise: keep feature/fix branch builds excluded,
+  only add stable to the existing `-dev`/`-rc` allowance.
+- [ ] Re-check the variable name `IS_DEVELOP` once the condition covers
+  stable releases too — it will no longer mean "is a development build",
+  so keep or rename it deliberately rather than leaving a now-misleading
+  name.
+- [ ] Verify the rest of the `DO_EPD_COPY` path (the `OVERWRITE_EPD_PACKAGES`
+  question and the `:deploy` call for `EPD_Machine.exe`) already behaves
+  correctly once triggered from a stable build — it should, since that path
+  does not itself branch on `IS_DEVELOP` again, only on `DO_EPD_COPY`.
+- [ ] Update the `Build-EPD_Machine.bat` description in `README.md` (and the
+  code comment above `IS_DEVELOP`) so it no longer says only a "centrale
+  developversie of een RC" gets this option.
+
+This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
+bump applies.
+
+---
+
 ## P2 — Remove the optional `itemCount` package-manifest check
 
 Reported by the project owner (2026-08-25): the optional `itemCount` field
