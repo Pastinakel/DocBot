@@ -27,6 +27,22 @@
       "replacement": "Dentitie status quo ante; zorgvuldig en voorzichtig geintubeerd met aandacht voor het vermijden van gebitsletsel. Na intubatie geen schade zichtbaar.",
       "category": "Algemeen",
       "enabledByDefault": true
+    },
+    {
+      "id": "anest-0003",
+      "trigger": "eddp",
+      "replacement": "Preassessment: ASA 2 obv zwangerschap. Geen contra-indicaties voor epiduraal
+
+Patiënte heeft de informatiefolder gelezen en is voorgelicht over risico’s (o.a. hypotensie, hoofdpijn, inadequaat blok). Patiënte akkoord met procedure, geen vragen meer.
+
+Steriele procedure. Huid verdoofd met lidocaine 1% + adrenaline 3 ml. 
+Ongecompliceerde punctie op niveau L2-3, LOR op 5 cm. Liquor-, bloed-, paresthesie-. Catheter zonder weerstand op te voeren tot 4 cm in epidurale ruimte. Totale diepte catheter 9 cm. Aspiratie negatief. Testbolus 3 cc lidocaine 1% + adrenaline zonder spinale effecten.
+
+Opgespoten met 10 ml Epimix 
+
+Start pomp volgens PIEB protocol: 1 maal per uur 10 ml bolus Epimix; bupivacaine 1,25 mg/ml + Fentanyl 2,5 ug/ml. ",
+      "category": "Algemeen",
+      "enabledByDefault": true
     }
   ]
 }
