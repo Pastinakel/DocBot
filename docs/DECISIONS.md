@@ -1,6 +1,6 @@
 # DocBot — Decisions
 
-_Last updated: 2026-08-18. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
+_Last updated: 2026-08-25. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
 
 ## How to read this file
 
@@ -423,8 +423,7 @@ Documents may be backed by OneDrive and temporarily unavailable. Blocking all of
 
 **Current design**
 
-- best-effort `attrib -U +P` on the user-data folder;
-- failure to pin locally does not block startup;
+- ~~best-effort `attrib -U +P` on the user-data folder~~ — removed, see D-058;
 - real writes handle their own errors;
 - telemetry has its own persistence retry path.
 
@@ -2020,3 +2019,87 @@ the non-stable storage profile.
   only the `settings.ini` location it reads from follows the (now
   differently derived) selected profile.
 - Implemented on branch `claude/profielselectie-build-vorm-bdkt6j`.
+
+---
+
+## D-057 — `Build-EPD_Machine.bat` requires CRLF line endings
+
+**Status:** Accepted
+
+A colleague hit "The system cannot find the batch label specified -
+deploy_wait" while compiling with `Build-EPD_Machine.bat`, even though the
+`:deploy_wait` label is present and correctly spelled in the file.
+
+**Root cause**
+
+`Build-EPD_Machine.bat` was committed with Unix (LF-only) line endings —
+confirmed on the tracked blob across recent history, not a one-off local
+edit. This repository is routinely edited from a Mac (D-037), and no
+`.gitattributes` previously forced a line-ending convention, so a `.bat`
+file edited outside Windows can end up LF-only in the repository.
+`cmd.exe`'s `GOTO`/`CALL` label search is documented to be unreliable on a
+batch file with LF-only line endings, especially for labels that are not
+near the top of the file; `:deploy_wait` sits roughly 5.7 KB into the file,
+which matches the reported failure pattern.
+
+**Current direction**
+
+- Added `.gitattributes` with `*.bat text eol=crlf` so any `.bat` file is
+  always checked out with CRLF line endings on every platform, regardless
+  of which OS was used to edit or commit it.
+- `Build-EPD_Machine.bat` itself now carries a short comment at the top
+  documenting this requirement, so a future edit that reintroduces LF-only
+  line endings is visible in the diff.
+- Do not rely on contributors manually configuring `core.autocrlf`; the
+  repository-level `.gitattributes` is the enforcement point.
+
+**Consequences**
+
+- An existing local clone checked out before this change keeps its current
+  (LF) copy of `Build-EPD_Machine.bat` until it is re-checked out (e.g.
+  `git checkout -- Build-EPD_Machine.bat` after pulling this change, or a
+  fresh clone) — merely pulling `.gitattributes` does not retroactively
+  rewrite an unchanged tracked file already on disk.
+- No `DocBot.ahk` behavior change; no `AppVersion` bump required.
+
+---
+
+## D-058 — Remove the best-effort local pin of the user-data folder
+
+**Status:** Accepted
+
+**Superseded decision:** part of D-026's "current design" — best-effort
+`attrib -U +P` on the user-data folder to discourage OneDrive Files On-Demand
+from evicting it.
+
+**Reason**
+
+A colleague hit an application-whitelisting security dialog on every DocBot
+startup ("De toegang tot de applicatie is geweigerd... cmd.exe"), traced to
+`MarkUserStorageAlwaysAvailable()` launching `attrib` to pin the folder
+(D-057 first removed the `cmd.exe` hop and called `attrib.exe` directly, but
+the workplace's whitelisting policy still blocked `attrib.exe` itself,
+showing the same kind of dialog).
+
+There is no way to test in advance whether launching a process is allowed
+without triggering the same whitelisting block/dialog the test is trying to
+avoid — the process-creation attempt itself is what gets intercepted. The
+remaining alternative that avoids any process launch (an in-process Win32
+`SetFileAttributesW` call with the cloud-file pin bits) was considered, but
+rejected for now: it is new, unvalidated behavior (cannot be exercised from
+outside a real Windows environment, see D-037) for a benefit that was
+already best-effort and non-essential per D-026 ("failure to pin locally
+does not block startup; real writes handle their own errors"), and no
+concrete OneDrive-eviction incident is currently open to justify that risk.
+
+**Current design**
+
+- `MarkUserStorageAlwaysAvailable()` and its call at startup are removed
+  entirely from `DocBot.ahk`. DocBot no longer attempts to pin the
+  user-data folder in any way.
+- The rest of D-026 is unchanged: no broad startup writeability gate, real
+  write paths keep their own focused error handling, and telemetry keeps
+  its own installation-ID persistence retry path.
+- If a real OneDrive-eviction incident reoccurs, revisit via the in-process
+  `SetFileAttributesW` approach above rather than reintroducing a process
+  launch.
