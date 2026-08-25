@@ -479,14 +479,14 @@ Changelog
 ---------
 
 ### 2.3 — In ontwikkeling
-- `MarkUserStorageAlwaysAvailable()` pint de gebruikersdatamap bij het
-  opstarten voortaan lokaal via een rechtstreekse aanroep van `attrib.exe`
-  in plaats van via `cmd.exe /d /c attrib`. Op werkplekken waar
-  applicatie-whitelisting het starten van `cmd.exe` blokkeert, verscheen
-  daardoor een los beveiligingsscherm bij het opstarten van DocBot; deze
-  pin-actie blijft, zoals voorheen, best-effort en blokkeert het opstarten
-  van DocBot niet bij een fout (`docs/DECISIONS.md` D-026, gefileerd vanuit
-  `claude/compiler-startup-error-ua7lt3`).
+- DocBot probeert de gebruikersdatamap bij het opstarten niet langer lokaal
+  te pinnen tegen OneDrive Files On-Demand (`MarkUserStorageAlwaysAvailable()`
+  is verwijderd, samen met de aanroep ervan). Op een werkplek met
+  applicatie-whitelisting blokkeerde het starten van het onderliggende
+  externe proces (eerst via `cmd.exe`, daarna rechtstreeks via `attrib.exe`)
+  zelf al, met een storend beveiligingsscherm bij elke start van DocBot tot
+  gevolg — voor een best-effort optimalisatie die nooit noodzakelijk was
+  voor de werking van DocBot (`docs/DECISIONS.md` D-058).
 - Het venster-/tabselectiepad voor een SMS-actie (`RunSmsCallAction()`,
   `ActivateSmsEdgeWindowByTitle()`, `ActivateSmsEdgeTabByTitle()`,
   `OpenSmsPage()`) logt de belangrijkste beslispunten voortaan ook naar het

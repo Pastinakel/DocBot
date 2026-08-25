@@ -423,8 +423,7 @@ Documents may be backed by OneDrive and temporarily unavailable. Blocking all of
 
 **Current design**
 
-- best-effort `attrib -U +P` on the user-data folder;
-- failure to pin locally does not block startup;
+- ~~best-effort `attrib -U +P` on the user-data folder~~ — removed, see D-058;
 - real writes handle their own errors;
 - telemetry has its own persistence retry path.
 
@@ -2062,3 +2061,45 @@ which matches the reported failure pattern.
   fresh clone) — merely pulling `.gitattributes` does not retroactively
   rewrite an unchanged tracked file already on disk.
 - No `DocBot.ahk` behavior change; no `AppVersion` bump required.
+
+---
+
+## D-058 — Remove the best-effort local pin of the user-data folder
+
+**Status:** Accepted
+
+**Superseded decision:** part of D-026's "current design" — best-effort
+`attrib -U +P` on the user-data folder to discourage OneDrive Files On-Demand
+from evicting it.
+
+**Reason**
+
+A colleague hit an application-whitelisting security dialog on every DocBot
+startup ("De toegang tot de applicatie is geweigerd... cmd.exe"), traced to
+`MarkUserStorageAlwaysAvailable()` launching `attrib` to pin the folder
+(D-057 first removed the `cmd.exe` hop and called `attrib.exe` directly, but
+the workplace's whitelisting policy still blocked `attrib.exe` itself,
+showing the same kind of dialog).
+
+There is no way to test in advance whether launching a process is allowed
+without triggering the same whitelisting block/dialog the test is trying to
+avoid — the process-creation attempt itself is what gets intercepted. The
+remaining alternative that avoids any process launch (an in-process Win32
+`SetFileAttributesW` call with the cloud-file pin bits) was considered, but
+rejected for now: it is new, unvalidated behavior (cannot be exercised from
+outside a real Windows environment, see D-037) for a benefit that was
+already best-effort and non-essential per D-026 ("failure to pin locally
+does not block startup; real writes handle their own errors"), and no
+concrete OneDrive-eviction incident is currently open to justify that risk.
+
+**Current design**
+
+- `MarkUserStorageAlwaysAvailable()` and its call at startup are removed
+  entirely from `DocBot.ahk`. DocBot no longer attempts to pin the
+  user-data folder in any way.
+- The rest of D-026 is unchanged: no broad startup writeability gate, real
+  write paths keep their own focused error handling, and telemetry keeps
+  its own installation-ID persistence retry path.
+- If a real OneDrive-eviction incident reoccurs, revisit via the in-process
+  `SetFileAttributesW` approach above rather than reintroducing a process
+  launch.

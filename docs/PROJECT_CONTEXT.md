@@ -192,8 +192,11 @@ A real production issue occurred because one user's Documents/OneDrive location 
 Current intended behavior:
 
 - do not block the whole application with a generic startup write test;
-- best-effort mark the user data folder as always locally available with `attrib -U +P`;
-- failure of that pin operation must not block startup;
+- do not attempt to pin the user data folder locally via an external process
+  (`attrib`/`cmd.exe`); removed (`docs/DECISIONS.md` D-058) after
+  application-whitelisting on a managed workstation blocked the process
+  launch itself and showed the user an intrusive security dialog on every
+  startup, for a best-effort optimization that was never load-bearing;
 - each actual write path keeps focused error handling;
 - telemetry installation-ID creation has its own retry strategy when persistence is temporarily unavailable.
 
