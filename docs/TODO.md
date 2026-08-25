@@ -1,12 +1,149 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-19. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-25. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
 - **P0** — blocks the current release path or risks a broken build.
 - **P1** — should be completed before/around the current release or immediately afterwards.
 - **P2** — valuable engineering improvement; not a reason to destabilize the current release.
+
+---
+
+## P0 — Release plan: finalize stable DocBot 2.3
+
+### Current status (checked 2026-08-25)
+
+- `develop` is at `AppVersion = 2.3-dev.9` and has not advanced since
+  `release/2.3-rc` was cut from it; every commit on `develop` is also on
+  `release/2.3-rc`, but not the reverse.
+- `release/2.3-rc` (origin, no open PR yet against `main`) is at
+  `AppVersion = 2.3-rc.3` and carries RC-only fixes not yet merged back to
+  `develop`: the CRLF line-ending fix for `Build-EPD_Machine.bat`
+  (`docs/DECISIONS.md` D-057), removal of the best-effort `attrib`-based
+  user-data-folder pin (D-058), `Build-EPD_Machine.bat` asking all its
+  interactive questions up front, and accompanying `packages/anest.json`
+  updates.
+- The README `### 2.3 — In ontwikkeling` changelog section on
+  `release/2.3-rc` already lists the full feature/fix set for this release
+  (profile selection by build form, HTTPS-only telephony/SMS, SMS default
+  text, package share-dir change, diagnostics/report-artifact retention,
+  the hotstring-content Help instruction, `tests/SelfTests.ahk` plus
+  `DocBot.ahk --selftest`, and the two RC-only fixes above). Treat that
+  section, not this file, as the authoritative feature list for the
+  release notes.
+- No stable-release work (`AppVersion 2.3`, README finalization, tag) has
+  happened yet. This section is the plan for getting there; it does not by
+  itself perform any of the steps.
+
+### Remaining blockers before merging `release/2.3-rc` into `main`
+
+- [ ] "P1 — Baseline debug output for repeated SMS window/tab reopening"
+  (below) still has one open "Investigate" item: it needs the project owner
+  to reproduce the reopening issue on a real compiled build with the new
+  logging and record what it shows. Decide whether this blocks the release
+  or ships as a known follow-up.
+- [ ] `tests/SelfTests.ahk` (24/24) has only been confirmed via an
+  interpreted `AutoHotkey64.exe DocBot.ahk --selftest` run; the same check
+  against a **compiled** `DocBot.exe --selftest` is still open.
+- [ ] The hotstring-content Help instruction (D-045) is implemented but
+  still needs Windows validation of the new fifth accordion section, the
+  Tekstvervanging hint in both editor states, and the Hotstrings/Telefonie/
+  Over card bottom alignment.
+- [ ] Two rows of the profile-selection test matrix (D-056) still need real
+  Windows functional validation rather than self-tests: existing
+  `DocBot-test`/`DocBot-dev` folders must not be repopulated/overwritten by
+  the new selection logic, and stored hotstring/settings/package/speeddial
+  paths must still resolve correctly in the selected profile.
+- [ ] Decide what to do with the unmerged branch
+  `claude/todo-itemcount-package-check` (filed 2026-08-25 against
+  `develop`, adds a P2 TODO item only — see below): merge it as its own
+  docs-only PR into `develop`, or fold it into next-cycle backlog. It is not
+  itself release-blocking.
+- [ ] Confirm no other feature/fix branches are still unmerged against
+  `develop`/`release/2.3-rc` before cutting the final release commit (this
+  file is a point-in-time snapshot; re-check branches/PRs first).
+
+### Acceptance checklist for what changed since 2.2
+
+Run this in addition to, not instead of, the full 2.2 RC3 regression
+checklist above — that checklist still covers unchanged behavior end to
+end.
+
+- [ ] Compiled build reads its `packages` folder from next to the
+  executable (`A_ScriptDir`) on the correct network share; a local-copy
+  launch (e.g. via Ivanti) still honors `LocalConfig["Packages"]["ShareDir"]`
+  as an explicit override (D-048/D-049).
+- [ ] Package manifest entries with only `id`/`file` still load correctly;
+  an optional package `owner` field displays next to the package name in
+  **Pakketten** (D-054).
+- [ ] Closing the package manager while conflict status for a large package
+  is still being calculated no longer errors (D-051).
+- [ ] `Build-EPD_Machine.bat` populates a `packages` folder next to every
+  deployed executable, asking before overwriting an existing one (D-052);
+  it asks all interactive questions before compilation starts, where Enter
+  means "Ja" and only an explicit "N" means "Nee"; and it runs correctly
+  from a fresh checkout now that `.gitattributes` forces CRLF (D-057).
+- [ ] Non-stable installs pick `DocBot-test` when compiled and `DocBot-dev`
+  when run from source, regardless of the `-dev`/`-rc`/feature-name
+  prerelease label (D-056); run `DocBot.ahk --selftest` on both an
+  interpreted and a compiled build and confirm all self-tests pass.
+- [ ] Telephony `BaseUrl` and every `SmsCallAction.Url` are rejected at
+  startup when not `https://` (D-043) — re-confirm once more on the final
+  RC build.
+- [ ] An SMS page configured with `TextFieldId` offers a per-page multiline
+  default text under **Instellingen > SMS actie** (hard enters preserved)
+  that is filled into the message field after the phone number (D-055).
+- [ ] The standard log/live debug window now shows, without an active
+  extended-logging session, which SMS window/tab path was attempted and
+  why (`RunSmsCallAction()` and friends).
+- [ ] Standard log entries older than seven days (including legacy
+  pre-"v2" lines) are pruned from both the active log and `.oud`; the
+  ~2 MB size-rotation behavior is unaffected (D-044).
+- [ ] Abandoned problem-report directories/extended logs older than seven
+  days are cleaned up automatically, with the "Probleemrapportmap
+  opschonen" log line appearing even when nothing was found; cancel/
+  Outlook/manual-fallback cleanup behaves as documented.
+- [ ] DocBot starts without triggering an application-whitelisting security
+  dialog on a hardened workstation now that the `attrib`-based folder pin
+  is removed entirely (D-058).
+- [ ] `docs/MIGRATIONS.md` still matches actual schema-version behavior for
+  all four loaders.
+
+### Finalizing the stable release (per the branch/version rules in `CLAUDE.md`/`AGENTS.md`)
+
+- [ ] On `release/2.3-rc`, set `global AppVersion` from the final
+  `2.3-rc.N` to stable `2.3` in the definitive release commit (this changes
+  `DocBot.ahk`, so the AppVersion rule applies; branch type = release
+  branch).
+- [ ] Update README status wording from release-candidate/"in ontwikkeling"
+  to stable 2.3 wording.
+- [ ] Finalize `### 2.3` in the README Changelog (drop "— In ontwikkeling");
+  it remains the only maintained version-history source — do not hand-edit
+  `BuildAboutText()`.
+- [ ] Verify the README `Telemetrie` section still exactly matches the
+  shipped payload and interval (no payload change is currently planned for
+  2.3 — confirm nothing slipped in unreviewed).
+- [ ] Verify license/documentation references (PolyForm Noncommercial plus
+  the ThirdParty MIT notices) are still accurate.
+- [ ] Open a pull request from `release/2.3-rc` into `main`; merge with
+  **Create a merge commit**, and only after the project owner has explicitly
+  reviewed and approved the RC.
+- [ ] After merging, create the annotated tag `v2.3` on the stable release
+  commit — this needs its own explicit go-ahead from the project owner
+  first, separate from approval of the merge itself (per `CLAUDE.md`,
+  §"Verantwoording bij versie- en tagwijzigingen"); do not treat tagging as
+  implied by release approval.
+- [ ] Push the tag to `origin` and confirm it is visible there before
+  treating it as done.
+- [ ] Bring the release-only fixes back into `develop` via their own pull
+  request/merge commit (mirrors PR #28 for 2.2).
+- [ ] Start the next development version on `develop`
+  (`AppVersion = 2.4-dev.1`) once the merge-back above lands.
+- [ ] Delete the temporary release branch(es) after merging, once their
+  content lives on in `main`/`develop` history and tag `v2.3`.
+- [ ] Update `docs/PROJECT_CONTEXT.md` §3 (branch/release status) and mark
+  the corresponding items resolved in this file, in the same change.
 
 ---
 

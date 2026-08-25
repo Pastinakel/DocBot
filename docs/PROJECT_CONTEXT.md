@@ -1,6 +1,6 @@
 # DocBot — Project Context
 
-_Last updated: 2026-08-17. This document combines the repository state around the DocBot 2.2 release and the start of the 2.3 development line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
+_Last updated: 2026-08-25. This document combines the repository state around the DocBot 2.2 release and the 2.3 development/release-candidate line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
 
 ## 1. Purpose
 
@@ -44,8 +44,7 @@ Windows.
 
 ## 3. Branch and release status at handover
 
-Repository state checked on 2026-08-17, on the `2.3-dev` line following the
-DocBot 2.2 release:
+Repository state checked on 2026-08-25:
 
 - `main` is the production line and represents stable **DocBot 2.2**, merged
   from `release/2.2-rc` via PR #27 (merge commit `a156dfe`) and tagged
@@ -54,38 +53,35 @@ DocBot 2.2 release:
 - `release/2.2-rc` and `release/2.2-finalize` are the historical release
   branches for 2.2; no further work is expected on them.
 - `develop` was brought back in line with the released `main` via PR #28
-  (`chore/bring-back-2.2-to-develop`) and started the 2.3 development line
-  at `AppVersion = 2.3-dev.1`. The `.github/workflows/ahk-syntax-check.yml`
-  CI syntax-only gate (D-040, `docs/ARCHITECTURE.md` §19) came along with
-  that merge, so it now also protects `develop`, not only `main`.
-- Since then, three further feature/fix branches merged into `develop`:
-  - PR #30 (`claude/docs-sync-and-ci-decision`) synced `docs/TODO.md` and
-    `docs/REGULATORY_ASSESSMENT.md` and recorded the "keep the AHK
-    syntax-check trigger unscoped" decision (`docs/DECISIONS.md` D-042).
-  - PR #31 (`claude/https-only-telephony-sms`) made HTTPS mandatory for
-    `Telephony.BaseUrl` and every `SmsCallAction.Url`, rejected at startup
-    validation (`docs/DECISIONS.md` D-043). Bumped `develop` to
-    `AppVersion = 2.3-dev.2`.
-  - PR #32 (`claude/diagnostics-retention`) added the seven-day residency
-    ceiling for the standard log, problem-report directories, and orphaned
-    extended-log files, confirmed on a compiled Windows test build
-    (`docs/DECISIONS.md` D-044). Bumped `develop` to
-    `AppVersion = 2.3-dev.3`, its current version.
-- `develop` is therefore currently at `AppVersion = 2.3-dev.3`. Verify this
-  against `global AppVersion` in `DocBot.ahk` before relying on it, since
-  this section is a point-in-time snapshot and further branches may have
-  merged since.
+  and started the 2.3 development line at `AppVersion = 2.3-dev.1`. Since
+  then, PRs #30–#44 (`claude/docs-sync-and-ci-decision`,
+  `claude/https-only-telephony-sms`, `claude/diagnostics-retention`,
+  `claude/docs-review-d044-rewrite-wz9ogd`,
+  `claude/https-acceptance-evidence-confirmed`,
+  `claude/fix-todo-infra-reference`,
+  `claude/hotstring-user-instruction-hcv2jw`,
+  `claude/schema-migrations-setup-waiigd`,
+  `claude/hotstring-package-load-logging-w4cc5a`,
+  `claude/schema-migrations-windows-validated`,
+  `claude/sms-default-text-config-oigp28`,
+  `claude/sms-window-reopen-bug-mmx5ln`,
+  `claude/profielselectie-build-vorm-bdkt6j`,
+  `claude/docbot-epd-batch-questions-t1rf6j` and
+  `claude/sms-window-baseline-logging`) landed the rest of the 2.3 feature
+  set described in the README `### 2.3 — In ontwikkeling` changelog
+  section. `develop` is currently at `AppVersion = 2.3-dev.9` — verify this
+  against `global AppVersion` in `DocBot.ahk` before relying on it.
+- `release/2.3-rc` (branched from `develop` at `dev.9`) is currently at
+  `AppVersion = 2.3-rc.3` and carries further RC-only fixes not yet merged
+  back to `develop` (`docs/DECISIONS.md` D-057, D-058). No pull request into
+  `main` is open for it yet.
 - `feature/extended-logging` is no longer the branch to test or integrate;
   its work shipped as part of 2.2.
-- No P1 items remain open on `develop`; "Standardize the local engineering
-  workflow" was closed by documenting its checklist as the new "Lokale
-  werkwijze" subsection under "Branch-workflow" in `AGENTS.md`/`CLAUDE.md`.
-  What remains is the P2 backlog (notably hardening the 256-byte-only
-  `debug.log` format check that D-044 left as follow-up, introducing
-  targeted automated tests, and "Change user-data profile selection to
-  build mode" — downgraded from P1 to P2 on 2026-08-17 since it closes a
-  real but so-far unreported data-isolation gap rather than a
-  release-blocking one).
+- See `docs/TODO.md`, section "P0 — Release plan: finalize stable DocBot
+  2.3", for the current release-readiness status, remaining blockers, the
+  2.3-specific acceptance checklist, and the finalization steps — treat that
+  section as the up-to-date successor to the paragraph-form status this
+  section used to carry, and keep both in sync going forward.
 
 Do not infer functional validation from source integration alone for future
 cycles. Both the 2.2 feature work and the D-044 diagnostics-retention work
