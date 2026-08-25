@@ -77,20 +77,24 @@ Only an explicitly requested production hotfix starts from `main`.
 
 **Status:** Accepted
 
-Current scheme, after the DocBot 2.2 release (tag `v2.2` on `main`):
+Current scheme, after the DocBot 2.3 release (tag `v2.3` on `main`):
 
 ```text
-main                 2.2 (stable)
-develop              2.3-dev.N
-feature/fix          2.3-<short-branch-name>.N
-release candidate    2.3-rc
-stable release       2.3
+main                 2.3 (stable)
+develop              2.4-dev.N
+feature/fix          2.4-<short-branch-name>.N
+release candidate    2.4-rc
+stable release       2.4
 ```
 
-The same numeric scheme applied to the 2.2 cycle that just shipped:
-`main` carried `2.1` until the final `2.2` release; `develop` used
-`2.2-dev.N`; feature/fix branches used `2.2-<short-branch-name>.N`; the
-release candidate used `2.2-rc.N`.
+The same numeric scheme applied to the 2.3 cycle that just shipped: `main`
+carried `2.2` until the final `2.3` release; `develop` used `2.3-dev.N`;
+feature/fix branches used `2.3-<short-branch-name>.N`; the release candidate
+used `2.3-rc.N` (`release/2.3-rc`, merged into `main` via PR #51, tagged
+`v2.3` on commit `dbe4c52`). The release-only fixes were then merged back
+into `develop` via PR #52, which started the next development line at
+`2.4-dev.1` (direct commit on `develop`, mirroring how `2.3-dev.1` started
+after the 2.2 release).
 
 Every commit that changes `DocBot.ahk` must update `global AppVersion` in that same commit. A commit that does not change `DocBot.ahk` must not change AppVersion.
 
