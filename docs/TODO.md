@@ -620,6 +620,66 @@ Do not copy end-user changelog content into these docs verbatim; link concepts a
 
 ---
 
+## P1 — Run `--selftest` automatically when compiling, with results visible on the console
+
+Filed by the project owner (2026-08-25). Right now, confirming
+`tests/SelfTests.ahk` passes against a compiled build is a manual step: run
+`DocBot.exe --selftest` yourself, then go check
+`%TEMP%\docbot-selftest-results.txt` and/or the process exit code, because
+the console typically shows **no output at all** — `AutoHotkey64.exe`/
+`DocBot.exe` are GUI-subsystem executables, and whether `FileAppend(text,
+"*")` actually reaches a redirected stdout is unconfirmed in this codebase
+(`docs/DECISIONS.md` D-053, `tests/README.md`). This was reconfirmed during
+the 2.3 release: a compiled `--selftest` run produced empty console output,
+and only the results file made the outcome ("32 tests, 32 geslaagd, 0
+mislukt") actually visible.
+
+Goal: make `Build-EPD_Machine.bat` run the self-test itself, right after
+compiling `DocBot.exe` (`Build-EPD_Machine.bat` around the `Ahk2Exe`
+call/errorlevel check, before `:deploy` is called for any target — see
+`echo DocBot compileren naar DocBot.exe...`), and have the batch itself
+print the actual test results to the command prompt so a developer running
+the build sees them without a separate manual step.
+
+### Scope
+
+- [ ] After a successful compile, run `"%OUTPUT%" --selftest` (the
+  just-built `DocBot.exe`, not the interpreted script) and wait for it to
+  exit — reuse the same `WaitForExit`/force-kill-style caution already
+  applied in `.github/workflows/ahk-syntax-check.yml` for a GUI-subsystem
+  AutoHotkey process that could otherwise show a blocking dialog instead of
+  exiting cleanly (`docs/DECISIONS.md` D-040).
+- [ ] Regardless of whether anything appeared on stdout, explicitly read
+  back `%TEMP%\docbot-selftest-results.txt` and `type` (or `echo`) its
+  contents to the console — this file, not stdout, is the reliable source
+  per D-053/`tests/README.md`.
+- [ ] Use the process exit code (`0` = all tests passed, `1` = a failure or
+  unexpected error) as the authoritative pass/fail signal, matching how the
+  CI step already treats it. Decide and document explicitly what the batch
+  then does on a nonzero exit code — e.g. print a clear failure banner and
+  `goto :failed` before any `:deploy` call, so a broken build is never
+  rolled out to a target folder. Do not silently continue on failure.
+- [ ] Keep this self-test run local to the source build step; it must not
+  run against an already-deployed target copy of `DocBot.exe`, and must not
+  block or alter the existing interactive question-answering flow
+  (`docs/DECISIONS.md` D-052 and the pre-asked-questions change in the 2.3
+  changelog) — it runs after all questions are answered, alongside the
+  compile step itself.
+- [ ] Handle a missing/unreadable results file the same way the CI step
+  does: warn clearly instead of crashing the batch, and still rely on the
+  exit code for pass/fail.
+- [ ] Update `tests/README.md` and the `Build-EPD_Machine.bat` section of
+  `README.md` to document that a compile now also runs and displays the
+  self-test results, so this isn't a surprise the next time someone reads
+  either doc.
+
+This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
+bump applies unless the implementation also needs a `DocBot.ahk` change
+(it should not: `--selftest` already exists and works, this is only about
+invoking it automatically and surfacing its existing output).
+
+---
+
 ## P2 — Remove the optional `itemCount` package-manifest check
 
 Reported by the project owner (2026-08-25): the optional `itemCount` field
