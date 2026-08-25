@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.3-rc.1"
+global AppVersion := "2.3-attrib-fix.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -8423,7 +8423,7 @@ MarkUserStorageAlwaysAvailable(directory) {
 
     try {
         exitCode := RunWait(
-            A_ComSpec ' /d /c attrib -U +P "' directory '"',
+            '"' A_WinDir '\System32\attrib.exe" -U +P "' directory '"',
             ,
             "Hide"
         )
