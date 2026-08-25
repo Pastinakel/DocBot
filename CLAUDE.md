@@ -214,11 +214,11 @@ is gevalideerd (zie `docs/DECISIONS.md` D-037).
 Gebruik in de huidige ontwikkelcyclus deze versies:
 
 ```text
-main:              2.2
-develop:           2.3-dev.N
-features/fixes:    2.3-<korte-branchnaam>.N
-release candidate: 2.3-rc.N
-release:           2.3
+main:              2.3
+develop:           2.4-dev.N
+features/fixes:    2.4-<korte-branchnaam>.N
+release candidate: 2.4-rc.N
+release:           2.4
 ```
 
 Dezelfde structuur geldt voor latere releases: `main` bevat altijd de laatst
@@ -228,13 +228,13 @@ branchspecifieke prerelease-naam met een eigen lokale teller; een releasebranch
 gebruikt `-rc.N`; bij de stabiele release vervalt de prerelease-suffix.
 
 Maak een releasecandidate vanaf een actuele `develop` op een branch zoals
-`release/2.3-rc.1`. Voeg daar uitsluitend bugfixes, documentatie en
+`release/2.4-rc.1`. Voeg daar uitsluitend bugfixes, documentatie en
 releasevoorbereidingen aan toe. Nieuwe functionaliteit wacht op de volgende
 ontwikkelcyclus. Iedere commit op de releasebranch die `DocBot.ahk` wijzigt,
 verhoogt `rc.N` met één.
 
-Voorbeelden zijn `2.3-dev.7`, `2.3-ronde-kaarten.3`,
-`2.3-import.5` en `2.3-rc.1`. Houd branchspecifieke prerelease-namen
+Voorbeelden zijn `2.4-dev.7`, `2.4-ronde-kaarten.3`,
+`2.4-import.5` en `2.4-rc.1`. Houd branchspecifieke prerelease-namen
 geschikt voor SemVer: uitsluitend ASCII-letters, cijfers en koppeltekens.
 
 Iedere commit die `DocBot.ahk` wijzigt, moet in dezelfde commit ook
@@ -259,8 +259,8 @@ releasetag.
 ## Releases, versiegeschiedenis en tags
 
 De releasebranch wordt via een pull request naar `main` gemerged. Zet
-`AppVersion` pas voor de definitieve releasecommit van `2.3-rc.N` naar
-de stabiele versie `2.3`.
+`AppVersion` pas voor de definitieve releasecommit van `2.4-rc.N` naar
+de stabiele versie `2.4`.
 
 Bij een stabiele release moet in dezelfde commit-cyclus:
 
@@ -270,7 +270,7 @@ Bij een stabiele release moet in dezelfde commit-cyclus:
 2. Een annotated tag met `v`-prefix worden aangemaakt op de stabiele
    versiecommit, bijvoorbeeld:
    ```bash
-   git tag -a v2.2 -m "2.2"
+   git tag -a v2.3 -m "2.3"
    ```
 3. De tag worden gepusht:
    ```bash

@@ -2,15 +2,18 @@
 
 _Status: voorlopige repositoryanalyse, geen juridisch advies of formeel conformiteitsoordeel._
 
-_Beoordelingsdatum: 2026-08-14._
+_Beoordelingsdatum: 2026-08-25._
 
-_Onderzochte basis: `main`, tag `v2.2` (commit `a156dfe`), `AppVersion = 2.2`
+_Onderzochte basis: `main`, tag `v2.3` (commit `dbe4c52`), `AppVersion = 2.3`
 (stabiele release). Deze update volgt op de vorige beoordeling (commit
-`76fe6a0`, `2.2-rc.3`) en verwerkt de sindsdien in PR #23 doorgevoerde
-functionele wijziging aan het telefonie-bevestigingsvenster en de
-klembordstatus (zie §5.4 en §7). De overige wijzigingen sinds `2.2-rc.3`
-(o.a. een klikbare GitHub-link op het Over-scherm) zijn regulatoir niet
-relevant._
+`a156dfe`, `2.2`) en verwerkt de sindsdien voor 2.3 doorgevoerde
+functionele wijzigingen: de optionele SMS-standaardtekst-autofill (D-055,
+zie §5.4 en §7) en de in-product gebruikersinstructie voor veilige
+hotstring-inhoud (D-045, zie §5.3, §11 en §12). De HTTPS-afdwinging voor
+telefonie/SMS (D-043) en de overige 2.3-wijzigingen (profielselectie op
+buildvorm, pakket-share-dir, diagnostiek-/rapportretentie,
+zelftests) zijn technisch/organisatorisch van aard en regulatoir niet
+opnieuw beoordelingsplichtig bovenop wat al in §6, §11 en §12 stond._
 
 ## 1. Doel en status
 
@@ -179,7 +182,9 @@ gezondheidsgegevens. Zodra de gebruiker zo'n tekst in een patiëntdossier
 plaatst, wordt de resulterende dossierinhoud wel onderdeel van de
 patiëntgebonden zorgdocumentatie. Patiëntidentificerende of patiëntspecifieke
 inhoud hoort niet in `hotstrings.json`; een technische inhoudscontrole
-ontbreekt en een gebruikersinstructie staat nog als vervolgactie open.
+ontbreekt nog steeds, maar sinds `docs/DECISIONS.md` D-045 bevat DocBot zelf
+een in-product gebruikersinstructie hierover (een Help-sectie en een
+altijd zichtbare hint op Tekstvervanging, zie §12 hieronder).
 
 ### 5.4 Telefonie en SMS
 
@@ -321,6 +326,7 @@ nummerinvulling aan DocBot toegerekend.
 | Datum en tijd vervangen | Tekstgeneratie | Nee |
 | Telefonieserverevents verwerken | Operationele status en meldingen | Nee |
 | Edge-tab activeren en SMS-veld vullen | Communicatieondersteuning | Nee |
+| Optioneel, door de gebruiker zelf ingestelde SMS-standaardtekst best-effort invullen in een tweede berichtveld (D-055) | Vult, naast het telefoonnummer, ook een vooraf door de medewerker zelf opgestelde tekst in; geen eigen tekst- of inhoudsgeneratie door DocBot, en verzendt niets | Nee — DocBot stelt de tekst niet zelf op en verstuurt niets; de medewerker blijft de auteur en verzender |
 | Afsluiten, herladen of updatepad starten | Applicatiebeheer | Nee |
 | Nog niet bevestigd bel-/sms-keuzevenster sluiten en vervangen bij een nieuw klembordnummer | Voorkomt dat een verouderd venster later per ongeluk voor het verkeerde nummer wordt bevestigd; er staat nooit meer dan één venster tegelijk open | Nee |
 | Klembordnummer direct uit de centrale status wissen na overdracht, afronding of annulering | Begrenst hoe lang een herkend nummer intern zichtbaar blijft | Nee |
@@ -563,9 +569,12 @@ conformiteit met een norm of de MDR.
     installatie-ID fungeert al als het minder identificerende alternatief in
     de payload; er is dus geen nieuw pseudonimiseringsmechanisme nodig, enkel
     een besluit over het moment van verwijderen van de gebruikersnaam.
-13. De gebruikersinstructie die patiëntidentificerende en patiëntspecifieke
+13. ~~De gebruikersinstructie die patiëntidentificerende en patiëntspecifieke
     inhoud in persoonlijke hotstrings uitsluit, moet nog worden opgesteld en
-    beheerd.
+    beheerd.~~ **Opgelost in 2.3** (`docs/DECISIONS.md` D-045): een vijfde
+    Help-sectie en een altijd zichtbare hint op Tekstvervanging, met
+    eigenaarschap bij de projecteigenaar. Blijft hier staan als historisch
+    hiaat dat is gedicht, niet als openstaand punt.
 
 ## 12. Aanbevolen vervolgacties
 
@@ -590,8 +599,9 @@ conformiteit met een norm of de MDR.
    worden gewist (nu alleen de eerste 256 bytes) zodat een toekomstig,
    nog onbekend logformaat niet ongemerkt langs de zeven-dagenopschoning van
    D-044 kan glippen (`docs/TODO.md` P2).
-9. Stel de gebruikersinstructie voor veilige, niet-patiëntspecifieke
-   hotstringinhoud op en wijs een eigenaar voor klinische pakketinhoud aan.
+9. ~~Stel de gebruikersinstructie voor veilige, niet-patiëntspecifieke
+   hotstringinhoud op~~ — **opgelost in 2.3** (D-045). Nog open: wijs een
+   eigenaar voor klinische pakketinhoud aan.
 10. Definieer het einde van de telemetrie-opstartfase en herbeoordeel dan de
    noodzaak van de Windows-gebruikersnaam, met het oog op verwijdering uit de
    payload — het installatie-ID is al aanwezig als minder identificerend
