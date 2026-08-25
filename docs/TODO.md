@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-19. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-25. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -469,6 +469,37 @@ After significant architectural or release changes:
 - [ ] continue to treat `AGENTS.md`/`CLAUDE.md` as the authoritative operational rules agents must read before writes.
 
 Do not copy end-user changelog content into these docs verbatim; link concepts and rationale instead.
+
+---
+
+## P2 — Remove the optional `itemCount` package-manifest check
+
+Reported by the project owner (2026-08-25): the optional `itemCount` field
+on a bundled package (checked in `LoadBundledPackageFile()`, `DocBot.ahk`
+around line 6886) throws a loading error whenever it does not exactly match
+`package["items"].Length`:
+
+```
+Pakket {id} vermeldt {itemCount} items, maar bevat er {items.Length}.
+```
+
+`items.Length` is already the authoritative count; `itemCount` is a
+separately maintained manifest field that must be kept in sync by hand
+whenever a package's item list changes on the network share. It adds no
+value over just counting `items` and only creates a way for an otherwise
+valid package to fail to load.
+
+- [ ] Remove the `itemCount` consistency check (and, if nothing else reads
+  the field, the `itemCount` field handling) from `LoadBundledPackageFile()`.
+- [ ] Check whether `itemCount` is written/read anywhere else (package
+  authoring tooling, other loaders, `docs/MIGRATIONS.md`) and remove those
+  references too so nothing still expects it to be kept in sync.
+- [ ] Update `docs/ARCHITECTURE.md`/`docs/MIGRATIONS.md` if they document
+  `itemCount` as a required/validated package field.
+
+This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
+branch from the then-current `develop` and update the branch-specific
+`AppVersion` in every commit that changes `DocBot.ahk`.
 
 ---
 
