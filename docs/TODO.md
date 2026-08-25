@@ -10,31 +10,30 @@ _Last updated: 2026-08-25. This file is a handover backlog, not a promise that e
 
 ---
 
-## P0 — Release plan: finalize stable DocBot 2.3
+## P0 — Release plan: finalize stable DocBot 2.3 (completed — DocBot 2.3 released)
 
-### Current status (checked 2026-08-25)
+DocBot 2.3 shipped: `main` is tagged `v2.3` (merge commit `dbe4c52`, PR #51).
+This section is kept as a record of the release-finalization plan and what
+it covered; all items below were completed.
 
-- `develop` is at `AppVersion = 2.3-dev.9` and has not advanced since
-  `release/2.3-rc` was cut from it; every commit on `develop` is also on
-  `release/2.3-rc`, but not the reverse.
-- `release/2.3-rc` (origin, no open PR yet against `main`) is at
-  `AppVersion = 2.3-rc.3` and carries RC-only fixes not yet merged back to
-  `develop`: the CRLF line-ending fix for `Build-EPD_Machine.bat`
-  (`docs/DECISIONS.md` D-057), removal of the best-effort `attrib`-based
-  user-data-folder pin (D-058), `Build-EPD_Machine.bat` asking all its
-  interactive questions up front, and accompanying `packages/anest.json`
-  updates.
-- The README `### 2.3 — In ontwikkeling` changelog section on
-  `release/2.3-rc` already lists the full feature/fix set for this release
-  (profile selection by build form, HTTPS-only telephony/SMS, SMS default
-  text, package share-dir change, diagnostics/report-artifact retention,
-  the hotstring-content Help instruction, `tests/SelfTests.ahk` plus
-  `DocBot.ahk --selftest`, and the two RC-only fixes above). Treat that
+### Final status
+
+- `main` is stable **DocBot 2.3**, merged from `release/2.3-rc` via PR #51
+  (merge commit `dbe4c52`) and tagged `v2.3` on that commit.
+- `release/2.3-rc` and `release/2.3-finalize` have been deleted after
+  merging; their content lives on in `main`/`develop` history and tag
+  `v2.3`.
+- The release-only fixes (CRLF line-ending enforcement D-057, removal of
+  the `attrib`-based folder pin D-058, and the pre-asked build questions)
+  were brought back into `develop` via PR #52
+  (`chore/bring-back-2.3-to-develop`, mirroring PR #28 for 2.2).
+- `develop` started the next development line at `AppVersion = 2.4-dev.1`
+  (direct commit on `develop`, mirroring commit `35d3937` after the 2.2
+  release).
+- The full feature/fix set for 2.3 is recorded in the README
+  `### 2.3 — Huidige stabiele release` changelog section — treat that
   section, not this file, as the authoritative feature list for the
   release notes.
-- No stable-release work (`AppVersion 2.3`, README finalization, tag) has
-  happened yet. This section is the plan for getting there; it does not by
-  itself perform any of the steps.
 
 ### Remaining blockers before merging `release/2.3-rc` into `main`
 
@@ -123,38 +122,38 @@ end.
 
 ### Finalizing the stable release (per the branch/version rules in `CLAUDE.md`/`AGENTS.md`)
 
-- [ ] On `release/2.3-rc`, set `global AppVersion` from the final
-  `2.3-rc.N` to stable `2.3` in the definitive release commit (this changes
-  `DocBot.ahk`, so the AppVersion rule applies; branch type = release
-  branch).
-- [ ] Update README status wording from release-candidate/"in ontwikkeling"
-  to stable 2.3 wording.
-- [ ] Finalize `### 2.3` in the README Changelog (drop "— In ontwikkeling");
-  it remains the only maintained version-history source — do not hand-edit
-  `BuildAboutText()`.
-- [ ] Verify the README `Telemetrie` section still exactly matches the
-  shipped payload and interval (no payload change is currently planned for
-  2.3 — confirm nothing slipped in unreviewed).
-- [ ] Verify license/documentation references (PolyForm Noncommercial plus
-  the ThirdParty MIT notices) are still accurate.
-- [ ] Open a pull request from `release/2.3-rc` into `main`; merge with
-  **Create a merge commit**, and only after the project owner has explicitly
-  reviewed and approved the RC.
-- [ ] After merging, create the annotated tag `v2.3` on the stable release
-  commit — this needs its own explicit go-ahead from the project owner
-  first, separate from approval of the merge itself (per `CLAUDE.md`,
-  §"Verantwoording bij versie- en tagwijzigingen"); do not treat tagging as
-  implied by release approval.
-- [ ] Push the tag to `origin` and confirm it is visible there before
-  treating it as done.
-- [ ] Bring the release-only fixes back into `develop` via their own pull
-  request/merge commit (mirrors PR #28 for 2.2).
-- [ ] Start the next development version on `develop`
-  (`AppVersion = 2.4-dev.1`) once the merge-back above lands.
-- [ ] Delete the temporary release branch(es) after merging, once their
-  content lives on in `main`/`develop` history and tag `v2.3`.
-- [ ] Update `docs/PROJECT_CONTEXT.md` §3 (branch/release status) and mark
-  the corresponding items resolved in this file, in the same change.
+- [x] On `release/2.3-rc`, set `global AppVersion` from the final
+  `2.3-rc.3` to stable `2.3` in the definitive release commit
+  (`release/2.3-finalize`, merged into `release/2.3-rc` via PR #50).
+- [x] Update README status wording from release-candidate/"in ontwikkeling"
+  to stable 2.3 wording (same PR #50).
+- [x] Finalize `### 2.3` in the README Changelog (dropped
+  "— In ontwikkeling", now "— Huidige stabiele release"; same PR #50).
+- [x] Verified the README `Telemetrie` section still exactly matches the
+  shipped payload and interval — no payload change shipped in 2.3.
+- [x] Verified license/documentation references (PolyForm Noncommercial plus
+  the ThirdParty MIT notices) — still accurate, unchanged.
+- [x] Opened a pull request from `release/2.3-rc` into `main` (PR #51);
+  merged with **Create a merge commit** (`dbe4c52`) after project-owner
+  review and approval.
+- [x] Created the annotated tag `v2.3` on the stable release commit
+  (`dbe4c52`), after separate explicit go-ahead from the project owner.
+- [x] Pushed the tag to `origin` and confirmed it is visible there.
+- [x] Brought the release-only fixes back into `develop` via PR #52
+  (`chore/bring-back-2.3-to-develop`, merge commit, mirrors PR #28 for 2.2).
+- [x] Started the next development version on `develop`
+  (`AppVersion = 2.4-dev.1`, direct commit, mirroring commit `35d3937`)
+  once the merge-back above landed.
+- [x] Deleted the temporary release branches (`release/2.3-rc`,
+  `release/2.3-finalize`) after merging; their content lives on in
+  `main`/`develop` history and tag `v2.3`.
+- [x] Updated `docs/PROJECT_CONTEXT.md` §3 (branch/release status) and
+  `AGENTS.md`/`CLAUDE.md`/`docs/DECISIONS.md` D-005 version-scheme examples
+  to the 2.4 cycle, and `docs/ARCHITECTURE.md`/`docs/DATA_PROTECTION.md`
+  version anchors to `v2.3`, in a docs-only sync PR to `main`
+  (`docs/sync-main-after-2.3`, mirroring PR #29 for 2.2). Also updated
+  `docs/REGULATORY_ASSESSMENT.md` (new SMS-default-text autonomous action,
+  D-055; resolved hotstring-instruction items, D-045) in the same PR.
 
 ---
 
@@ -618,6 +617,66 @@ After significant architectural or release changes:
 - [ ] continue to treat `AGENTS.md`/`CLAUDE.md` as the authoritative operational rules agents must read before writes.
 
 Do not copy end-user changelog content into these docs verbatim; link concepts and rationale instead.
+
+---
+
+## P1 — Run `--selftest` automatically when compiling, with results visible on the console
+
+Filed by the project owner (2026-08-25). Right now, confirming
+`tests/SelfTests.ahk` passes against a compiled build is a manual step: run
+`DocBot.exe --selftest` yourself, then go check
+`%TEMP%\docbot-selftest-results.txt` and/or the process exit code, because
+the console typically shows **no output at all** — `AutoHotkey64.exe`/
+`DocBot.exe` are GUI-subsystem executables, and whether `FileAppend(text,
+"*")` actually reaches a redirected stdout is unconfirmed in this codebase
+(`docs/DECISIONS.md` D-053, `tests/README.md`). This was reconfirmed during
+the 2.3 release: a compiled `--selftest` run produced empty console output,
+and only the results file made the outcome ("32 tests, 32 geslaagd, 0
+mislukt") actually visible.
+
+Goal: make `Build-EPD_Machine.bat` run the self-test itself, right after
+compiling `DocBot.exe` (`Build-EPD_Machine.bat` around the `Ahk2Exe`
+call/errorlevel check, before `:deploy` is called for any target — see
+`echo DocBot compileren naar DocBot.exe...`), and have the batch itself
+print the actual test results to the command prompt so a developer running
+the build sees them without a separate manual step.
+
+### Scope
+
+- [ ] After a successful compile, run `"%OUTPUT%" --selftest` (the
+  just-built `DocBot.exe`, not the interpreted script) and wait for it to
+  exit — reuse the same `WaitForExit`/force-kill-style caution already
+  applied in `.github/workflows/ahk-syntax-check.yml` for a GUI-subsystem
+  AutoHotkey process that could otherwise show a blocking dialog instead of
+  exiting cleanly (`docs/DECISIONS.md` D-040).
+- [ ] Regardless of whether anything appeared on stdout, explicitly read
+  back `%TEMP%\docbot-selftest-results.txt` and `type` (or `echo`) its
+  contents to the console — this file, not stdout, is the reliable source
+  per D-053/`tests/README.md`.
+- [ ] Use the process exit code (`0` = all tests passed, `1` = a failure or
+  unexpected error) as the authoritative pass/fail signal, matching how the
+  CI step already treats it. Decide and document explicitly what the batch
+  then does on a nonzero exit code — e.g. print a clear failure banner and
+  `goto :failed` before any `:deploy` call, so a broken build is never
+  rolled out to a target folder. Do not silently continue on failure.
+- [ ] Keep this self-test run local to the source build step; it must not
+  run against an already-deployed target copy of `DocBot.exe`, and must not
+  block or alter the existing interactive question-answering flow
+  (`docs/DECISIONS.md` D-052 and the pre-asked-questions change in the 2.3
+  changelog) — it runs after all questions are answered, alongside the
+  compile step itself.
+- [ ] Handle a missing/unreadable results file the same way the CI step
+  does: warn clearly instead of crashing the batch, and still rely on the
+  exit code for pass/fail.
+- [ ] Update `tests/README.md` and the `Build-EPD_Machine.bat` section of
+  `README.md` to document that a compile now also runs and displays the
+  self-test results, so this isn't a surprise the next time someone reads
+  either doc.
+
+This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
+bump applies unless the implementation also needs a `DocBot.ahk` change
+(it should not: `--selftest` already exists and works, this is only about
+invoking it automatically and surfacing its existing output).
 
 ---
 
