@@ -145,7 +145,7 @@ if exist "%SELFTEST_LOG%" (
 if not "%SELFTEST_RESULT%"=="0" (
     echo.
     echo FOUT: Zelftest tegen de gecompileerde DocBot.exe is mislukt ^(exit %SELFTEST_RESULT%^).
-    echo Er is niets uitgerold naar de doelmap(pen).
+    echo Er is niets uitgerold naar de doelmap of doelmappen.
     goto :failed
 )
 

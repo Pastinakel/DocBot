@@ -668,9 +668,23 @@ the build sees them without a separate manual step.
   invocation is not subject to the script-file execution-policy check at
   all), with inputs passed via `INVOKE_WITH_TIMEOUT_*` environment
   variables instead of a `param()` block, since stdin-delivered content
-  isn't bound to one. Recorded in `docs/DECISIONS.md` D-060. **Still
-  needs a repeat Windows compile run to confirm the stdin-based invocation
-  actually works end to end** (pass, fail, and timeout/kill cases).
+  isn't bound to one. Recorded in `docs/DECISIONS.md` D-060.
+  **A second Windows run (2026-08-26) confirmed the stdin fix itself
+  worked** (the zelftest ran and printed "32 test(s), 32 geslaagd, 0
+  mislukt" correctly), but then hit a second, unrelated bug: `cmd.exe`
+  reported `"was unexpected at this time."` right after. Cause: the
+  literal, unescaped `(pen)` in `echo Er is niets uitgerold naar de
+  doelmap(pen).` inside the `if not "%SELFTEST_RESULT%"=="0" ( ... )`
+  block — `cmd.exe` parses an entire `if (...)` block for balanced
+  parentheses before deciding whether to run it, including parentheses
+  inside plain `echo` text, so an unescaped `(`/`)` there breaks parsing
+  regardless of whether the branch actually executes. Fixed by rewording
+  to "Er is niets uitgerold naar de doelmap of doelmappen." (no
+  parentheses) rather than escaping them, since the other message in the
+  same block already needed `^(`/`^)` escaping for a literal exit-code
+  parenthetical. **Still needs a repeat Windows compile run to confirm
+  the full flow now works end to end**, including a deliberate test
+  failure and a timeout/kill case.
 - [x] Regardless of whether anything appeared on stdout, explicitly read
   back `%TEMP%\docbot-selftest-results.txt` and `type` (or `echo`) its
   contents to the console — this file, not stdout, is the reliable source
