@@ -65,8 +65,9 @@ te configureren.
 
 `Build-EPD_Machine.bat` stelt eerst al zijn interactieve vragen — inclusief
 die over de `packages`-submap hieronder — en doorloopt daarna zonder verdere
-onderbrekingen het compileren en uitrollen. Enter zonder tekst registreert
-telkens Ja; alleen een expliciete "N" telt als Nee. De batch compileert in de
+onderbrekingen het compileren en uitrollen. Bij elke vraag registreren `J`
+of `j` direct Ja en `N` of `n` direct Nee, zonder dat Enter nodig is; Enter
+zonder voorafgaande letter geldt als Ja. De batch compileert in de
 bronmap eerst `DocBot.exe`. Direct daarna draait de batch automatisch
 `DocBot.exe --selftest` tegen die zojuist gecompileerde executable en toont
 de inhoud van `%TEMP%\docbot-selftest-results.txt` in de console — dit is de

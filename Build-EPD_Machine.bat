@@ -170,14 +170,16 @@ echo.
 pause
 exit /b 0
 
-rem Stelt een J/n-vraag waarbij een lege invoer (Enter) als Ja geldt.
+rem Stelt een J/n-vraag. J of j registreert direct als Ja, N of n direct
+rem als Nee (geen Enter nodig); Enter zonder voorafgaande letter geldt als
+rem Ja. Gebruikt tools\Read-YesNoAnswer.ps1 (Get-Content/Invoke-Expression
+rem i.p.v. -File of een stdin-pipe; zie docs/DECISIONS.md D-060/D-061).
 rem %1 = prompttekst, %2 = naam van de variabele die J of N krijgt.
 :ask
 setlocal EnableExtensions
-set "ASK_ANSWER="
-set /p "ASK_ANSWER=%~1"
-if not defined ASK_ANSWER set "ASK_ANSWER=J"
-if /I "%ASK_ANSWER:~0,1%"=="N" (set "ASK_RESULT=N") else set "ASK_RESULT=J"
+set "ASK_PROMPT=%~1"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content -Raw '%~dp0tools\Read-YesNoAnswer.ps1' | Invoke-Expression"
+if errorlevel 1 (set "ASK_RESULT=N") else set "ASK_RESULT=J"
 endlocal & set "%~2=%ASK_RESULT%"
 exit /b 0
 

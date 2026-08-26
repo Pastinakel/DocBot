@@ -2196,3 +2196,59 @@ single small internal helper script is disproportionate.
   stdin-delivered commands (e.g. WDAC/AppLocker Constrained Language
   Mode, which behaves differently from a plain execution policy), this
   will need to be revisited — most likely via an actually signed script.
+
+---
+
+## D-061 — Deliver `Build-EPD_Machine.bat`'s single-keypress prompt via `Get-Content`/`Invoke-Expression`, not stdin
+
+**Status:** Accepted
+
+**Reason**
+
+The project owner asked for `Build-EPD_Machine.bat`'s J/n prompts to accept
+a single keypress without requiring Enter (`J`/`j`/`N`/`n` register
+immediately; a bare Enter with no prior letter defaults to `J`), replacing
+the previous `set /p`-based prompt (line-buffered, Enter always required).
+Reading a single keypress without Enter needs `[Console]::ReadKey()`
+(there is no `cmd.exe`-native equivalent that also supports "bare Enter =
+default" without an artificial timeout — the built-in `CHOICE` command
+requires one of its listed characters and has no concept of "Enter alone
+selects the default" outside of a timed `/T`/`/D` wait).
+
+`[Console]::ReadKey()` throws
+(`Cannot read keys when ... console input has been redirected`) whenever
+the calling process's standard input has been redirected — which is
+exactly what `tools/Invoke-WithTimeout.ps1`'s stdin-pipe delivery
+(`type file.ps1 | powershell -Command -`, see D-060) does to work around
+the AllSigned Group Policy restriction. Delivering
+`tools/Read-YesNoAnswer.ps1` the same way would make its own `ReadKey()`
+call fail immediately.
+
+**Current design**
+
+- `tools/Read-YesNoAnswer.ps1` is invoked from `Build-EPD_Machine.bat`'s
+  `:ask` subroutine via
+  `powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content -Raw '...\Read-YesNoAnswer.ps1' | Invoke-Expression"`
+  — the script's content is read as a normal file (via `Get-Content`, not
+  through the process's own stdin) and evaluated with `Invoke-Expression`.
+  Nothing is piped into `powershell.exe`'s own standard input this way, so
+  `Console.IsInputRedirected` stays `false` and `[Console]::ReadKey()`
+  keeps working against the real console.
+- Like `-Command`/stdin delivery (D-060), evaluating a string via
+  `Invoke-Expression` is not "loading a script file" from the execution
+  policy engine's perspective, so this still bypasses the same
+  Group Policy-enforced `AllSigned` restriction without requiring a
+  signed script.
+- The prompt text is passed via the `ASK_PROMPT` environment variable
+  (same interop style as `tools/Invoke-WithTimeout.ps1`'s
+  `INVOKE_WITH_TIMEOUT_*` variables), and the answer is communicated back
+  via exit code (`0` = J/Enter, `1` = N) rather than parsed from stdout.
+- `tools/Invoke-WithTimeout.ps1` keeps its existing stdin-pipe delivery
+  (D-060) unchanged — it never reads console input, so the redirection is
+  harmless there, and there was no reason to churn a path already
+  confirmed working on the project owner's managed workstation.
+- Not yet functionally validated on Windows (`docs/DECISIONS.md` D-037)
+  — needs a real run to confirm `[Console]::ReadKey()` behaves as expected
+  under `Get-Content`/`Invoke-Expression` delivery specifically, including
+  that the resolved letter is echoed legibly and that unrelated keys are
+  correctly ignored without corrupting the prompt line.
