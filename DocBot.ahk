@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-standaardlog-format.1"
+global AppVersion := "2.4-standaardlog-format.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2935,7 +2935,11 @@ PruneExpiredDebugLogEntries() {
 ; de eerste 256 bytes van het bestand en ziet een niet-conform formaat
 ; verderop in het bestand dus niet.
 ClassifyDebugLogChunk(chunk, cutoffStamp) {
-    if Trim(chunk) = ""
+    ; Trim() negeert standaard alleen spatie/tab, geen CR/LF: een chunk die
+    ; uitsluitend uit regeleinden bestaat (de lege staart ná de laatste
+    ; scheidingsregel) moet hier expliciet worden meegenomen, anders valt
+    ; die ten onrechte door naar "onherkend-verlopen".
+    if Trim(chunk, " `t`r`n") = ""
         return "leeg"  ; lege staart na de laatste scheidingsregel
 
     if RegExMatch(chunk, "^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})", &m) {
