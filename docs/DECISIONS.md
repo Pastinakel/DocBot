@@ -2247,8 +2247,7 @@ call fail immediately.
   (D-060) unchanged — it never reads console input, so the redirection is
   harmless there, and there was no reason to churn a path already
   confirmed working on the project owner's managed workstation.
-- Not yet functionally validated on Windows (`docs/DECISIONS.md` D-037)
-  — needs a real run to confirm `[Console]::ReadKey()` behaves as expected
-  under `Get-Content`/`Invoke-Expression` delivery specifically, including
-  that the resolved letter is echoed legibly and that unrelated keys are
-  correctly ignored without corrupting the prompt line.
+- Confirmed on a real managed Windows workstation by the project owner
+  (2026-08-26): `[Console]::ReadKey()` behaves as expected under
+  `Get-Content`/`Invoke-Expression` delivery — `J`/`j`/`N`/`n` register
+  immediately and a bare Enter defaults to `J`.
