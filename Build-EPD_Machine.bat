@@ -81,7 +81,7 @@ if exist "%PARENT_DIR%\packages\" (
 )
 
 set "OVERWRITE_EPD_PACKAGES=J"
-if defined DO_EPD_COPY if exist "%ROOT_DIR%\EPD_Machine\packages\" (
+if /I "%DO_EPD_COPY%"=="J" if exist "%ROOT_DIR%\EPD_Machine\packages\" (
     echo.
     echo Er staat al een pakketmap in de doellocatie:
     echo "%ROOT_DIR%\EPD_Machine\packages"
@@ -107,10 +107,55 @@ echo Build gereed:
 echo "%OUTPUT%"
 echo.
 
+echo Zelftest uitvoeren tegen de zojuist gecompileerde DocBot.exe...
+set "SELFTEST_LOG=%TEMP%\docbot-selftest-results.txt"
+if exist "%SELFTEST_LOG%" del /f /q "%SELFTEST_LOG%" >nul 2>&1
+
+rem Een AutoHotkey v2 GUI-subsysteem-executable kan op een blokkerend
+rem dialoogvenster vastlopen in plaats van netjes af te sluiten, en
+rem cmd.exe wacht sowieso niet vanzelf op een GUI-subsysteemproces zoals
+rem het wel op een console-executable zou doen. Daarom draait de zelftest
+rem via tools\Invoke-WithTimeout.ps1, dat dezelfde WaitForExit/force-kill-
+rem aanpak gebruikt als de CI-workflow (docs/DECISIONS.md D-040).
+rem De inhoud wordt via stdin naar "powershell -Command -" gepiped in
+rem plaats van met "-File" te worden uitgevoerd: op een beheerde werkplek
+rem met een via Group Policy afgedwongen AllSigned-beleid weigert Windows
+rem een los, ongetekend .ps1-bestand en negeert het daarbij ook
+rem "-ExecutionPolicy Bypass", omdat een Group Policy-ingesteld beleid
+rem altijd voorrang heeft op dat opstartargument. Dat beleid geldt alleen
+rem voor het laden van scriptbestanden, niet voor commando's die via
+rem stdin binnenkomen (zie docs/DECISIONS.md D-060).
+set "INVOKE_WITH_TIMEOUT_FILEPATH=%OUTPUT%"
+set "INVOKE_WITH_TIMEOUT_ARGS=--selftest"
+set "INVOKE_WITH_TIMEOUT_MS=60000"
+type "%~dp0tools\Invoke-WithTimeout.ps1" | powershell -NoProfile -ExecutionPolicy Bypass -Command -
+set "SELFTEST_RESULT=%errorlevel%"
+set "INVOKE_WITH_TIMEOUT_FILEPATH="
+set "INVOKE_WITH_TIMEOUT_ARGS="
+set "INVOKE_WITH_TIMEOUT_MS="
+
+rem Het resultatenbestand is de betrouwbare uitvoer, niet de console
+rem (zie docs/DECISIONS.md D-053); toon het ongeacht het gemeten resultaat.
+if exist "%SELFTEST_LOG%" (
+    type "%SELFTEST_LOG%"
+) else (
+    echo Waarschuwing: "%SELFTEST_LOG%" niet gevonden; zie tests/README.md.
+)
+
+if not "%SELFTEST_RESULT%"=="0" (
+    echo.
+    echo FOUT: Zelftest tegen de gecompileerde DocBot.exe is mislukt ^(exit %SELFTEST_RESULT%^).
+    echo Er is niets uitgerold naar de doelmap of doelmappen.
+    goto :failed
+)
+
+echo Zelftest geslaagd.
+echo.
+
 call :deploy "%TARGET%" "%APP_NAME%" "%OVERWRITE_MAIN_PACKAGES%"
 if errorlevel 1 goto :failed
 
-if defined DO_EPD_COPY (
+if /I "%DO_EPD_COPY%"=="J" (
     rem ROOT_DIR is al buiten dit haakjesblok gezet. Gebruik het pad
     rem rechtstreeks: een variabele die binnen hetzelfde blok wordt gezet,
     rem wordt met %%...%% mogelijk te vroeg geexpandeerd.
@@ -125,14 +170,16 @@ echo.
 pause
 exit /b 0
 
-rem Stelt een J/n-vraag waarbij een lege invoer (Enter) als Ja geldt.
+rem Stelt een J/n-vraag. J of j registreert direct als Ja, N of n direct
+rem als Nee (geen Enter nodig); Enter zonder voorafgaande letter geldt als
+rem Ja. Gebruikt tools\Read-YesNoAnswer.ps1 (Get-Content/Invoke-Expression
+rem i.p.v. -File of een stdin-pipe; zie docs/DECISIONS.md D-060/D-061).
 rem %1 = prompttekst, %2 = naam van de variabele die J of N krijgt.
 :ask
 setlocal EnableExtensions
-set "ASK_ANSWER="
-set /p "ASK_ANSWER=%~1"
-if not defined ASK_ANSWER set "ASK_ANSWER=J"
-if /I "%ASK_ANSWER:~0,1%"=="N" (set "ASK_RESULT=N") else set "ASK_RESULT=J"
+set "ASK_PROMPT=%~1"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content -Raw '%~dp0tools\Read-YesNoAnswer.ps1' | Invoke-Expression"
+if errorlevel 1 (set "ASK_RESULT=N") else set "ASK_RESULT=J"
 endlocal & set "%~2=%ASK_RESULT%"
 exit /b 0
 

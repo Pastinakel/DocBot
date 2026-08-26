@@ -2107,3 +2107,148 @@ concrete OneDrive-eviction incident is currently open to justify that risk.
 - If a real OneDrive-eviction incident reoccurs, revisit via the in-process
   `SetFileAttributesW` approach above rather than reintroducing a process
   launch.
+
+---
+
+## D-059 — Telephony server authentication boundary is network segmentation only
+
+**Status:** Accepted
+
+Follow-up to D-043's open "Application and documentation" escalation item in
+`docs/TODO.md` ("P1 — Make HTTPS mandatory for telephony and SMS URLs"):
+DocBot's telephony requests (`IPT_register()`, `IPT_callNumber()`, the event
+poller) send no application-level credential — no API key, bearer token, or
+client certificate, only an `Accept-Language` header — so the only
+"authentication" visible from the code was network reachability, and the
+project owner needed to confirm with whoever owns/administers the internal
+telephony server whether that was actually the intended design or a gap.
+
+The project owner confirmed (2026-08-26):
+
+- No additional credential is required or expected; the server does not
+  check for an API key, token, or client certificate/mTLS.
+- There is no reverse proxy in front of the endpoint enforcing anything
+  beyond TLS.
+- Network segmentation (hospital LAN/VPN reachability) is the intended
+  authentication boundary for this endpoint.
+
+**Current design**
+
+- No `DocBot.ahk` change: this confirms the existing behavior (HTTPS
+  transport per D-043, no additional credential) already matches the
+  server-side contract, so no credential-sending code is added.
+- Closes the "Application and documentation" server-authentication
+  escalation item in `docs/TODO.md` P1 "Make HTTPS mandatory for telephony
+  and SMS URLs" — that TODO entry is now fully resolved.
+- If the telephony server's authentication model changes in the future
+  (e.g. a credential requirement is introduced), revisit this decision
+  rather than adding undocumented credential-sending code.
+
+---
+
+## D-060 — Deliver `Build-EPD_Machine.bat`'s PowerShell helper via stdin, not `-File`
+
+**Status:** Accepted
+
+**Reason**
+
+The project owner ran the new post-compile `--selftest` step (see
+`docs/TODO.md` P1 "Run `--selftest` automatically when compiling") on a
+real managed Windows workstation. `Build-EPD_Machine.bat` invoked
+`tools/Invoke-WithTimeout.ps1` via `powershell -ExecutionPolicy Bypass
+-File tools\Invoke-WithTimeout.ps1 ...`, but PowerShell refused to load the
+file ("... is not digitally signed. You cannot run this script on the
+current system."), and the batch window closed immediately afterward.
+
+This is PowerShell's `AllSigned`/`Restricted` execution-policy check,
+enforced via Group Policy on this managed workstation. A Group
+Policy-configured execution policy always takes precedence over the
+`-ExecutionPolicy` startup argument in every scope, so
+`-ExecutionPolicy Bypass` on the command line has no effect here — the
+same kind of managed-workstation restriction already seen in D-058
+(application whitelisting blocking `attrib.exe`).
+
+Signing the script with a code-signing certificate was not pursued: this
+project has no code-signing infrastructure, and introducing one for a
+single small internal helper script is disproportionate.
+
+**Current design**
+
+- The execution-policy check only gates *loading a script file* (a `.ps1`
+  invoked via `-File`, `&`, or dot-sourcing) — it does not gate command
+  text supplied via `-Command`/stdin, which PowerShell treats as an
+  interactive-style command rather than a script file. This is a
+  documented characteristic of execution policies (they are a safety
+  feature, not a security boundary), not an exploited bug.
+- `Build-EPD_Machine.bat` now pipes `tools/Invoke-WithTimeout.ps1`'s
+  content into `powershell -NoProfile -ExecutionPolicy Bypass -Command -`
+  via `type`, instead of invoking it with `-File`.
+- Because content delivered this way is not bound to a `param()` block,
+  `Invoke-WithTimeout.ps1` reads its inputs (`FilePath`, `ArgumentList`,
+  `TimeoutMs`) from environment variables (`INVOKE_WITH_TIMEOUT_*`) that
+  the batch sets immediately before the call and clears immediately after,
+  instead of named parameters.
+- `.github/workflows/ahk-syntax-check.yml` is unaffected: GitHub-hosted
+  `windows-latest` runners do not enforce this Group Policy, and its own
+  inline `pwsh` fragment was deliberately left untouched (see the TODO
+  entry above and the project-owner decision behind it).
+- If a future environment enforces a stricter control that also blocks
+  stdin-delivered commands (e.g. WDAC/AppLocker Constrained Language
+  Mode, which behaves differently from a plain execution policy), this
+  will need to be revisited — most likely via an actually signed script.
+
+---
+
+## D-061 — Deliver `Build-EPD_Machine.bat`'s single-keypress prompt via `Get-Content`/`Invoke-Expression`, not stdin
+
+**Status:** Accepted
+
+**Reason**
+
+The project owner asked for `Build-EPD_Machine.bat`'s J/n prompts to accept
+a single keypress without requiring Enter (`J`/`j`/`N`/`n` register
+immediately; a bare Enter with no prior letter defaults to `J`), replacing
+the previous `set /p`-based prompt (line-buffered, Enter always required).
+Reading a single keypress without Enter needs `[Console]::ReadKey()`
+(there is no `cmd.exe`-native equivalent that also supports "bare Enter =
+default" without an artificial timeout — the built-in `CHOICE` command
+requires one of its listed characters and has no concept of "Enter alone
+selects the default" outside of a timed `/T`/`/D` wait).
+
+`[Console]::ReadKey()` throws
+(`Cannot read keys when ... console input has been redirected`) whenever
+the calling process's standard input has been redirected — which is
+exactly what `tools/Invoke-WithTimeout.ps1`'s stdin-pipe delivery
+(`type file.ps1 | powershell -Command -`, see D-060) does to work around
+the AllSigned Group Policy restriction. Delivering
+`tools/Read-YesNoAnswer.ps1` the same way would make its own `ReadKey()`
+call fail immediately.
+
+**Current design**
+
+- `tools/Read-YesNoAnswer.ps1` is invoked from `Build-EPD_Machine.bat`'s
+  `:ask` subroutine via
+  `powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content -Raw '...\Read-YesNoAnswer.ps1' | Invoke-Expression"`
+  — the script's content is read as a normal file (via `Get-Content`, not
+  through the process's own stdin) and evaluated with `Invoke-Expression`.
+  Nothing is piped into `powershell.exe`'s own standard input this way, so
+  `Console.IsInputRedirected` stays `false` and `[Console]::ReadKey()`
+  keeps working against the real console.
+- Like `-Command`/stdin delivery (D-060), evaluating a string via
+  `Invoke-Expression` is not "loading a script file" from the execution
+  policy engine's perspective, so this still bypasses the same
+  Group Policy-enforced `AllSigned` restriction without requiring a
+  signed script.
+- The prompt text is passed via the `ASK_PROMPT` environment variable
+  (same interop style as `tools/Invoke-WithTimeout.ps1`'s
+  `INVOKE_WITH_TIMEOUT_*` variables), and the answer is communicated back
+  via exit code (`0` = J/Enter, `1` = N) rather than parsed from stdout.
+- `tools/Invoke-WithTimeout.ps1` keeps its existing stdin-pipe delivery
+  (D-060) unchanged — it never reads console input, so the redirection is
+  harmless there, and there was no reason to churn a path already
+  confirmed working on the project owner's managed workstation.
+- Not yet functionally validated on Windows (`docs/DECISIONS.md` D-037)
+  — needs a real run to confirm `[Console]::ReadKey()` behaves as expected
+  under `Get-Content`/`Invoke-Expression` delivery specifically, including
+  that the resolved letter is echoed legibly and that unrelated keys are
+  correctly ignored without corrupting the prompt line.

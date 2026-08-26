@@ -65,10 +65,19 @@ te configureren.
 
 `Build-EPD_Machine.bat` stelt eerst al zijn interactieve vragen — inclusief
 die over de `packages`-submap hieronder — en doorloopt daarna zonder verdere
-onderbrekingen het compileren en uitrollen. Enter zonder tekst registreert
-telkens Ja; alleen een expliciete "N" telt als Nee. De batch compileert in de
-bronmap eerst `DocBot.exe` en plaatst vervolgens een kopie in de bovenliggende
-applicatiemap, met de naam van die map. Wanneer het script een centrale
+onderbrekingen het compileren en uitrollen. Bij elke vraag registreren `J`
+of `j` direct Ja en `N` of `n` direct Nee, zonder dat Enter nodig is; Enter
+zonder voorafgaande letter geldt als Ja. De batch compileert in de
+bronmap eerst `DocBot.exe`. Direct daarna draait de batch automatisch
+`DocBot.exe --selftest` tegen die zojuist gecompileerde executable en toont
+de inhoud van `%TEMP%\docbot-selftest-results.txt` in de console — dit is de
+betrouwbare uitvoer, niet de (typisch lege) stdout van een GUI-subsysteem-
+executable (`docs/DECISIONS.md` D-053). Reageert de zelftest niet binnen
+zestig seconden (bijvoorbeeld door een blokkerend dialoogvenster) of faalt
+er een test, dan breekt de batch af zonder iets uit te rollen; zie
+`tools/Invoke-WithTimeout.ps1` en `tests/README.md`. Slaagt de zelftest, dan
+plaatst de batch vervolgens een kopie in de bovenliggende applicatiemap, met
+de naam van die map. Wanneer het script een centrale
 `-dev`-versie bevat en de batch vanuit een directe submap van `DocBot`
 draait, kan optioneel ook `EPD_Machine.exe` in de naastgelegen
 applicatiemap worden bijgewerkt. Voor
@@ -474,6 +483,15 @@ risicoanalyse.
 
 Changelog
 ---------
+
+### 2.4 — In ontwikkeling
+- `DocBot.exe --selftest` schrijft `%TEMP%\docbot-selftest-results.txt`
+  niet langer met een UTF-8 BOM. Die BOM veroorzaakte geen echte testfout
+  (de 32/32-telling was altijd al correct), maar zorgde er wel voor dat de
+  eerste regel van het bestand er in een console zonder UTF-8-codepage
+  onleesbaar/verminkt uitzag zodra dat bestand met `type` werd getoond —
+  onder meer nu `Build-EPD_Machine.bat` dat automatisch na het compileren
+  doet.
 
 ### 2.3 — Huidige stabiele release
 - DocBot probeert de gebruikersdatamap bij het opstarten niet langer lokaal

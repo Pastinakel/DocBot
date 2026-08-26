@@ -59,7 +59,7 @@ RunSelfTests() {
     logPath := SelfTestLogPath()
     if FileExist(logPath)
         try FileDelete(logPath)
-    try FileAppend(logText, logPath, "UTF-8")
+    try FileAppend(logText, logPath, "UTF-8-RAW")
     try FileAppend(logText, "*")
 
     return results["passed"] = results["total"] ? 0 : 1
