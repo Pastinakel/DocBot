@@ -2252,3 +2252,97 @@ call fail immediately.
   under `Get-Content`/`Invoke-Expression` delivery specifically, including
   that the resolved letter is echoed legibly and that unrelated keys are
   correctly ignored without corrupting the prompt line.
+- Confirmed on a real managed Windows workstation by the project owner
+  (2026-08-26): `[Console]::ReadKey()` behaves as expected under
+  `Get-Content`/`Invoke-Expression` delivery — `J`/`j`/`N`/`n` register
+  immediately and a bare Enter defaults to `J`.
+
+---
+
+## D-062 — Standard-log format hardening: unrecognized entries expire, not the whole-file header check
+
+**Status:** Accepted
+
+Follow-up to D-044's known gap (`docs/TODO.md` P2 "Harden the standard-log
+format migration check beyond the first 256 bytes"): `debug.log` is not
+channel-specific (`GetStandardDebugLogPath()` always resolves to
+`%LocalAppData%\DocBot\debug.log` regardless of stable/test/dev profile), so
+every build ever run on a machine shares one file.
+`InitializeDiagnosticLogging()` only reads the first 256 bytes at startup to
+decide whether the file needs wiping; once a valid "DocBot standaardlog v2"
+header exists at the top, nothing re-validates the rest of the file on later
+startups. An older or rolled-back build run again against that same file
+could append its own non-conforming (possibly unredacted) content beneath an
+already-valid-looking header without any future startup noticing.
+
+**Options considered**
+
+1. Re-validate every line's format during `InitializeDiagnosticLogging()`
+   itself (not just the header), and wipe the whole file on any mismatch.
+2. Make `PruneExpiredDebugLogFile()`'s existing per-entry format check
+   exhaustive (current format + every known legacy format), and
+   unconditionally expire anything matching no known format at all, instead
+   of the previous conservative "keep unknown content" default.
+
+**Decision:** option 2. `PruneExpiredDebugLogFile()` already parses the
+standard log per entry (split on the `───` delimiter) to enforce the
+seven-day retention from D-044; that per-entry classification is now pulled
+into a new pure helper, `ClassifyDebugLogChunk(chunk, cutoffStamp)`, which
+returns one of `"leeg"` (empty tail), `"geldig"` (current v2 format, within
+retention), `"verlopen"` (current v2 format, past retention),
+`"legacy-verlopen"` (the known pre-`5f72613` undated format, always expired
+per D-044) or `"onherkend-verlopen"` (matches none of the above). Only
+`"geldig"` entries are kept; everything else is dropped the next time
+`PruneExpiredDebugLogEntries()` runs (startup, then every 24 hours). No
+whole-file header re-scan was added to `InitializeDiagnosticLogging()`.
+
+**Reasoning**
+
+- Reuses the parsing/classification path D-044 already established instead
+  of adding a second, separate line-validator that could drift from it over
+  time.
+- Surgical over destructive: option 1 would delete the entire file — including
+  valid, recent, already-redacted v2 entries — on a single unrecognized
+  line anywhere in it. Option 2 only drops the offending entry, keeping
+  everything else, which better fits the existing "malformed/legacy content
+  must not block startup" invariant from D-044 — expiring unrecognized
+  content doesn't block or interrupt startup, it just isn't retained
+  indefinitely.
+- Chosen tradeoff, made explicitly per the TODO item: this trades the old
+  conservative default (never delete a recent-but-unrecognized/possibly
+  merely-corrupted entry) for the stricter one (never indefinitely retain
+  content that cannot be confirmed to be in the current, centrally-redacted
+  format). Given the standard log's purpose — a redacted diagnostic log
+  that may otherwise carry a rolled-back build's unredacted output — not
+  indefinitely retaining unconfirmed content was judged the better default
+  for a NEN 7510/DPIA-relevant local log (`docs/REGULATORY_ASSESSMENT.md`).
+- `ClassifyDebugLogChunk()` takes the retention cutoff as a parameter and
+  performs no file I/O, so it is covered by `tests/SelfTests.ahk`
+  (`TestClassifyDebugLogChunk`) alongside the project's other pure
+  migration/classification logic; `PruneExpiredDebugLogFile()`'s file I/O
+  itself remains outside self-test scope per `docs/DECISIONS.md` D-037/D-053.
+- `PruneExpiredDebugLogFile()`'s summary line logged via `DebugLog()` now
+  separately counts entries dropped for having an unrecognized format, so
+  the standard log itself keeps a visible trail of this stricter default
+  acting.
+
+**Consequences**
+
+- A future, not-yet-known log format written by some other build into the
+  shared `debug.log` will be pruned away (up to once per day, or immediately
+  at the next startup) instead of silently accumulating forever, closing
+  the gap D-044 left open.
+- `InitializeDiagnosticLogging()`'s 256-byte header check is unchanged and
+  still only decides whether to wipe-and-recreate the file when the header
+  itself doesn't match; it does not scan the rest of the file. That remains
+  intentional under this decision — whole-file scanning was the rejected
+  option 1.
+- Adding a third known log format in the future means adding one more
+  branch to `ClassifyDebugLogChunk()` (and a self-test case for it) rather
+  than touching the file-I/O parts of `PruneExpiredDebugLogFile()`.
+- Functionally validated on Windows (`docs/DECISIONS.md` D-037,
+  2026-08-26): `TestClassifyDebugLogChunk` passes under `--selftest`
+  (after fixing the `Trim()` empty-tail bug the test itself caught — see
+  the commit history on `claude/standaardlog-format-validation-hez3ak`),
+  and a manually-appended unrecognized-format line was confirmed pruned
+  from a live `debug.log` on the next maintenance pass.

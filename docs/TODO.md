@@ -1,12 +1,15 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-25. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-26. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
 - **P0** — blocks the current release path or risks a broken build.
 - **P1** — should be completed before/around the current release or immediately afterwards.
 - **P2** — valuable engineering improvement; not a reason to destabilize the current release.
+- **P3** — low-priority polish; correct as filed, but narrow-impact or
+  cosmetic enough that it can sit indefinitely without hurting the
+  project. Pick up opportunistically, not on a schedule.
 
 ---
 
@@ -618,7 +621,7 @@ Do not copy end-user changelog content into these docs verbatim; link concepts a
 
 ---
 
-## P1 — Run `--selftest` automatically when compiling, with results visible on the console
+## P1 — Run `--selftest` automatically when compiling, with results visible on the console (done)
 
 Filed by the project owner (2026-08-25). Right now, confirming
 `tests/SelfTests.ahk` passes against a compiled build is a manual step: run
@@ -702,8 +705,9 @@ the build sees them without a separate manual step.
   exercised the full interactive flow; not release-blocking by itself
   (declining the question was simply not honored, it didn't silently
   corrupt anything), but a real deploy-safety defect worth having fixed
-  regardless. **Still needs a fourth Windows run to confirm declining all
-  three questions now genuinely skips the `EPD_Machine` copy.**
+  regardless. **Confirmed on a fourth Windows run (2026-08-26) by the
+  project owner:** declining all three questions now genuinely skips the
+  `EPD_Machine` copy.
   **A cosmetic issue was also reported (2026-08-26):** the console showed
   garbled characters (BOM mojibake, e.g. "ï»¿"-style glyphs) right before
   "ok" on the very first results line only; the 32/32 pass count itself
@@ -758,96 +762,45 @@ the build sees them without a separate manual step.
 This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
 bump applies (`--selftest` already exists and works; this only invokes it
 automatically and surfaces its existing output). Implemented on
-`claude/next-5-todo-tasks-h6kn5k`; **not yet functionally validated on
-Windows** (git-only editing environment, per `docs/DECISIONS.md` D-037) —
-needs a real compile run to confirm the PowerShell helper actually
-times out/force-kills a hung `--selftest` and that a genuine test failure
-is surfaced and blocks deployment as designed.
+`claude/next-5-todo-tasks-h6kn5k` (merged via PR #57/#58).
+**Fully validated on a real managed Windows workstation by the project
+owner (2026-08-26):** the automatic post-compile `--selftest` run, the
+readable results file output (including after the BOM fix), the
+single-keypress J/n prompts (D-061), and the `DO_EPD_COPY` decline fix all
+confirmed working end to end. This item is closed.
 
 ---
 
-## P1 — Also offer the EPD_Machine copy question for a stable release, not only `-dev`/`-rc`
+## P2 — Remove the optional `itemCount` package-manifest check (done)
 
-Filed by the project owner (2026-08-25). `Build-EPD_Machine.bat` only asks
-"Ook een executable naar de naastgelegen map EPD_Machine kopieren?" when
-`IS_DEVELOP` is set — and `IS_DEVELOP` is only set when `global AppVersion`
-in the source contains `-dev` or `-rc`:
-
-```bat
-rem Alleen de centrale developversie of een RC mag vanaf een directe submap
-rem van DocBot optioneel ook naar de naastgelegen applicatiemap EPD_Machine
-rem worden uitgerold.
-set "IS_DEVELOP="
-findstr /B /C:"global AppVersion" "%SOURCE%" | findstr /C:"-dev" /C:"-rc" >nul
-if not errorlevel 1 set "IS_DEVELOP=1"
-```
-
-A stable numeric `AppVersion` (e.g. `2.3`, no prerelease suffix) never
-matches `-dev`/`-rc`, so `IS_DEVELOP` stays unset and the EPD_Machine
-question — and therefore the whole `EPD_Machine.exe`/packages copy path
-below it — is silently skipped when placing a stable release, even though
-the co-located `EPD_Machine` folder may need the same update.
-
-### Scope
-
-- [ ] Extend the `IS_DEVELOP`-gated condition (or introduce a clearer,
-  separate flag) so a stable numeric `AppVersion` also triggers the
-  "Ook een executable naar de naastgelegen map EPD_Machine kopieren?"
-  question, alongside the existing `-dev`/`-rc` case — not only when a
-  development or release-candidate build is placed.
-- [ ] Decide explicitly, and document the decision here and in a code
-  comment: should this stay scoped to stable + `-dev`/`-rc` only (i.e.
-  still exclude a feature/fix branch's own prerelease build, matching the
-  existing rationale that only the central dev/RC line and now stable
-  releases are expected to also update `EPD_Machine`), or should every
-  `AppVersion` shape ask the question? Default assumption unless the
-  project owner says otherwise: keep feature/fix branch builds excluded,
-  only add stable to the existing `-dev`/`-rc` allowance.
-- [ ] Re-check the variable name `IS_DEVELOP` once the condition covers
-  stable releases too — it will no longer mean "is a development build",
-  so keep or rename it deliberately rather than leaving a now-misleading
-  name.
-- [ ] Verify the rest of the `DO_EPD_COPY` path (the `OVERWRITE_EPD_PACKAGES`
-  question and the `:deploy` call for `EPD_Machine.exe`) already behaves
-  correctly once triggered from a stable build — it should, since that path
-  does not itself branch on `IS_DEVELOP` again, only on `DO_EPD_COPY`.
-- [ ] Update the `Build-EPD_Machine.bat` description in `README.md` (and the
-  code comment above `IS_DEVELOP`) so it no longer says only a "centrale
-  developversie of een RC" gets this option.
-
-This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
-bump applies.
-
----
-
-## P2 — Remove the optional `itemCount` package-manifest check
+**Status: implemented** on branch `claude/remove-itemcount-controle-94h6jc`.
 
 Reported by the project owner (2026-08-25): the optional `itemCount` field
 on a bundled package (checked in `LoadBundledPackageFile()`, `DocBot.ahk`
-around line 6886) throws a loading error whenever it does not exactly match
+around line 6886) threw a loading error whenever it did not exactly match
 `package["items"].Length`:
 
 ```
 Pakket {id} vermeldt {itemCount} items, maar bevat er {items.Length}.
 ```
 
-`items.Length` is already the authoritative count; `itemCount` is a
-separately maintained manifest field that must be kept in sync by hand
-whenever a package's item list changes on the network share. It adds no
-value over just counting `items` and only creates a way for an otherwise
+`items.Length` is already the authoritative count; `itemCount` was a
+separately maintained manifest field that had to be kept in sync by hand
+whenever a package's item list changed on the network share. It added no
+value over just counting `items` and only created a way for an otherwise
 valid package to fail to load.
 
-- [ ] Remove the `itemCount` consistency check (and, if nothing else reads
-  the field, the `itemCount` field handling) from `LoadBundledPackageFile()`.
-- [ ] Check whether `itemCount` is written/read anywhere else (package
-  authoring tooling, other loaders, `docs/MIGRATIONS.md`) and remove those
-  references too so nothing still expects it to be kept in sync.
-- [ ] Update `docs/ARCHITECTURE.md`/`docs/MIGRATIONS.md` if they document
-  `itemCount` as a required/validated package field.
-
-This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
-branch from the then-current `develop` and update the branch-specific
-`AppVersion` in every commit that changes `DocBot.ahk`.
+- [x] Remove the `itemCount` consistency check from `LoadBundledPackageFile()`.
+  Nothing else in `DocBot.ahk` read or wrote the field, so there was no
+  further field handling to remove.
+- [x] Checked for other readers/writers (package authoring tooling, other
+  loaders, `docs/MIGRATIONS.md`) — only `docs/MIGRATIONS.md` documented the
+  check; updated it.
+- [x] `docs/ARCHITECTURE.md` never documented `itemCount`, so no change
+  needed there.
+- [x] Dropped the now-unused top-level `itemCount` field (and the
+  never-validated per-category `itemCount`) from the `packages/*.json` data
+  files, so nothing still implies it needs to be kept in sync by hand.
 
 ---
 
@@ -924,7 +877,7 @@ This is a real `DocBot.ahk` behavior change, so implement it on its own feature/
 
 ---
 
-## P2 — Harden the standard-log format migration check beyond the first 256 bytes
+## P2 — Harden the standard-log format migration check beyond the first 256 bytes (done)
 
 Discovered 2026-08-17 (see `docs/DECISIONS.md` D-044) via a real
 compiled test build: `debug.log` is not channel-specific
@@ -945,18 +898,29 @@ specifically recognizes that one known legacy format. This item is about
 the more general root cause, for whatever future format mismatch isn't
 already known/pattern-matched:
 
-- [ ] Decide on an approach: e.g. validate every line's format (not just the
+- [x] Decide on an approach: e.g. validate every line's format (not just the
   header) during `InitializeDiagnosticLogging()`, or make
   `PruneExpiredDebugLogFile()`'s "does this line match a known format"
   check exhaustive (current format + every known legacy format) with
   unconditional expiry for anything that matches no known format at all,
   rather than the current conservative "keep unknown content" default.
-- [ ] Weigh the tradeoff explicitly: the current conservative default
+  Chose the latter — see `docs/DECISIONS.md` D-062.
+- [x] Weigh the tradeoff explicitly: the current conservative default
   favors not deleting recent-but-corrupted entries; a stricter default
   favors not indefinitely retaining unredacted content. Record the decision
-  in `docs/DECISIONS.md`.
-- [ ] If changed, keep it consistent with the "malformed/legacy content must
-  not block startup" invariant from the seven-day-retention work.
+  in `docs/DECISIONS.md`. Recorded as D-062.
+- [x] If changed, keep it consistent with the "malformed/legacy content must
+  not block startup" invariant from the seven-day-retention work. The new
+  `ClassifyDebugLogChunk()` helper only drops the unrecognized entry itself
+  during the existing daily/startup maintenance pass; it never blocks or
+  interrupts startup (D-062).
+
+Implemented on `claude/standaardlog-format-validation-hez3ak`. Functionally
+validated on Windows (`docs/DECISIONS.md` D-037, 2026-08-26): `--selftest`
+is green (including `TestClassifyDebugLogChunk`, after fixing a `Trim()`
+empty-tail bug the test itself caught) and a manually-appended
+unrecognized-format line was confirmed pruned from a live `debug.log` on
+the next maintenance pass.
 
 This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
 branch from the then-current `develop` and update the branch-specific
@@ -1195,6 +1159,99 @@ Before extracting a subsystem, account for:
 - AppVersion/profile behavior.
 
 Prefer small behavior-preserving extractions with Windows regression tests over a rewrite.
+
+### Recommended first step (proposal, 2026-08-26)
+
+Start with **storage/migrations**, not telephony/SMS-UIA/GUI rendering. Reasons:
+
+- It is already the most decoupled seam in the file by a proven margin:
+  `tests/SelfTests.ahk` already calls `ReadSchemaVersion()`,
+  `RejectNewerSchemaVersion()`, `CreateHotstringItem()`,
+  `NormalizeHotstringItem()`, `AddMissingDefaultHotstrings()`,
+  `CreateSpeedDialEntry()`, `AddMissingDefaultSpeedDials()`, and
+  `GetUserDataProfile()` in isolation, with only a temporary
+  `global LocalConfig` substitution and no GUI/network/file-I/O
+  dependency. That is direct, already-passing evidence these functions
+  don't entangle with global GUI state the way telephony/SMS-UIA/GUI
+  rendering do.
+- D-053 already flagged this exact move — extracting these functions "into
+  their own included file (mirroring the existing `Telemetry.ahk` module
+  boundary)" — as the natural next step, and explicitly deferred it only
+  because it "cannot be validated by this agent (no Windows runtime
+  available, D-037)", not because of any doubt about the seam itself.
+- `Telemetry.ahk` is a live, working precedent for the target shape: a
+  `#Include`d file holding related globals + functions, no GUI, included
+  from `DocBot.ahk` without disturbing top-level init order.
+
+Concrete shape: a new `Storage.ahk` (or similar name) holding exactly the
+functions `tests/SelfTests.ahk` already covers, `#Include`d from
+`DocBot.ahk` at the same structural point `Telemetry.ahk` is included
+today. Validate with `--selftest` before and after the move (identical
+pass count and lines is the cheapest possible regression check for
+exactly this seam) plus a full manual Windows regression pass, on its own
+dedicated branch, not bundled with unrelated feature work. Explicitly do
+**not** start with telephony, SMS/UIA, or GUI rendering — those are the
+seams with heavy global-GUI-control-reference and callback-binding
+coupling this same section already warns about, and should only be
+attempted once the storage-helpers move has proven the `#Include`/
+`FileInstall`/top-level-init-order pattern works end to end without
+regressions.
+
+---
+
+## P3 — Also offer the EPD_Machine copy question for a stable release, not only `-dev`/`-rc`
+
+_Downgraded from P1 to P3 (2026-08-26, project-owner decision)._
+
+Filed by the project owner (2026-08-25). `Build-EPD_Machine.bat` only asks
+"Ook een executable naar de naastgelegen map EPD_Machine kopieren?" when
+`IS_DEVELOP` is set — and `IS_DEVELOP` is only set when `global AppVersion`
+in the source contains `-dev` or `-rc`:
+
+```bat
+rem Alleen de centrale developversie of een RC mag vanaf een directe submap
+rem van DocBot optioneel ook naar de naastgelegen applicatiemap EPD_Machine
+rem worden uitgerold.
+set "IS_DEVELOP="
+findstr /B /C:"global AppVersion" "%SOURCE%" | findstr /C:"-dev" /C:"-rc" >nul
+if not errorlevel 1 set "IS_DEVELOP=1"
+```
+
+A stable numeric `AppVersion` (e.g. `2.3`, no prerelease suffix) never
+matches `-dev`/`-rc`, so `IS_DEVELOP` stays unset and the EPD_Machine
+question — and therefore the whole `EPD_Machine.exe`/packages copy path
+below it — is silently skipped when placing a stable release, even though
+the co-located `EPD_Machine` folder may need the same update.
+
+### Scope
+
+- [ ] Extend the `IS_DEVELOP`-gated condition (or introduce a clearer,
+  separate flag) so a stable numeric `AppVersion` also triggers the
+  "Ook een executable naar de naastgelegen map EPD_Machine kopieren?"
+  question, alongside the existing `-dev`/`-rc` case — not only when a
+  development or release-candidate build is placed.
+- [ ] Decide explicitly, and document the decision here and in a code
+  comment: should this stay scoped to stable + `-dev`/`-rc` only (i.e.
+  still exclude a feature/fix branch's own prerelease build, matching the
+  existing rationale that only the central dev/RC line and now stable
+  releases are expected to also update `EPD_Machine`), or should every
+  `AppVersion` shape ask the question? Default assumption unless the
+  project owner says otherwise: keep feature/fix branch builds excluded,
+  only add stable to the existing `-dev`/`-rc` allowance.
+- [ ] Re-check the variable name `IS_DEVELOP` once the condition covers
+  stable releases too — it will no longer mean "is a development build",
+  so keep or rename it deliberately rather than leaving a now-misleading
+  name.
+- [ ] Verify the rest of the `DO_EPD_COPY` path (the `OVERWRITE_EPD_PACKAGES`
+  question and the `:deploy` call for `EPD_Machine.exe`) already behaves
+  correctly once triggered from a stable build — it should, since that path
+  does not itself branch on `IS_DEVELOP` again, only on `DO_EPD_COPY`.
+- [ ] Update the `Build-EPD_Machine.bat` description in `README.md` (and the
+  code comment above `IS_DEVELOP`) so it no longer says only a "centrale
+  developversie of een RC" gets this option.
+
+This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
+bump applies.
 
 ---
 
