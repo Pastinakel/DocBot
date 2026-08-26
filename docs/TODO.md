@@ -771,34 +771,36 @@ confirmed working end to end. This item is closed.
 
 ---
 
-## P2 — Remove the optional `itemCount` package-manifest check
+## P2 — Remove the optional `itemCount` package-manifest check (done)
+
+**Status: implemented** on branch `claude/remove-itemcount-controle-94h6jc`.
 
 Reported by the project owner (2026-08-25): the optional `itemCount` field
 on a bundled package (checked in `LoadBundledPackageFile()`, `DocBot.ahk`
-around line 6886) throws a loading error whenever it does not exactly match
+around line 6886) threw a loading error whenever it did not exactly match
 `package["items"].Length`:
 
 ```
 Pakket {id} vermeldt {itemCount} items, maar bevat er {items.Length}.
 ```
 
-`items.Length` is already the authoritative count; `itemCount` is a
-separately maintained manifest field that must be kept in sync by hand
-whenever a package's item list changes on the network share. It adds no
-value over just counting `items` and only creates a way for an otherwise
+`items.Length` is already the authoritative count; `itemCount` was a
+separately maintained manifest field that had to be kept in sync by hand
+whenever a package's item list changed on the network share. It added no
+value over just counting `items` and only created a way for an otherwise
 valid package to fail to load.
 
-- [ ] Remove the `itemCount` consistency check (and, if nothing else reads
-  the field, the `itemCount` field handling) from `LoadBundledPackageFile()`.
-- [ ] Check whether `itemCount` is written/read anywhere else (package
-  authoring tooling, other loaders, `docs/MIGRATIONS.md`) and remove those
-  references too so nothing still expects it to be kept in sync.
-- [ ] Update `docs/ARCHITECTURE.md`/`docs/MIGRATIONS.md` if they document
-  `itemCount` as a required/validated package field.
-
-This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
-branch from the then-current `develop` and update the branch-specific
-`AppVersion` in every commit that changes `DocBot.ahk`.
+- [x] Remove the `itemCount` consistency check from `LoadBundledPackageFile()`.
+  Nothing else in `DocBot.ahk` read or wrote the field, so there was no
+  further field handling to remove.
+- [x] Checked for other readers/writers (package authoring tooling, other
+  loaders, `docs/MIGRATIONS.md`) — only `docs/MIGRATIONS.md` documented the
+  check; updated it.
+- [x] `docs/ARCHITECTURE.md` never documented `itemCount`, so no change
+  needed there.
+- [x] Dropped the now-unused top-level `itemCount` field (and the
+  never-validated per-category `itemCount`) from the `packages/*.json` data
+  files, so nothing still implies it needs to be kept in sync by hand.
 
 ---
 

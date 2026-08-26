@@ -195,9 +195,9 @@ zichtbaar bij hun eerstvolgende DocBot-herstart, zonder dat `DocBot.ahk`
 hoeft te worden aangepast of opnieuw gecompileerd. Is de bron niet
 bereikbaar, dan laadt DocBot die sessie bewust gewoon geen pakketten in
 plaats van de hele opstart te blokkeren; persoonlijke hotstrings blijven
-altijd werken. Deze laag valideert manifest, schema, pakket-ID's,
-itemaantallen en dubbele triggers, en logt per pakketbestand of het laden
-is gelukt (`docs/DECISIONS.md` D-046, D-048, D-049, D-052).
+altijd werken. Deze laag valideert manifest, schema, pakket-ID's en
+dubbele triggers, en logt per pakketbestand of het laden is gelukt
+(`docs/DECISIONS.md` D-046, D-048, D-049, D-052).
 
 Het standaardlog schermt lokale en netwerkpaden altijd af (zie
 "Probleem melden en diagnostiek" hieronder) — een gelogde pakketbron toont
@@ -485,6 +485,19 @@ Changelog
 ---------
 
 ### 2.4 — In ontwikkeling
+- Een gebundeld pakket hoeft geen `itemCount`-veld meer te bevatten dat
+  precies overeenkomt met het aantal items. Dit optionele
+  manifestveld moest tot nu toe handmatig in sync worden gehouden en kon een
+  verder geldig pakket laten weigeren zodra dat vergeten werd; `items.Length`
+  was al de enige echte bron van waarheid. De consistentiecontrole is uit
+  `LoadBundledPackageFile()` verwijderd en het veld is uit alle meegeleverde
+  `packages/*.json`-bestanden gehaald.
+- `packages/anest.json` bevatte enkele meerregelige `replacement`-teksten met
+  letterlijke regeleinden binnen een JSON-tekenreeks — geldig genoeg voor de
+  lenient parser die DocBot gebruikt, maar geen geldige JSON volgens de spec
+  en onleesbaar voor strikte JSON-tools. Die regeleinden zijn vervangen door
+  `\n`-escapes; de daadwerkelijke vervangingstekst (en daarmee het
+  DocBot-gedrag) is ongewijzigd.
 - De opschoning van het standaardlog (`PruneExpiredDebugLogFile()`) herkent
   voortaan uitputtend welk formaat een regel heeft: het huidige formaat, het
   bekende oude formaat van vóór commit `5f72613`, of geen van beide. Een
