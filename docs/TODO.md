@@ -359,7 +359,7 @@ baseline logging from the start.
 
 ---
 
-## P1 — Make HTTPS mandatory for telephony and SMS URLs
+## P1 — Make HTTPS mandatory for telephony and SMS URLs (done)
 
 An exploratory test on 2026-08-09 showed that changing the local telephony
 `BaseUrl` from `http://` to `https://` still delivered a registration/link
@@ -387,24 +387,20 @@ every managed Windows workstation.
   `docs/REGULATORY_ASSESSMENT.md` and `docs/DECISIONS.md`. Also updated
   `docs/DATA_PROTECTION.md` (not originally listed here, but it contained
   the same now-stale "code does not enforce HTTPS" wording in three places).
-- [ ] This is an infrastructure/organizational question, not a DocBot code
+- [x] This is an infrastructure/organizational question, not a DocBot code
   task, and not something resolvable from within this repository or by the
   project owner alone: DocBot's own requests (`IPT_callNumber()`,
   `IPT_register()`) send no application-level credential today — no API
   key, bearer token, or client certificate, only an `Accept-Language`
   header — so as far as the code shows, the only current "authentication"
-  is network reachability (hospital LAN/VPN). Escalate to whoever owns/
-  administers the internal telephony server (or the hospital network/
-  security team) and ask explicitly:
-  - Is the endpoint reachable only from within the hospital network/VPN,
-    i.e. is network segmentation the intended authentication boundary?
-  - Does the server expect an additional credential (API key, token,
-    client certificate/mTLS) that DocBot does not currently send?
-  - Is there a reverse proxy in front of it enforcing anything beyond TLS?
-  Record the answer in `docs/DECISIONS.md` once known. Only if the answer
-  reveals a real gap does this become a scoped `DocBot.ahk` implementation
-  task (e.g. sending a configured credential header); until then, do not
-  add speculative auth code with no confirmed server-side contract.
+  is network reachability (hospital LAN/VPN). Escalated to whoever owns/
+  administers the internal telephony server. **Answer confirmed
+  (2026-08-26):** no additional credential is required or expected, and
+  there is no reverse proxy in front of the endpoint enforcing anything
+  beyond TLS — network segmentation (hospital LAN/VPN reachability) is the
+  intended authentication boundary. Recorded in `docs/DECISIONS.md` D-059.
+  The answer does not reveal a gap, so no `DocBot.ahk` implementation task
+  follows from it; no speculative auth code was added.
 
 ### Acceptance evidence
 
@@ -428,11 +424,13 @@ Windows workplace / internal hospital network (2026-08-17).
   certificate validation result without recording the confidential hostname,
   endpoints, telephone numbers, or certificate private material in Git.
 
-The only remaining open item in this P1 entry is the "Application and
-documentation" server-authentication confirmation above. The project owner
-removed the separate "Infrastructure dependencies" checklist (certificate
-ownership, reverse-proxy timeouts, disabling the HTTP listener) as no
-longer tracked here.
+This P1 entry is now fully resolved. The last open item, the "Application
+and documentation" server-authentication confirmation, was answered by the
+project owner (2026-08-26, see `docs/DECISIONS.md` D-059): no additional
+credential is required and there is no reverse proxy in front of the
+telephony endpoint. The project owner removed the separate "Infrastructure
+dependencies" checklist (certificate ownership, reverse-proxy timeouts,
+disabling the HTTP listener) as no longer tracked here.
 
 This is a real `DocBot.ahk` behavior change. Implement it on a dedicated
 feature/fix branch from the then-current `develop`, update the branch-specific

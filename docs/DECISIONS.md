@@ -2107,3 +2107,39 @@ concrete OneDrive-eviction incident is currently open to justify that risk.
 - If a real OneDrive-eviction incident reoccurs, revisit via the in-process
   `SetFileAttributesW` approach above rather than reintroducing a process
   launch.
+
+---
+
+## D-059 — Telephony server authentication boundary is network segmentation only
+
+**Status:** Accepted
+
+Follow-up to D-043's open "Application and documentation" escalation item in
+`docs/TODO.md` ("P1 — Make HTTPS mandatory for telephony and SMS URLs"):
+DocBot's telephony requests (`IPT_register()`, `IPT_callNumber()`, the event
+poller) send no application-level credential — no API key, bearer token, or
+client certificate, only an `Accept-Language` header — so the only
+"authentication" visible from the code was network reachability, and the
+project owner needed to confirm with whoever owns/administers the internal
+telephony server whether that was actually the intended design or a gap.
+
+The project owner confirmed (2026-08-26):
+
+- No additional credential is required or expected; the server does not
+  check for an API key, token, or client certificate/mTLS.
+- There is no reverse proxy in front of the endpoint enforcing anything
+  beyond TLS.
+- Network segmentation (hospital LAN/VPN reachability) is the intended
+  authentication boundary for this endpoint.
+
+**Current design**
+
+- No `DocBot.ahk` change: this confirms the existing behavior (HTTPS
+  transport per D-043, no additional credential) already matches the
+  server-side contract, so no credential-sending code is added.
+- Closes the "Application and documentation" server-authentication
+  escalation item in `docs/TODO.md` P1 "Make HTTPS mandatory for telephony
+  and SMS URLs" — that TODO entry is now fully resolved.
+- If the telephony server's authentication model changes in the future
+  (e.g. a credential requirement is introduced), revisit this decision
+  rather than adding undocumented credential-sending code.
