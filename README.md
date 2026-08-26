@@ -393,7 +393,12 @@ Iedere heartbeat bevat:
 - de applicatieversie, starttijd en laatst-gezien-tijd;
 - of een telefoon gekoppeld en tekstvervanging ingeschakeld is;
 - het cumulatieve aantal gestarte belacties;
-- het cumulatieve aantal uitgevoerde lange of meerregelige hotstrings.
+- het cumulatieve aantal uitgevoerde lange of meerregelige hotstrings;
+- het cumulatieve aantal geslaagde sms-acties (`smsActions`): DocBot telt een
+  sms-actie alleen als geslaagd zodra de sms-pagina of -tab daadwerkelijk is
+  gevonden en het telefoonnummerveld is gevuld, nooit alleen omdat de
+  sms-optie is aangeboden of gekozen. DocBot verstuurt de sms zelf niet en
+  meet dus ook niet of de gebruiker de sms daadwerkelijk verzendt.
 
 Korte hotstrings worden rechtstreeks door AutoHotkey uitgevoerd en tellen
 niet mee in `hotstringActions`. De tellers worden lokaal in
@@ -485,6 +490,13 @@ Changelog
 ---------
 
 ### 2.4 — In ontwikkeling
+- Overzicht toont nu ook een derde gebruiksteller, "SMS-acties", naast
+  "Belacties" en "Lange hotstrings" op de Gebruik-kaart. De teller telt
+  alleen geslaagde sms-acties (de sms-pagina/-tab gevonden en het
+  telefoonnummerveld gevuld), niet elke keer dat de sms-optie wordt
+  aangeboden. De teller wordt ook meegestuurd in de telemetrie-heartbeat als
+  `smsActions`, naast de bestaande `phoneActions`/`hotstringActions` — zie
+  de sectie Telemetrie hierboven.
 - Een gebundeld pakket hoeft geen `itemCount`-veld meer te bevatten dat
   precies overeenkomt met het aantal items. Dit optionele
   manifestveld moest tot nu toe handmatig in sync worden gehouden en kon een

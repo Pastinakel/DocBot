@@ -549,7 +549,10 @@ De payload bevat:
 - starttijd en laatst-gezien-tijd;
 - telefoon-gekoppeld- en hotstrings-ingeschakeld-status;
 - cumulatief aantal gestarte belacties;
-- cumulatief aantal lange of meerregelige hotstringacties.
+- cumulatief aantal lange of meerregelige hotstringacties;
+- cumulatief aantal geslaagde sms-acties (het telefoonnummerveld op de
+  sms-pagina is gevuld; niet elke keer dat sms wordt aangeboden of gekozen,
+  en niet of de sms daadwerkelijk is verzonden).
 
 De payload bevat volgens code en README geen computernaam, gebelde nummers,
 hotstringafkortingen, vervangteksten, pakketinhoud of klembordinhoud.
