@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-dev.2"
+global AppVersion := "2.4-standaardlog-format.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2922,6 +2922,40 @@ PruneExpiredDebugLogEntries() {
     try PruneExpiredDebugLogFile(logPath ".oud", "geroteerd .oud-standaardlog")
 }
 
+; Classificeert één standaardlogregel/-chunk (de tekst tussen twee
+; scheidingsregels) voor PruneExpiredDebugLogFile(). Puur op tekst
+; gebaseerd, zonder bestands-I/O, zodat dit via --selftest te controleren
+; is (zie tests/SelfTests.ahk). cutoffStamp is een "yyyyMMddHHmmss"-
+; vergelijkbare tijdstempel, zoals geleverd door DateAdd(A_Now, ...).
+;
+; Sinds docs/DECISIONS.md D-062 valt inhoud die aan geen enkel bekend
+; formaat voldoet (huidig of legacy) onder "onherkend-verlopen" en wordt
+; dus onvoorwaardelijk verwijderd, in plaats van voor altijd bewaard: de
+; formaatcontrole in InitializeDiagnosticLogging() leest bij opstart alleen
+; de eerste 256 bytes van het bestand en ziet een niet-conform formaat
+; verderop in het bestand dus niet.
+ClassifyDebugLogChunk(chunk, cutoffStamp) {
+    if Trim(chunk) = ""
+        return "leeg"  ; lege staart na de laatste scheidingsregel
+
+    if RegExMatch(chunk, "^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})", &m) {
+        entryStamp := m[1] m[2] m[3] m[4] m[5] m[6]
+        return (entryStamp < cutoffStamp) ? "verlopen" : "geldig"
+    }
+
+    ; Regels van vóór de "v2"-opschoning (tot en met commit 5f72613,
+    ; 2026-08-07) hadden geen datum, alleen "HH:mm:ss.mmm", en werden
+    ; nooit URL-geschoond. Zo'n regel kan hier alleen staan als een
+    ; oudere, niet-geschoonde build ooit naar hetzelfde bestand heeft
+    ; geschreven nadat de v2-kopregel al aanwezig was. Zo'n regel is per
+    ; definitie (ver) ouder dan de bewaartermijn: onvoorwaardelijk laten
+    ; vervallen in plaats van voor altijd te bewaren.
+    if RegExMatch(chunk, "^\d{2}:\d{2}:\d{2}\.\d{1,3} ")
+        return "legacy-verlopen"
+
+    return "onherkend-verlopen"
+}
+
 PruneExpiredDebugLogFile(path, label) {
     static delimiter := "───`r`n"
     static DebugLogRetentionDays := 7
@@ -2944,43 +2978,26 @@ PruneExpiredDebugLogFile(path, label) {
 
     cutoff := DateAdd(A_Now, -DebugLogRetentionDays, "Days")
     nieuweInhoud := delen[1] delimiter  ; het kopblok blijft altijd staan
-    verwijderdAantal := 0
+    verlopenAantal := 0
+    onherkendAantal := 0
 
     loop delen.Length - 1 {
         chunk := delen[A_Index + 1]
-        if Trim(chunk) = ""
-            continue  ; lege staart na de laatste scheidingsregel
+        classificatie := ClassifyDebugLogChunk(chunk, cutoff)
 
-        if RegExMatch(chunk, "^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})", &m) {
-            entryStamp := m[1] m[2] m[3] m[4] m[5] m[6]
-            if (entryStamp < cutoff) {
-                verwijderdAantal += 1
-                continue  ; regel is ouder dan de bewaartermijn: laat vervallen
-            }
+        if (classificatie = "leeg")
+            continue
+        if (classificatie = "geldig") {
             nieuweInhoud .= chunk delimiter
             continue
         }
-
-        ; Regels van vóór de "v2"-opschoning (tot en met commit 5f72613,
-        ; 2026-08-07) hadden geen datum, alleen "HH:mm:ss.mmm", en werden
-        ; nooit URL-geschoond. Zo'n regel kan hier alleen staan als een
-        ; oudere, niet-geschoonde build ooit naar hetzelfde bestand heeft
-        ; geschreven nadat de v2-kopregel al aanwezig was — de
-        ; formaatcontrole in InitializeDiagnosticLogging() leest bij opstart
-        ; alleen de eerste 256 bytes en ziet dit dus niet. Zo'n regel is per
-        ; definitie (ver) ouder dan de bewaartermijn: onvoorwaardelijk laten
-        ; vervallen in plaats van voor altijd te bewaren.
-        if RegExMatch(chunk, "^\d{2}:\d{2}:\d{2}\.\d{1,3} ") {
-            verwijderdAantal += 1
-            continue
-        }
-
-        ; Overige onherkenbare inhoud (bijv. een afgebroken/beschadigde
-        ; regel): voor de zekerheid ongewijzigd behouden in plaats van te
-        ; gokken.
-        nieuweInhoud .= chunk delimiter
+        if (classificatie = "onherkend-verlopen")
+            onherkendAantal += 1
+        else
+            verlopenAantal += 1
     }
 
+    verwijderdAantal := verlopenAantal + onherkendAantal
     if (verwijderdAantal = 0)
         return
 
@@ -2990,11 +3007,10 @@ PruneExpiredDebugLogFile(path, label) {
             FileDelete(tempPath)
         FileAppend(nieuweInhoud, tempPath, "UTF-8")
         FileMove(tempPath, path, true)
-        DebugLog(
-            "i",
-            "Standaardlog opschonen",
-            verwijderdAantal " verlopen regel(s) verwijderd uit " label "."
-        )
+        samenvatting := verwijderdAantal " verlopen regel(s) verwijderd uit " label "."
+        if (onherkendAantal > 0)
+            samenvatting .= " Daarvan " onherkendAantal " met een formaat dat bij geen enkel bekend patroon past."
+        DebugLog("i", "Standaardlog opschonen", samenvatting)
     } catch as writeError {
         if FileExist(tempPath)
             try FileDelete(tempPath)

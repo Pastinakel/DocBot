@@ -13,9 +13,10 @@
 ; InitializeBundledPackages() in DocBot.ahk), de idempotentie van de
 ; eenmalige standaardwaarde-migraties voor persoonlijke hotstrings en
 ; snelkiesnummers (AddMissingDefaultHotstrings / AddMissingDefaultSpeedDials),
-; de gebruikersprofielkeuze (GetUserDataProfile; docs/DECISIONS.md D-056) en
+; de gebruikersprofielkeuze (GetUserDataProfile; docs/DECISIONS.md D-056),
 ; de telefoonnummernormalisatie (NormalizePhoneNumber en de interne/externe
-; varianten, NormalizeSmsPhoneNumber).
+; varianten, NormalizeSmsPhoneNumber) en de standaardlog-opschoonclassificatie
+; (ClassifyDebugLogChunk; docs/DECISIONS.md D-062).
 ; Dit dekt bewust niet de bestands-I/O, GUI-vernieuwing of showMessage-paden
 ; van LoadHotstringsFromJson/LoadSpeedDialFromJson zelf, en ook niet de
 ; daadwerkelijke profiel-bootstrapkopie (InitializeUserStorage) — dat vereist
@@ -44,6 +45,7 @@ RunSelfTests() {
     RunSelfTestCase(results, "TestNormalizePhoneNumberExternal", TestNormalizePhoneNumberExternal)
     RunSelfTestCase(results, "TestNormalizePhoneNumber", TestNormalizePhoneNumber)
     RunSelfTestCase(results, "TestNormalizeSmsPhoneNumber", TestNormalizeSmsPhoneNumber)
+    RunSelfTestCase(results, "TestClassifyDebugLogChunk", TestClassifyDebugLogChunk)
 
     logText := ""
     for _, line in results["lines"]
@@ -378,4 +380,39 @@ TestNormalizeSmsPhoneNumber(results) {
     AssertEqual(results, "NormalizeSmsPhoneNumber wijst een niet-mobiel 05-nummer af", NormalizeSmsPhoneNumber("0512345678"), "")
     AssertEqual(results, "NormalizeSmsPhoneNumber wijst een te kort nummer af", NormalizeSmsPhoneNumber("061234567"), "")
     AssertEqual(results, "NormalizeSmsPhoneNumber wijst lege invoer af", NormalizeSmsPhoneNumber(""), "")
+}
+
+; Dekt de opschoonclassificatie achter PruneExpiredDebugLogFile()
+; (docs/DECISIONS.md D-062): huidig v2-formaat binnen/buiten de
+; bewaartermijn, het bekende pre-v2-legacyformaat (altijd verlopen), en
+; inhoud die bij geen enkel bekend patroon past (sinds D-062 ook
+; onvoorwaardelijk verlopen in plaats van voor altijd bewaard).
+TestClassifyDebugLogChunk(results) {
+    cutoff := "20260101000000"
+
+    AssertEqual(results, "ClassifyDebugLogChunk: lege chunk", ClassifyDebugLogChunk("`r`n", cutoff), "leeg")
+    AssertEqual(
+        results,
+        "ClassifyDebugLogChunk: huidig formaat binnen de bewaartermijn",
+        ClassifyDebugLogChunk("2026-01-15 09:00:00.000 [i] Test`r`n", cutoff),
+        "geldig"
+    )
+    AssertEqual(
+        results,
+        "ClassifyDebugLogChunk: huidig formaat ouder dan de bewaartermijn",
+        ClassifyDebugLogChunk("2025-12-01 09:00:00.000 [i] Test`r`n", cutoff),
+        "verlopen"
+    )
+    AssertEqual(
+        results,
+        "ClassifyDebugLogChunk: bekend pre-v2-legacyformaat, altijd verlopen",
+        ClassifyDebugLogChunk("09:00:00.000 Test`r`n", cutoff),
+        "legacy-verlopen"
+    )
+    AssertEqual(
+        results,
+        "ClassifyDebugLogChunk: onherkend formaat, sinds D-062 verlopen",
+        ClassifyDebugLogChunk("een willekeurige, niet-geformatteerde regel`r`n", cutoff),
+        "onherkend-verlopen"
+    )
 }

@@ -924,7 +924,7 @@ This is a real `DocBot.ahk` behavior change, so implement it on its own feature/
 
 ---
 
-## P2 — Harden the standard-log format migration check beyond the first 256 bytes
+## P2 — Harden the standard-log format migration check beyond the first 256 bytes (done)
 
 Discovered 2026-08-17 (see `docs/DECISIONS.md` D-044) via a real
 compiled test build: `debug.log` is not channel-specific
@@ -945,18 +945,25 @@ specifically recognizes that one known legacy format. This item is about
 the more general root cause, for whatever future format mismatch isn't
 already known/pattern-matched:
 
-- [ ] Decide on an approach: e.g. validate every line's format (not just the
+- [x] Decide on an approach: e.g. validate every line's format (not just the
   header) during `InitializeDiagnosticLogging()`, or make
   `PruneExpiredDebugLogFile()`'s "does this line match a known format"
   check exhaustive (current format + every known legacy format) with
   unconditional expiry for anything that matches no known format at all,
   rather than the current conservative "keep unknown content" default.
-- [ ] Weigh the tradeoff explicitly: the current conservative default
+  Chose the latter — see `docs/DECISIONS.md` D-062.
+- [x] Weigh the tradeoff explicitly: the current conservative default
   favors not deleting recent-but-corrupted entries; a stricter default
   favors not indefinitely retaining unredacted content. Record the decision
-  in `docs/DECISIONS.md`.
-- [ ] If changed, keep it consistent with the "malformed/legacy content must
-  not block startup" invariant from the seven-day-retention work.
+  in `docs/DECISIONS.md`. Recorded as D-062.
+- [x] If changed, keep it consistent with the "malformed/legacy content must
+  not block startup" invariant from the seven-day-retention work. The new
+  `ClassifyDebugLogChunk()` helper only drops the unrecognized entry itself
+  during the existing daily/startup maintenance pass; it never blocks or
+  interrupts startup (D-062).
+
+Implemented on `claude/standaardlog-format-validation-hez3ak`. Not yet
+functionally validated on Windows (`docs/DECISIONS.md` D-037).
 
 This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
 branch from the then-current `develop` and update the branch-specific
