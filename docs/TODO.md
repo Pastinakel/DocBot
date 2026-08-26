@@ -704,6 +704,23 @@ the build sees them without a separate manual step.
   corrupt anything), but a real deploy-safety defect worth having fixed
   regardless. **Still needs a fourth Windows run to confirm declining all
   three questions now genuinely skips the `EPD_Machine` copy.**
+  **A cosmetic issue was also reported (2026-08-26):** the console showed
+  garbled characters (BOM mojibake, e.g. "ï»¿"-style glyphs) right before
+  "ok" on the very first results line only; the 32/32 pass count itself
+  was always correct. Cause: `tests/SelfTests.ahk`'s
+  `FileAppend(logText, logPath, "UTF-8")` writes a UTF-8 byte-order mark
+  at the start of the freshly created results file, and `type` renders
+  that BOM as mojibake on a console whose active code page isn't UTF-8 —
+  only visible on the first line because a BOM appears exactly once, at
+  the very start of the file. Fixed by switching to `"UTF-8-RAW"`,
+  matching the no-BOM convention `DocBot.ahk` already uses elsewhere for
+  files that get read back (e.g. the JSON writers). Since this changes
+  `tests/SelfTests.ahk`, which is `#Include`d into `DocBot.ahk` and
+  affects the compiled build's `--selftest` output, `AppVersion` was
+  bumped in the same commit to `2.4-selftest-encoding.1` per the
+  branch-specific counter rule, and a `### 2.4 — In ontwikkeling` README
+  changelog section was opened (this is the first `DocBot.ahk`-affecting
+  change since the 2.3 release).
 - [x] Regardless of whether anything appeared on stdout, explicitly read
   back `%TEMP%\docbot-selftest-results.txt` and `type` (or `echo`) its
   contents to the console — this file, not stdout, is the reliable source

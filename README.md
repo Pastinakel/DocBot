@@ -484,6 +484,15 @@ risicoanalyse.
 Changelog
 ---------
 
+### 2.4 — In ontwikkeling
+- `DocBot.exe --selftest` schrijft `%TEMP%\docbot-selftest-results.txt`
+  niet langer met een UTF-8 BOM. Die BOM veroorzaakte geen echte testfout
+  (de 32/32-telling was altijd al correct), maar zorgde er wel voor dat de
+  eerste regel van het bestand er in een console zonder UTF-8-codepage
+  onleesbaar/verminkt uitzag zodra dat bestand met `type` werd getoond —
+  onder meer nu `Build-EPD_Machine.bat` dat automatisch na het compileren
+  doet.
+
 ### 2.3 — Huidige stabiele release
 - DocBot probeert de gebruikersdatamap bij het opstarten niet langer lokaal
   te pinnen tegen OneDrive Files On-Demand (`MarkUserStorageAlwaysAvailable()`
