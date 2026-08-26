@@ -558,11 +558,20 @@ conformiteit met een norm of de MDR.
     productiehosting en -TLS, enkele concrete back-up-/verwijdertermijnen en
     het DPIA-besluit zijn nog niet organisatorisch vastgesteld of als bewijs
     aan de repository gekoppeld.
-11. `InitializeDiagnosticLogging()` beoordeelt bij opstart alleen de eerste
+11. ~~`InitializeDiagnosticLogging()` beoordeelt bij opstart alleen de eerste
     256 bytes van `debug.log` om te bepalen of het bestand een verouderd
     formaat heeft en moet worden gewist; een nog onbekend toekomstig
     logformaat zou zo alsnog langs de zeven-dagenopschoning van
-    `docs/DECISIONS.md` D-044 kunnen glippen (zie `docs/TODO.md` P2).
+    `docs/DECISIONS.md` D-044 kunnen glippen (zie `docs/TODO.md` P2).~~
+    **Opgelost** (`docs/DECISIONS.md` D-062): de per-regel classificatie in
+    `PruneExpiredDebugLogFile()` is uitputtend gemaakt — inhoud die bij geen
+    enkel bekend formaat (huidig of legacy) past, vervalt nu onvoorwaardelijk
+    in plaats van voor altijd te worden bewaard. De 256-byte-headercontrole
+    bij opstart zelf is ongewijzigd en blijft beperkt tot het beslissen of het
+    bestand meteen moet worden gewist. Functioneel gevalideerd op Windows
+    (D-037, 2026-08-26): een handmatig toegevoegde regel met een onherkend
+    formaat is bevestigd verwijderd uit een live `debug.log` bij de
+    eerstvolgende opschoonronde.
 12. De Windows-gebruikersnaam in telemetrie heeft een tijdelijk supportdoel
     tijdens de opstartfase, maar er is nog geen objectief eindcriterium of
     vastgelegde herbeoordelingsdatum voor verwijdering vastgesteld. Het
@@ -595,10 +604,12 @@ conformiteit met een norm of de MDR.
    vierogencontrole, versiebeheer en regressietests.
 7. Onderzoek doelapplicatie-/venstercontrole, extra bevestiging bij risicovolle
    acties en waar mogelijk een controle van de juiste patiëntcontext.
-8. Verhard de formatherkenning die bepaalt of `debug.log` bij opstart moet
+8. ~~Verhard de formatherkenning die bepaalt of `debug.log` bij opstart moet
    worden gewist (nu alleen de eerste 256 bytes) zodat een toekomstig,
    nog onbekend logformaat niet ongemerkt langs de zeven-dagenopschoning van
-   D-044 kan glippen (`docs/TODO.md` P2).
+   D-044 kan glippen (`docs/TODO.md` P2).~~ **Opgelost** (D-062): onherkende
+   regelinhoud vervalt nu onvoorwaardelijk via de bestaande
+   opschoonclassificatie in plaats van voor altijd te worden bewaard.
 9. ~~Stel de gebruikersinstructie voor veilige, niet-patiëntspecifieke
    hotstringinhoud op~~ — **opgelost in 2.3** (D-045). Nog open: wijs een
    eigenaar voor klinische pakketinhoud aan.
