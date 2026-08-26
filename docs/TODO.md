@@ -1116,11 +1116,20 @@ in both places, following the exact same established pattern.
   implement the `Telemetry.ahk`/payload part of this without that separate
   sign-off, and keep the README/telemetry-documentation update in the same
   change that adds the field (not a follow-up).
-- [ ] Decide and record explicitly whether the counter counts every
-  attempted SMS action or only genuinely successful ones. Default
-  assumption unless the project owner says otherwise: successful only,
-  matching the existing two counters' semantics ("an action actually
-  taken", not "attempted/offered").
+- [x] **Decided (2026-08-26):** the counter counts only genuinely
+  successful SMS actions, not every attempt — confirmed by the project
+  owner. "Successful" is determined the same way the caller already
+  decides success/failure for logging/notifications: the existing boolean
+  return value of `RunSmsCallAction()` (`DocBot.ahk` around line 4458),
+  which is `true` only once DocBot has actually found/opened the right
+  Edge page or tab and filled the phone number field — no new detection
+  logic needed, just hook the counter to that same `else` branch that
+  already logs "SMS-route afgerond." This mirrors the existing
+  `Telemetry_RecordPhoneAction()` semantics: "success" means DocBot
+  completed its own side of the action (the dial request was sent /
+  the SMS field was filled), never the human end-of-flow outcome (the
+  call was answered / the SMS was actually sent) — DocBot cannot observe
+  that and, by design, never sends the SMS itself.
 - [ ] Update `README.md` (feature description and `Telemetrie` section) and
   `docs/DATA_PROTECTION.md` if the new field changes what's described
   there beyond the existing phone/hotstring counters' precedent.
