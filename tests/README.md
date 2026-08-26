@@ -88,6 +88,15 @@ breekt af zonder iets uit te rollen zodra de exitcode niet `0` is (inclusief
 een time-out) of het logbestand ontbreekt met een waarschuwing in plaats van
 een harde fout, op dezelfde manier als de CI-stap.
 
+De batch voert dit hulpscript uit door de inhoud via stdin naar
+`powershell -Command -` te pipen (`type tools\Invoke-WithTimeout.ps1 | powershell ...`),
+niet met `-File`: op een beheerde werkplek met een via Group Policy
+afgedwongen AllSigned-uitvoeringsbeleid weigert Windows een los, ongetekend
+`.ps1`-bestand en negeert daarbij ook `-ExecutionPolicy Bypass` (bevestigd op
+een echte beheerde werkplek — zie `docs/DECISIONS.md` D-060). Parameters
+komen daarom via omgevingsvariabelen (`INVOKE_WITH_TIMEOUT_*`) binnen in
+plaats van via een `param()`-blok.
+
 De CI-workflow zelf gebruikt dit hulpscript vooralsnog niet en blijft zijn
 eigen, functioneel identieke `pwsh`-fragment gebruiken.
 

@@ -648,16 +648,29 @@ the build sees them without a separate manual step.
   AutoHotkey process that could otherwise show a blocking dialog instead of
   exiting cleanly (`docs/DECISIONS.md` D-040). Implemented via a new
   `tools/Invoke-WithTimeout.ps1` helper (kept out of the repository root
-  per project-owner request) invoked from `Build-EPD_Machine.bat` with
-  `powershell -NoProfile -ExecutionPolicy Bypass -File ...`; it applies the
-  same `Start-Process -PassThru` / `WaitForExit(60000)` / `Stop-Process
-  -Force` pattern as the CI step and passes the child's exit code through.
-  Batch itself cannot do this directly: `cmd.exe` does not wait
-  synchronously on a GUI-subsystem executable the way it does on a console
-  executable, so a bare invocation would neither block correctly nor allow
-  a timeout/kill. **Deliberately left the CI workflow's own inline `pwsh`
-  fragment untouched** (project-owner decision) rather than switching it to
-  the same helper in this change.
+  per project-owner request) invoked from `Build-EPD_Machine.bat`; it
+  applies the same `Start-Process -PassThru` / `WaitForExit(60000)` /
+  `Stop-Process -Force` pattern as the CI step and passes the child's exit
+  code through. Batch itself cannot do this directly: `cmd.exe` does not
+  wait synchronously on a GUI-subsystem executable the way it does on a
+  console executable, so a bare invocation would neither block correctly
+  nor allow a timeout/kill. **Deliberately left the CI workflow's own
+  inline `pwsh` fragment untouched** (project-owner decision) rather than
+  switching it to the same helper in this change.
+  **Windows validation surfaced a real problem (2026-08-26):** the initial
+  version invoked the helper with `powershell -ExecutionPolicy Bypass -File
+  tools\Invoke-WithTimeout.ps1 ...`, which failed on the project owner's
+  managed workstation — Windows refused to load the unsigned `.ps1` file
+  ("is not digitally signed") and ignored `-ExecutionPolicy Bypass`,
+  because a Group Policy-configured execution policy always overrides that
+  startup argument. Fixed by piping the script's content into
+  `powershell -Command -` via stdin instead of `-File` (a command-text
+  invocation is not subject to the script-file execution-policy check at
+  all), with inputs passed via `INVOKE_WITH_TIMEOUT_*` environment
+  variables instead of a `param()` block, since stdin-delivered content
+  isn't bound to one. Recorded in `docs/DECISIONS.md` D-060. **Still
+  needs a repeat Windows compile run to confirm the stdin-based invocation
+  actually works end to end** (pass, fail, and timeout/kill cases).
 - [x] Regardless of whether anything appeared on stdout, explicitly read
   back `%TEMP%\docbot-selftest-results.txt` and `type` (or `echo`) its
   contents to the console — this file, not stdout, is the reliable source

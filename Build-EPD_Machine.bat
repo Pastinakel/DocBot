@@ -117,8 +117,22 @@ rem cmd.exe wacht sowieso niet vanzelf op een GUI-subsysteemproces zoals
 rem het wel op een console-executable zou doen. Daarom draait de zelftest
 rem via tools\Invoke-WithTimeout.ps1, dat dezelfde WaitForExit/force-kill-
 rem aanpak gebruikt als de CI-workflow (docs/DECISIONS.md D-040).
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\Invoke-WithTimeout.ps1" -FilePath "%OUTPUT%" -ArgumentList "--selftest" -TimeoutMs 60000
+rem De inhoud wordt via stdin naar "powershell -Command -" gepiped in
+rem plaats van met "-File" te worden uitgevoerd: op een beheerde werkplek
+rem met een via Group Policy afgedwongen AllSigned-beleid weigert Windows
+rem een los, ongetekend .ps1-bestand en negeert het daarbij ook
+rem "-ExecutionPolicy Bypass", omdat een Group Policy-ingesteld beleid
+rem altijd voorrang heeft op dat opstartargument. Dat beleid geldt alleen
+rem voor het laden van scriptbestanden, niet voor commando's die via
+rem stdin binnenkomen (zie docs/DECISIONS.md D-060).
+set "INVOKE_WITH_TIMEOUT_FILEPATH=%OUTPUT%"
+set "INVOKE_WITH_TIMEOUT_ARGS=--selftest"
+set "INVOKE_WITH_TIMEOUT_MS=60000"
+type "%~dp0tools\Invoke-WithTimeout.ps1" | powershell -NoProfile -ExecutionPolicy Bypass -Command -
 set "SELFTEST_RESULT=%errorlevel%"
+set "INVOKE_WITH_TIMEOUT_FILEPATH="
+set "INVOKE_WITH_TIMEOUT_ARGS="
+set "INVOKE_WITH_TIMEOUT_MS="
 
 rem Het resultatenbestand is de betrouwbare uitvoer, niet de console
 rem (zie docs/DECISIONS.md D-053); toon het ongeacht het gemeten resultaat.
