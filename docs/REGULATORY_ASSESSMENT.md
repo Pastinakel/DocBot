@@ -568,8 +568,10 @@ conformiteit met een norm of de MDR.
     enkel bekend formaat (huidig of legacy) past, vervalt nu onvoorwaardelijk
     in plaats van voor altijd te worden bewaard. De 256-byte-headercontrole
     bij opstart zelf is ongewijzigd en blijft beperkt tot het beslissen of het
-    bestand meteen moet worden gewist. Nog niet op Windows functioneel
-    gevalideerd (D-037).
+    bestand meteen moet worden gewist. Functioneel gevalideerd op Windows
+    (D-037, 2026-08-26): een handmatig toegevoegde regel met een onherkend
+    formaat is bevestigd verwijderd uit een live `debug.log` bij de
+    eerstvolgende opschoonronde.
 12. De Windows-gebruikersnaam in telemetrie heeft een tijdelijk supportdoel
     tijdens de opstartfase, maar er is nog geen objectief eindcriterium of
     vastgelegde herbeoordelingsdatum voor verwijdering vastgesteld. Het

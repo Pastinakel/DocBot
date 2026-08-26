@@ -962,8 +962,12 @@ already known/pattern-matched:
   during the existing daily/startup maintenance pass; it never blocks or
   interrupts startup (D-062).
 
-Implemented on `claude/standaardlog-format-validation-hez3ak`. Not yet
-functionally validated on Windows (`docs/DECISIONS.md` D-037).
+Implemented on `claude/standaardlog-format-validation-hez3ak`. Functionally
+validated on Windows (`docs/DECISIONS.md` D-037, 2026-08-26): `--selftest`
+is green (including `TestClassifyDebugLogChunk`, after fixing a `Trim()`
+empty-tail bug the test itself caught) and a manually-appended
+unrecognized-format line was confirmed pruned from a live `debug.log` on
+the next maintenance pass.
 
 This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
 branch from the then-current `develop` and update the branch-specific

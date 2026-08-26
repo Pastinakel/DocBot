@@ -2336,6 +2336,9 @@ whole-file header re-scan was added to `InitializeDiagnosticLogging()`.
 - Adding a third known log format in the future means adding one more
   branch to `ClassifyDebugLogChunk()` (and a self-test case for it) rather
   than touching the file-I/O parts of `PruneExpiredDebugLogFile()`.
-- Not yet functionally validated on Windows (`docs/DECISIONS.md` D-037) —
-  needs a real run to confirm a manually-appended unrecognized line is
-  actually pruned from a live `debug.log` on the next maintenance pass.
+- Functionally validated on Windows (`docs/DECISIONS.md` D-037,
+  2026-08-26): `TestClassifyDebugLogChunk` passes under `--selftest`
+  (after fixing the `Trim()` empty-tail bug the test itself caught — see
+  the commit history on `claude/standaardlog-format-validation-hez3ak`),
+  and a manually-appended unrecognized-format line was confirmed pruned
+  from a live `debug.log` on the next maintenance pass.
