@@ -970,8 +970,17 @@ There is now a `tests/` directory, but only for what is practical without a
 live hospital environment or a code module split (see `docs/DECISIONS.md`
 D-053). High-value testable areas:
 
-- [ ] stable/non-stable + compiled/noncompiled -> user-profile selection;
-- [ ] telephone-number normalization;
+- [x] stable/non-stable + compiled/noncompiled -> user-profile selection.
+  Covered by `TestGetUserDataProfile` (see the "P2 — Change user-data
+  profile selection to build mode" entry above; this line was left
+  unchecked here by oversight when that work landed).
+- [x] telephone-number normalization. Covers `NormalizePhoneNumber()` (the
+  clipboard-detection combination function), `NormalizePhoneNumberInternal()`/
+  `NormalizePhoneNumberExternal()`, and `NormalizeSmsPhoneNumber()`:
+  4-digit internal numbers, +31/0031/kaal-`0` external NL numbers with
+  spaces/dashes ignored, the SMS-specific 06-only acceptance, and
+  too-short/invalid input for each. Implemented on
+  `claude/next-5-todo-tasks-h6kn5k` (`AppVersion 2.4-selftest-encoding.2`).
 - [ ] hotstring execution-mode selection;
 - [ ] dynamic token expansion;
 - [x] JSON migration/default-addition idempotency. Implemented as
@@ -1057,6 +1066,79 @@ that on its own.
   the Hotstrings/Telefonie/Over cards now end at a consistent y=648 without
   visual overlap or clipping. Confirmed good by the project owner,
   2026-08-25.
+
+---
+
+## P2 — Add an SMS-action counter (GUI overview + telemetry)
+
+Filed by the project owner (2026-08-26). DocBot already tracks and shows
+two usage counters — "Belacties" (`TelemetryPhoneActions`) and "Lange
+hotstrings" (`TelemetryLongHotstringActions`) — on the Overzicht page's
+"Gebruik" card and in the telemetry heartbeat payload
+(`phoneActions`/`hotstringActions`). Add a third counter for SMS actions,
+in both places, following the exact same established pattern.
+
+### Scope
+
+- [ ] Add a `TelemetrySmsActions` counter to `Telemetry.ahk`, mirroring
+  `TelemetryPhoneActions`/`TelemetryLongHotstringActions`:
+  `Telemetry_RecordSmsAction()`, `Telemetry_GetSmsActions()`, persisted via
+  the existing `Telemetry_ReadCounter("SmsActions")`/
+  `Telemetry_WriteCounter("SmsActions", ...)` helpers in the same `[Usage]`
+  section of `settings.ini` the other two counters already use — no new
+  storage mechanism needed. A missing key already defaults to `0` via
+  `Telemetry_ReadCounter()`, so existing installs need no migration.
+- [ ] Call `Telemetry_RecordSmsAction()` where `RunSmsCallAction()`
+  genuinely succeeds (`DocBot.ahk`, the `else` branch around line 4469-4470
+  that logs "SMS-route afgerond."), not merely when the SMS option is
+  offered/selected — mirroring how `Telemetry_RecordPhoneAction()` fires
+  only after the dial request is actually sent (`DocBot.ahk` line 2244),
+  not merely when dialing is offered. Also call `RefreshUsageStatistics()`
+  there, matching the phone-action call site.
+- [ ] Add a third stat block (icon + label "SMS-acties" + count) to the
+  existing "Gebruik" card on the Overzicht page, alongside "Belacties" and
+  "Lange hotstrings" (`DocBot.ahk`, `AddCard("overzicht", 236, 516, 736,
+  128)` and the two `AddCardLabel`/icon blocks right after it, around line
+  414-424). That card is currently a fixed two-column 736×128 layout sized
+  for exactly two stats — this needs an actual layout pass (three columns,
+  or a second row) rather than a squeezed-in third column, and should keep
+  the existing "Belacties"/"Lange hotstrings" spacing/legibility intact.
+- [ ] Update `RefreshUsageStatistics()` (`DocBot.ahk` around line 1981) to
+  also refresh the new label live, matching the existing two counters
+  (`OverviewPhoneActionsText`/`OverviewLongHotstringActionsText` pattern).
+- [ ] Add an `smsActions` field to the telemetry heartbeat payload
+  (`Telemetry_SendHeartbeat()` in `Telemetry.ahk`), alongside the existing
+  `phoneActions`/`hotstringActions` raw JSON properties.
+- [ ] Per `CLAUDE.md`/`AGENTS.md` ("Transparantie over telemetrie"): a new
+  telemetry field requires explicit project-owner approval before
+  implementation, and the README `Telemetrie` section must describe it,
+  matching the actually-sent payload, before any release ships it. Do not
+  implement the `Telemetry.ahk`/payload part of this without that separate
+  sign-off, and keep the README/telemetry-documentation update in the same
+  change that adds the field (not a follow-up).
+- [x] **Decided (2026-08-26):** the counter counts only genuinely
+  successful SMS actions, not every attempt — confirmed by the project
+  owner. "Successful" is determined the same way the caller already
+  decides success/failure for logging/notifications: the existing boolean
+  return value of `RunSmsCallAction()` (`DocBot.ahk` around line 4458),
+  which is `true` only once DocBot has actually found/opened the right
+  Edge page or tab and filled the phone number field — no new detection
+  logic needed, just hook the counter to that same `else` branch that
+  already logs "SMS-route afgerond." This mirrors the existing
+  `Telemetry_RecordPhoneAction()` semantics: "success" means DocBot
+  completed its own side of the action (the dial request was sent /
+  the SMS field was filled), never the human end-of-flow outcome (the
+  call was answered / the SMS was actually sent) — DocBot cannot observe
+  that and, by design, never sends the SMS itself.
+- [ ] Update `README.md` (feature description and `Telemetrie` section) and
+  `docs/DATA_PROTECTION.md` if the new field changes what's described
+  there beyond the existing phone/hotstring counters' precedent.
+
+This changes `DocBot.ahk`/`Telemetry.ahk` behavior and the telemetry
+payload. Implement it on a dedicated feature/fix branch from the
+then-current `develop`, update the branch-specific `AppVersion` in every
+commit that changes `DocBot.ahk`/`Telemetry.ahk`, and do not send the new
+payload field before the project owner has explicitly approved it.
 
 ---
 

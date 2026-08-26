@@ -492,6 +492,11 @@ Changelog
   onleesbaar/verminkt uitzag zodra dat bestand met `type` werd getoond —
   onder meer nu `Build-EPD_Machine.bat` dat automatisch na het compileren
   doet.
+- `DocBot.exe --selftest` dekt nu ook de telefoonnummernormalisatie
+  (`NormalizePhoneNumber` en de interne/externe varianten,
+  `NormalizeSmsPhoneNumber`): 4-cijferige interne nummers, externe
+  NL-nummers in +31-/0031-/kale-0-vorm met spaties/streepjes genegeerd, de
+  06-only-eis voor de SMS-variant, en te korte/ongeldige invoer.
 
 ### 2.3 — Huidige stabiele release
 - DocBot probeert de gebruikersdatamap bij het opstarten niet langer lokaal

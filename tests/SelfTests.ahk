@@ -12,8 +12,10 @@
 ; (ReadSchemaVersion / RejectNewerSchemaVersion, gedefinieerd vlak vóór
 ; InitializeBundledPackages() in DocBot.ahk), de idempotentie van de
 ; eenmalige standaardwaarde-migraties voor persoonlijke hotstrings en
-; snelkiesnummers (AddMissingDefaultHotstrings / AddMissingDefaultSpeedDials)
-; en de gebruikersprofielkeuze (GetUserDataProfile; docs/DECISIONS.md D-056).
+; snelkiesnummers (AddMissingDefaultHotstrings / AddMissingDefaultSpeedDials),
+; de gebruikersprofielkeuze (GetUserDataProfile; docs/DECISIONS.md D-056) en
+; de telefoonnummernormalisatie (NormalizePhoneNumber en de interne/externe
+; varianten, NormalizeSmsPhoneNumber).
 ; Dit dekt bewust niet de bestands-I/O, GUI-vernieuwing of showMessage-paden
 ; van LoadHotstringsFromJson/LoadSpeedDialFromJson zelf, en ook niet de
 ; daadwerkelijke profiel-bootstrapkopie (InitializeUserStorage) — dat vereist
@@ -38,6 +40,10 @@ RunSelfTests() {
     RunSelfTestCase(results, "TestAddMissingDefaultSpeedDialsIdempotency", TestAddMissingDefaultSpeedDialsIdempotency)
     RunSelfTestCase(results, "TestCreateSpeedDialEntryDefaults", TestCreateSpeedDialEntryDefaults)
     RunSelfTestCase(results, "TestGetUserDataProfile", TestGetUserDataProfile)
+    RunSelfTestCase(results, "TestNormalizePhoneNumberInternal", TestNormalizePhoneNumberInternal)
+    RunSelfTestCase(results, "TestNormalizePhoneNumberExternal", TestNormalizePhoneNumberExternal)
+    RunSelfTestCase(results, "TestNormalizePhoneNumber", TestNormalizePhoneNumber)
+    RunSelfTestCase(results, "TestNormalizeSmsPhoneNumber", TestNormalizeSmsPhoneNumber)
 
     logText := ""
     for _, line in results["lines"]
@@ -285,4 +291,91 @@ TestGetUserDataProfile(results) {
         GetUserDataProfile("2.3-profielselectie-build-vorm.1", false),
         "dev"
     )
+}
+
+; Uitsluitend het kale 4-cijferige interne nummer; DocBot.ahk:4112-4116.
+TestNormalizePhoneNumberInternal(results) {
+    AssertEqual(results, "NormalizePhoneNumberInternal accepteert een kaal 4-cijferig nummer", NormalizePhoneNumberInternal("1234"), "1234")
+    AssertEqual(results, "NormalizePhoneNumberInternal negeert omringende spaties", NormalizePhoneNumberInternal(" 1234 "), "1234")
+    AssertEqual(results, "NormalizePhoneNumberInternal wijst een 5-cijferig nummer af", NormalizePhoneNumberInternal("12345"), "")
+    AssertEqual(results, "NormalizePhoneNumberInternal wijst een te kort nummer af", NormalizePhoneNumberInternal("123"), "")
+    AssertEqual(results, "NormalizePhoneNumberInternal wijst een niet-numeriek nummer af", NormalizePhoneNumberInternal("12a4"), "")
+}
+
+; Uitsluitend externe (10-cijferige) NL-nummers, met of zonder landcode;
+; DocBot.ahk:4097-4110.
+TestNormalizePhoneNumberExternal(results) {
+    AssertEqual(
+        results,
+        "NormalizePhoneNumberExternal accepteert een kaal nationaal NL-nummer",
+        NormalizePhoneNumberExternal("0612345678"),
+        "0612345678"
+    )
+    AssertEqual(
+        results,
+        "NormalizePhoneNumberExternal normaliseert +31 naar de nationale 0-vorm",
+        NormalizePhoneNumberExternal("+31612345678"),
+        "0612345678"
+    )
+    AssertEqual(
+        results,
+        "NormalizePhoneNumberExternal normaliseert 0031 naar de nationale 0-vorm",
+        NormalizePhoneNumberExternal("0031612345678"),
+        "0612345678"
+    )
+    AssertEqual(results, "NormalizePhoneNumberExternal wijst een te kort nummer af", NormalizePhoneNumberExternal("061234567"), "")
+    AssertEqual(results, "NormalizePhoneNumberExternal wijst een 4-cijferig intern nummer af", NormalizePhoneNumberExternal("1234"), "")
+}
+
+; De combinatiefunctie die de klemborddetectie gebruikt: eerst het interne
+; 4-cijferige nummer, anders de NL-specifieke externe vorm (+31/0031/0),
+; met spaties/streepjes/haakjes genegeerd; DocBot.ahk:4079-4095.
+TestNormalizePhoneNumber(results) {
+    AssertEqual(results, "NormalizePhoneNumber herkent een kaal 4-cijferig intern nummer", NormalizePhoneNumber("1234"), "1234")
+    AssertEqual(
+        results,
+        "NormalizePhoneNumber negeert spaties/streepjes bij een getypt nationaal nummer",
+        NormalizePhoneNumber("06-12 34 56 78"),
+        "0612345678"
+    )
+    AssertEqual(
+        results,
+        "NormalizePhoneNumber normaliseert een getypt +31-nummer met spaties naar de nationale vorm",
+        NormalizePhoneNumber("+31 6 12 34 56 78"),
+        "0612345678"
+    )
+    AssertEqual(
+        results,
+        "NormalizePhoneNumber normaliseert een kale 0031-vorm naar de nationale vorm",
+        NormalizePhoneNumber("0031612345678"),
+        "0612345678"
+    )
+    AssertEqual(results, "NormalizePhoneNumber wijst een te kort nummer af", NormalizePhoneNumber("061234567"), "")
+    AssertEqual(results, "NormalizePhoneNumber wijst niet-numerieke invoer af", NormalizePhoneNumber("hallo"), "")
+}
+
+; Uitsluitend geldige NL-mobiele (06) nummers voor de SMS-actie, met of
+; zonder landcode; DocBot.ahk:4909-4918.
+TestNormalizeSmsPhoneNumber(results) {
+    AssertEqual(
+        results,
+        "NormalizeSmsPhoneNumber accepteert een kaal 06-mobiel nummer",
+        NormalizeSmsPhoneNumber("0612345678"),
+        "0612345678"
+    )
+    AssertEqual(
+        results,
+        "NormalizeSmsPhoneNumber normaliseert +31 6... naar de 06-vorm",
+        NormalizeSmsPhoneNumber("+31612345678"),
+        "0612345678"
+    )
+    AssertEqual(
+        results,
+        "NormalizeSmsPhoneNumber normaliseert 0031 6... naar de 06-vorm",
+        NormalizeSmsPhoneNumber("0031612345678"),
+        "0612345678"
+    )
+    AssertEqual(results, "NormalizeSmsPhoneNumber wijst een niet-mobiel 05-nummer af", NormalizeSmsPhoneNumber("0512345678"), "")
+    AssertEqual(results, "NormalizeSmsPhoneNumber wijst een te kort nummer af", NormalizeSmsPhoneNumber("061234567"), "")
+    AssertEqual(results, "NormalizeSmsPhoneNumber wijst lege invoer af", NormalizeSmsPhoneNumber(""), "")
 }
