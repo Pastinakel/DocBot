@@ -19,7 +19,11 @@ logica zonder bestands-I/O, GUI of netwerk:
   voegt niets dubbel toe, en een bestaande afkorting/naam/nummer wordt niet
   overschreven;
 - normalisatiegedrag van `NormalizeHotstringItem()`, inclusief het
-  uitschakelen van oude `ActionType=execute`-items.
+  uitschakelen van oude `ActionType=execute`-items;
+- telefoonnummernormalisatie: `NormalizePhoneNumber()` (de combinatiefunctie
+  achter de klemborddetectie), `NormalizePhoneNumberInternal()`/
+  `NormalizePhoneNumberExternal()` en `NormalizeSmsPhoneNumber()`, inclusief
+  +31/0031-varianten en te korte/ongeldige invoer.
 
 Zie `docs/MIGRATIONS.md` voor het volledige migratieoverzicht per
 opslagformaat en de betekenis van "idempotent" in deze context.

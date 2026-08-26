@@ -970,8 +970,17 @@ There is now a `tests/` directory, but only for what is practical without a
 live hospital environment or a code module split (see `docs/DECISIONS.md`
 D-053). High-value testable areas:
 
-- [ ] stable/non-stable + compiled/noncompiled -> user-profile selection;
-- [ ] telephone-number normalization;
+- [x] stable/non-stable + compiled/noncompiled -> user-profile selection.
+  Covered by `TestGetUserDataProfile` (see the "P2 — Change user-data
+  profile selection to build mode" entry above; this line was left
+  unchecked here by oversight when that work landed).
+- [x] telephone-number normalization. Covers `NormalizePhoneNumber()` (the
+  clipboard-detection combination function), `NormalizePhoneNumberInternal()`/
+  `NormalizePhoneNumberExternal()`, and `NormalizeSmsPhoneNumber()`:
+  4-digit internal numbers, +31/0031/kaal-`0` external NL numbers with
+  spaces/dashes ignored, the SMS-specific 06-only acceptance, and
+  too-short/invalid input for each. Implemented on
+  `claude/next-5-todo-tasks-h6kn5k` (`AppVersion 2.4-selftest-encoding.2`).
 - [ ] hotstring execution-mode selection;
 - [ ] dynamic token expansion;
 - [x] JSON migration/default-addition idempotency. Implemented as
