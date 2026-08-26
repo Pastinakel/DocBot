@@ -485,6 +485,13 @@ Changelog
 ---------
 
 ### 2.4 — In ontwikkeling
+- Een gebundeld pakket hoeft geen `itemCount`-veld meer te bevatten dat
+  precies overeenkomt met het aantal items. Dit optionele
+  manifestveld moest tot nu toe handmatig in sync worden gehouden en kon een
+  verder geldig pakket laten weigeren zodra dat vergeten werd; `items.Length`
+  was al de enige echte bron van waarheid. De consistentiecontrole is uit
+  `LoadBundledPackageFile()` verwijderd en het veld is uit alle meegeleverde
+  `packages/*.json`-bestanden gehaald.
 - `DocBot.exe --selftest` schrijft `%TEMP%\docbot-selftest-results.txt`
   niet langer met een UTF-8 BOM. Die BOM veroorzaakte geen echte testfout
   (de 32/32-telling was altijd al correct), maar zorgde er wel voor dat de
