@@ -682,9 +682,28 @@ the build sees them without a separate manual step.
   to "Er is niets uitgerold naar de doelmap of doelmappen." (no
   parentheses) rather than escaping them, since the other message in the
   same block already needed `^(`/`^)` escaping for a literal exit-code
-  parenthetical. **Still needs a repeat Windows compile run to confirm
-  the full flow now works end to end**, including a deliberate test
-  failure and a timeout/kill case.
+  parenthetical.
+  **A third Windows run (2026-08-26) confirmed the selftest step itself
+  now runs correctly end to end** (pass path, including the parenthesis
+  fix), but surfaced a third, pre-existing bug unrelated to this TODO's
+  own scope: the project owner answered "nee" to all three interactive
+  questions, including "Ook een executable naar de naastgelegen map
+  EPD_Machine kopieren?", but the batch copied to `EPD_Machine` anyway.
+  Root cause: `:ask` (`Build-EPD_Machine.bat`) always writes the literal
+  string `"J"` or `"N"` into its output variable, never leaves it empty,
+  but the two downstream gates for `DO_EPD_COPY`
+  (the `OVERWRITE_EPD_PACKAGES` question and the `EPD_Machine.exe` deploy
+  itself) used `if defined DO_EPD_COPY`, which is true for *any* assigned
+  value including `"N"` — so once the first question was asked at all,
+  both were treated as "yes" regardless of the actual answer. Fixed by
+  changing both checks to `if /I "%DO_EPD_COPY%"=="J"`. This bug predates
+  this TODO entry's own changes (it sits in code this change never
+  touched) and was only found because this task's Windows validation
+  exercised the full interactive flow; not release-blocking by itself
+  (declining the question was simply not honored, it didn't silently
+  corrupt anything), but a real deploy-safety defect worth having fixed
+  regardless. **Still needs a fourth Windows run to confirm declining all
+  three questions now genuinely skips the `EPD_Machine` copy.**
 - [x] Regardless of whether anything appeared on stdout, explicitly read
   back `%TEMP%\docbot-selftest-results.txt` and `type` (or `echo`) its
   contents to the console — this file, not stdout, is the reliable source

@@ -81,7 +81,7 @@ if exist "%PARENT_DIR%\packages\" (
 )
 
 set "OVERWRITE_EPD_PACKAGES=J"
-if defined DO_EPD_COPY if exist "%ROOT_DIR%\EPD_Machine\packages\" (
+if /I "%DO_EPD_COPY%"=="J" if exist "%ROOT_DIR%\EPD_Machine\packages\" (
     echo.
     echo Er staat al een pakketmap in de doellocatie:
     echo "%ROOT_DIR%\EPD_Machine\packages"
@@ -155,7 +155,7 @@ echo.
 call :deploy "%TARGET%" "%APP_NAME%" "%OVERWRITE_MAIN_PACKAGES%"
 if errorlevel 1 goto :failed
 
-if defined DO_EPD_COPY (
+if /I "%DO_EPD_COPY%"=="J" (
     rem ROOT_DIR is al buiten dit haakjesblok gezet. Gebruik het pad
     rem rechtstreeks: een variabele die binnen hetzelfde blok wordt gezet,
     rem wordt met %%...%% mogelijk te vroeg geexpandeerd.
