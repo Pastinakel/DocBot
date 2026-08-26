@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-dev.2"
+global AppVersion := "2.4-itemcount-controle.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -6880,17 +6880,6 @@ LoadBundledPackageFile(path) {
 
         seenIds[itemId] := true
         seenTriggers[trigger] := true
-    }
-
-    if package.Has("itemCount") && (package["itemCount"] + 0) != package["items"].Length {
-        throw Error(
-            Format(
-                "Pakket {1} vermeldt {2} items, maar bevat er {3}.",
-                package["id"],
-                package["itemCount"],
-                package["items"].Length
-            )
-        )
     }
 
     package["sourcePath"] := path

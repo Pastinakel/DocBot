@@ -141,7 +141,7 @@ same as `InitializeSpeedDialStorage()`. There is no legacy filename fallback
 exists yet — the schema has never moved past 1. `InitializeBundledPackages()`
 (manifest) and `LoadBundledPackageFile()` (each package) only enforce the
 ceiling check via `RejectNewerSchemaVersion()`, plus structural validation
-(required fields, duplicate id/trigger detection, `itemCount` consistency).
+(required fields, duplicate id/trigger detection).
 
 A manifest entry is a pure `id`/`file` index — nothing else is read from it.
 `name`, `version`, `description` and the optional free-text `owner` (who

@@ -5,12 +5,10 @@
   "version": "1.0.0",
   "description": "Correcties voor veelvoorkomende Nederlandse spelfouten, gebaseerd op de aangeleverde Wikipedia-lijst.",
   "owner": "Steven Giesbers",
-  "itemCount": 1393,
   "categories": [
     {
       "id": "algemeen",
-      "name": "Algemeen",
-      "itemCount": 1393
+      "name": "Algemeen"
     }
   ],
   "items": [

@@ -5,12 +5,10 @@
   "version": "1.0.1",
   "description": "Veelgebruikte Nederlandse afkortingen en algemene termen.",
   "owner": "Steven Giesbers",
-  "itemCount": 81,
   "categories": [
     {
       "id": "algemeen",
-      "name": "Algemeen",
-      "itemCount": 81
+      "name": "Algemeen"
     }
   ],
   "items": [
