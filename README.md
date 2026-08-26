@@ -67,8 +67,16 @@ te configureren.
 die over de `packages`-submap hieronder — en doorloopt daarna zonder verdere
 onderbrekingen het compileren en uitrollen. Enter zonder tekst registreert
 telkens Ja; alleen een expliciete "N" telt als Nee. De batch compileert in de
-bronmap eerst `DocBot.exe` en plaatst vervolgens een kopie in de bovenliggende
-applicatiemap, met de naam van die map. Wanneer het script een centrale
+bronmap eerst `DocBot.exe`. Direct daarna draait de batch automatisch
+`DocBot.exe --selftest` tegen die zojuist gecompileerde executable en toont
+de inhoud van `%TEMP%\docbot-selftest-results.txt` in de console — dit is de
+betrouwbare uitvoer, niet de (typisch lege) stdout van een GUI-subsysteem-
+executable (`docs/DECISIONS.md` D-053). Reageert de zelftest niet binnen
+zestig seconden (bijvoorbeeld door een blokkerend dialoogvenster) of faalt
+er een test, dan breekt de batch af zonder iets uit te rollen; zie
+`tools/Invoke-WithTimeout.ps1` en `tests/README.md`. Slaagt de zelftest, dan
+plaatst de batch vervolgens een kopie in de bovenliggende applicatiemap, met
+de naam van die map. Wanneer het script een centrale
 `-dev`-versie bevat en de batch vanuit een directe submap van `DocBot`
 draait, kan optioneel ook `EPD_Machine.exe` in de naastgelegen
 applicatiemap worden bijgewerkt. Voor

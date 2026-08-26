@@ -68,6 +68,29 @@ leesbare CI-log en gebruikt de procesexitcode voor slagen/falen; ontbreekt
 het logbestand, dan toont de stap alleen een waarschuwing in plaats van te
 falen — het echte resultaat blijft de exitcode.
 
+## Bij het compileren (`Build-EPD_Machine.bat`)
+
+`Build-EPD_Machine.bat` draait, direct na een geslaagde compilatie en vóór
+enige `:deploy`-aanroep, `--selftest` tegen de zojuist gecompileerde
+`DocBot.exe` zelf — niet tegen een reeds uitgerolde doelkopie en niet tegen
+het interpreteerde bronscript. Dit is dezelfde controle als bij de eerdere
+handmatige verificatie tijdens de 2.3-release (D-053), nu geautomatiseerd.
+
+Omdat `cmd.exe` een GUI-subsysteem-executable niet vanzelf synchroon afwacht
+zoals bij een console-executable, en omdat een blokkerend dialoogvenster de
+batch anders voor onbepaalde tijd zou laten hangen, gebruikt de batch
+hiervoor `tools/Invoke-WithTimeout.ps1` — een klein PowerShell-hulpscript dat
+hetzelfde `Start-Process`/`WaitForExit`/`Stop-Process -Force`-patroon
+toepast als de CI-stap hierboven (zestig seconden timeout, daarna geforceerd
+afbreken) en de exitcode van het kindproces doorgeeft. De batch toont
+`%TEMP%\docbot-selftest-results.txt` in de console ongeacht het resultaat en
+breekt af zonder iets uit te rollen zodra de exitcode niet `0` is (inclusief
+een time-out) of het logbestand ontbreekt met een waarschuwing in plaats van
+een harde fout, op dezelfde manier als de CI-stap.
+
+De CI-workflow zelf gebruikt dit hulpscript vooralsnog niet en blijft zijn
+eigen, functioneel identieke `pwsh`-fragment gebruiken.
+
 ## Een nieuwe test toevoegen
 
 Voeg een nieuwe `Test...(results)`-functie toe in `SelfTests.ahk`, roep

@@ -641,40 +641,65 @@ the build sees them without a separate manual step.
 
 ### Scope
 
-- [ ] After a successful compile, run `"%OUTPUT%" --selftest` (the
+- [x] After a successful compile, run `"%OUTPUT%" --selftest` (the
   just-built `DocBot.exe`, not the interpreted script) and wait for it to
   exit — reuse the same `WaitForExit`/force-kill-style caution already
   applied in `.github/workflows/ahk-syntax-check.yml` for a GUI-subsystem
   AutoHotkey process that could otherwise show a blocking dialog instead of
-  exiting cleanly (`docs/DECISIONS.md` D-040).
-- [ ] Regardless of whether anything appeared on stdout, explicitly read
+  exiting cleanly (`docs/DECISIONS.md` D-040). Implemented via a new
+  `tools/Invoke-WithTimeout.ps1` helper (kept out of the repository root
+  per project-owner request) invoked from `Build-EPD_Machine.bat` with
+  `powershell -NoProfile -ExecutionPolicy Bypass -File ...`; it applies the
+  same `Start-Process -PassThru` / `WaitForExit(60000)` / `Stop-Process
+  -Force` pattern as the CI step and passes the child's exit code through.
+  Batch itself cannot do this directly: `cmd.exe` does not wait
+  synchronously on a GUI-subsystem executable the way it does on a console
+  executable, so a bare invocation would neither block correctly nor allow
+  a timeout/kill. **Deliberately left the CI workflow's own inline `pwsh`
+  fragment untouched** (project-owner decision) rather than switching it to
+  the same helper in this change.
+- [x] Regardless of whether anything appeared on stdout, explicitly read
   back `%TEMP%\docbot-selftest-results.txt` and `type` (or `echo`) its
   contents to the console — this file, not stdout, is the reliable source
-  per D-053/`tests/README.md`.
-- [ ] Use the process exit code (`0` = all tests passed, `1` = a failure or
+  per D-053/`tests/README.md`. Implemented: the batch deletes any stale
+  results file before running, then `type`s it after, regardless of the
+  measured exit code.
+- [x] Use the process exit code (`0` = all tests passed, `1` = a failure or
   unexpected error) as the authoritative pass/fail signal, matching how the
   CI step already treats it. Decide and document explicitly what the batch
   then does on a nonzero exit code — e.g. print a clear failure banner and
   `goto :failed` before any `:deploy` call, so a broken build is never
   rolled out to a target folder. Do not silently continue on failure.
-- [ ] Keep this self-test run local to the source build step; it must not
+  Implemented: `SELFTEST_RESULT` is captured immediately after the
+  PowerShell call and checked explicitly; a nonzero value (including a
+  timeout/force-kill) prints a failure banner and jumps to `:failed` before
+  either `:deploy` call.
+- [x] Keep this self-test run local to the source build step; it must not
   run against an already-deployed target copy of `DocBot.exe`, and must not
   block or alter the existing interactive question-answering flow
   (`docs/DECISIONS.md` D-052 and the pre-asked-questions change in the 2.3
   changelog) — it runs after all questions are answered, alongside the
-  compile step itself.
-- [ ] Handle a missing/unreadable results file the same way the CI step
+  compile step itself. Implemented: it runs against `%OUTPUT%` (the
+  freshly compiled source-tree executable) only, placed right after the
+  compile step and before the first `call :deploy`, after all interactive
+  questions have already been asked.
+- [x] Handle a missing/unreadable results file the same way the CI step
   does: warn clearly instead of crashing the batch, and still rely on the
-  exit code for pass/fail.
-- [ ] Update `tests/README.md` and the `Build-EPD_Machine.bat` section of
+  exit code for pass/fail. Implemented with the same `if exist ... (type
+  ...) else (echo Waarschuwing: ...)` shape as the rest of the batch.
+- [x] Update `tests/README.md` and the `Build-EPD_Machine.bat` section of
   `README.md` to document that a compile now also runs and displays the
   self-test results, so this isn't a surprise the next time someone reads
-  either doc.
+  either doc. Done in the same change.
 
 This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
-bump applies unless the implementation also needs a `DocBot.ahk` change
-(it should not: `--selftest` already exists and works, this is only about
-invoking it automatically and surfacing its existing output).
+bump applies (`--selftest` already exists and works; this only invokes it
+automatically and surfaces its existing output). Implemented on
+`claude/next-5-todo-tasks-h6kn5k`; **not yet functionally validated on
+Windows** (git-only editing environment, per `docs/DECISIONS.md` D-037) —
+needs a real compile run to confirm the PowerShell helper actually
+times out/force-kills a hung `--selftest` and that a genuine test failure
+is surfaced and blocks deployment as designed.
 
 ---
 

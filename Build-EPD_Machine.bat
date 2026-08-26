@@ -107,6 +107,37 @@ echo Build gereed:
 echo "%OUTPUT%"
 echo.
 
+echo Zelftest uitvoeren tegen de zojuist gecompileerde DocBot.exe...
+set "SELFTEST_LOG=%TEMP%\docbot-selftest-results.txt"
+if exist "%SELFTEST_LOG%" del /f /q "%SELFTEST_LOG%" >nul 2>&1
+
+rem Een AutoHotkey v2 GUI-subsysteem-executable kan op een blokkerend
+rem dialoogvenster vastlopen in plaats van netjes af te sluiten, en
+rem cmd.exe wacht sowieso niet vanzelf op een GUI-subsysteemproces zoals
+rem het wel op een console-executable zou doen. Daarom draait de zelftest
+rem via tools\Invoke-WithTimeout.ps1, dat dezelfde WaitForExit/force-kill-
+rem aanpak gebruikt als de CI-workflow (docs/DECISIONS.md D-040).
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\Invoke-WithTimeout.ps1" -FilePath "%OUTPUT%" -ArgumentList "--selftest" -TimeoutMs 60000
+set "SELFTEST_RESULT=%errorlevel%"
+
+rem Het resultatenbestand is de betrouwbare uitvoer, niet de console
+rem (zie docs/DECISIONS.md D-053); toon het ongeacht het gemeten resultaat.
+if exist "%SELFTEST_LOG%" (
+    type "%SELFTEST_LOG%"
+) else (
+    echo Waarschuwing: "%SELFTEST_LOG%" niet gevonden; zie tests/README.md.
+)
+
+if not "%SELFTEST_RESULT%"=="0" (
+    echo.
+    echo FOUT: Zelftest tegen de gecompileerde DocBot.exe is mislukt ^(exit %SELFTEST_RESULT%^).
+    echo Er is niets uitgerold naar de doelmap(pen).
+    goto :failed
+)
+
+echo Zelftest geslaagd.
+echo.
+
 call :deploy "%TARGET%" "%APP_NAME%" "%OVERWRITE_MAIN_PACKAGES%"
 if errorlevel 1 goto :failed
 
