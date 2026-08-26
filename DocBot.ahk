@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-dev.2"
+global AppVersion := "2.4-sms-actieteller.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -215,6 +215,7 @@ global CallActionSelector := 0
 global TextReplacementCheck := 0
 global OverviewPhoneActionsText := 0
 global OverviewLongHotstringActionsText := 0
+global OverviewSmsActionsText := 0
 
 global SpeedDialLV := 0
 global SpeedDialEnabledCheck := 0
@@ -313,7 +314,7 @@ BuildMainGui() {
     global RegisteredNumberText, RegistrationNumberText, RegistrationStatusText, RegistrationRefreshButton
     global RegistrationHelperText
     global CallActionSelector, TextReplacementCheck
-    global OverviewPhoneActionsText, OverviewLongHotstringActionsText
+    global OverviewPhoneActionsText, OverviewLongHotstringActionsText, OverviewSmsActionsText
     global HotLV, HotSearch, HotTriggerEdit, HotEnabledCheck
     global HotReplacementSingleGroup, HotReplacementMultiGroup
     global HotReplacementExpandButton, HotReplacementCollapseButton
@@ -413,15 +414,18 @@ BuildMainGui() {
 
     AddCard("overzicht", 236, 516, 736, 128)
     AddCardLabel("overzicht", 260, 532, 200, 22, "Gebruik", "s13 bold c" C["Text"])
-    phoneUsageIcon := AddCardLabel("overzicht", 270, 568, 36, 34, Chr(0xE717), "s20 c" C["Primary"], "Center")
+    phoneUsageIcon := AddCardLabel("overzicht", 256, 568, 36, 34, Chr(0xE717), "s20 c" C["Primary"], "Center")
     phoneUsageIcon.SetFont("s20 c" C["Primary"], "Segoe MDL2 Assets")
-    AddCardLabel("overzicht", 320, 562, 160, 18, "Belacties", "s9 c" C["Muted"])
-    OverviewPhoneActionsText := AddCardLabel("overzicht", 320, 582, 160, 34, Telemetry_GetPhoneActions(), "s22 bold c" C["Text"])
-    hotstringUsageIcon := AddCardLabel("overzicht", 600, 568, 36, 34, Chr(0xE8FD), "s20 c" C["Primary"], "Center")
+    AddCardLabel("overzicht", 302, 562, 170, 18, "Belacties", "s9 c" C["Muted"])
+    OverviewPhoneActionsText := AddCardLabel("overzicht", 302, 582, 170, 34, Telemetry_GetPhoneActions(), "s22 bold c" C["Text"])
+    hotstringUsageIcon := AddCardLabel("overzicht", 501, 568, 36, 34, Chr(0xE8FD), "s20 c" C["Primary"], "Center")
     hotstringUsageIcon.SetFont("s20 c" C["Primary"], "Segoe MDL2 Assets")
-    AddCardLabel("overzicht", 650, 562, 220, 18, "Lange hotstrings", "s9 c" C["Muted"])
-    OverviewLongHotstringActionsText := AddCardLabel("overzicht", 650, 582, 160, 34, Telemetry_GetLongHotstringActions(), "s22 bold c" C["Text"])
-    AddCardLabel("overzicht", 650, 614, 280, 18, "Lange en meerregelige vervangingen", "s8 c" C["Muted"])
+    AddCardLabel("overzicht", 547, 562, 170, 18, "Lange hotstrings", "s9 c" C["Muted"])
+    OverviewLongHotstringActionsText := AddCardLabel("overzicht", 547, 582, 170, 34, Telemetry_GetLongHotstringActions(), "s22 bold c" C["Text"])
+    smsUsageIcon := AddCardLabel("overzicht", 746, 568, 36, 34, Chr(0xE8BD), "s20 c" C["Primary"], "Center")
+    smsUsageIcon.SetFont("s20 c" C["Primary"], "Segoe MDL2 Assets")
+    AddCardLabel("overzicht", 792, 562, 170, 18, "SMS-acties", "s9 c" C["Muted"])
+    OverviewSmsActionsText := AddCardLabel("overzicht", 792, 582, 170, 34, Telemetry_GetSmsActions(), "s22 bold c" C["Text"])
 
     overviewFooter := MainGui.AddText("x236 y672 w736 h18 Right Background" C["Window"], "Sluiten verbergt DocBot in het systeemvak")
     overviewFooter.SetFont("s8 c" C["Muted"], "Segoe UI")
@@ -1979,12 +1983,14 @@ GetTelemetryStatus() {
 }
 
 RefreshUsageStatistics() {
-    global OverviewPhoneActionsText, OverviewLongHotstringActionsText
+    global OverviewPhoneActionsText, OverviewLongHotstringActionsText, OverviewSmsActionsText
 
     if IsObject(OverviewPhoneActionsText)
         OverviewPhoneActionsText.Value := Telemetry_GetPhoneActions()
     if IsObject(OverviewLongHotstringActionsText)
         OverviewLongHotstringActionsText.Value := Telemetry_GetLongHotstringActions()
+    if IsObject(OverviewSmsActionsText)
+        OverviewSmsActionsText.Value := Telemetry_GetSmsActions()
 }
 
 CallActionChanged(value, *) {
@@ -4468,6 +4474,8 @@ StartSmsCallAction(dialog, number, *) {
             )
         } else {
             DebugLog("✓", "SMS actie", "SMS-route afgerond.")
+            Telemetry_RecordSmsAction()
+            RefreshUsageStatistics()
         }
     } catch as smsError {
         DebugLog("✕", "SMS actie", "SMS-route is mislukt.")

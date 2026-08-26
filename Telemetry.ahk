@@ -20,6 +20,7 @@ global TelemetryStartedAt := ""
 global TelemetryRequest := 0
 global TelemetryPhoneActions := 0
 global TelemetryLongHotstringActions := 0
+global TelemetrySmsActions := 0
 global TelemetryConfigFile := ""
 global TelemetryAppVersion := ""
 global TelemetryStatusProvider := 0
@@ -71,7 +72,7 @@ Telemetry_BuildConfig() {
 Telemetry_Initialize(configFile, appVersion, statusProvider) {
     global TelemetryConfig, TelemetryInstallationId, TelemetryStartedAt
     global TelemetryConfigFile, TelemetryAppVersion, TelemetryStatusProvider
-    global TelemetryPhoneActions, TelemetryLongHotstringActions
+    global TelemetryPhoneActions, TelemetryLongHotstringActions, TelemetrySmsActions
     global TelemetryPendingInstallationId
     global TelemetryInstallationIdPersistenceAttempts, TelemetryIsRunning
 
@@ -82,6 +83,7 @@ Telemetry_Initialize(configFile, appVersion, statusProvider) {
 
     TelemetryPhoneActions := Telemetry_ReadCounter("PhoneActions")
     TelemetryLongHotstringActions := Telemetry_ReadCounter("LongHotstringActions")
+    TelemetrySmsActions := Telemetry_ReadCounter("SmsActions")
     TelemetryInstallationId := ""
     TelemetryPendingInstallationId := ""
     TelemetryInstallationIdPersistenceAttempts := 0
@@ -240,6 +242,18 @@ Telemetry_GetLongHotstringActions() {
     return TelemetryLongHotstringActions
 }
 
+Telemetry_RecordSmsAction() {
+    global TelemetrySmsActions
+    TelemetrySmsActions += 1
+    Telemetry_WriteCounter("SmsActions", TelemetrySmsActions)
+    return TelemetrySmsActions
+}
+
+Telemetry_GetSmsActions() {
+    global TelemetrySmsActions
+    return TelemetrySmsActions
+}
+
 Telemetry_ReadCounter(name) {
     global TelemetryConfigFile
 
@@ -294,6 +308,7 @@ Telemetry_SendStartupHeartbeat(*) {
 Telemetry_SendHeartbeat(*) {
     global TelemetryConfig, TelemetryInstallationId, TelemetryStartedAt
     global TelemetryRequest, TelemetryPhoneActions, TelemetryLongHotstringActions
+    global TelemetrySmsActions
     global TelemetryStatusProvider, TelemetryAppVersion
 
     if !TelemetryConfig["Enabled"] || TelemetryInstallationId = ""
@@ -322,7 +337,8 @@ Telemetry_SendHeartbeat(*) {
         . Telemetry_JsonRawProperty(
             "hotstringActions",
             TelemetryLongHotstringActions
-        )
+        ) ","
+        . Telemetry_JsonRawProperty("smsActions", TelemetrySmsActions)
         . "}"
 
     payload := "{"
