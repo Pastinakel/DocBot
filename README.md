@@ -485,6 +485,14 @@ Changelog
 ---------
 
 ### 2.4 — In ontwikkeling
+- De opschoning van het standaardlog (`PruneExpiredDebugLogFile()`) herkent
+  voortaan uitputtend welk formaat een regel heeft: het huidige formaat, het
+  bekende oude formaat van vóór commit `5f72613`, of geen van beide. Een
+  regel die bij geen enkel bekend formaat past, vervalt voortaan
+  onvoorwaardelijk in plaats van voor altijd te worden bewaard — dit sluit
+  het scenario waarbij een oudere of teruggezette build ooit niet-geschoonde
+  inhoud onder een al geldig ogende "v2"-kopregel zou kunnen wegschrijven
+  zonder dat een latere opstart dat opmerkt (`docs/DECISIONS.md` D-062).
 - `DocBot.exe --selftest` schrijft `%TEMP%\docbot-selftest-results.txt`
   niet langer met een UTF-8 BOM. Die BOM veroorzaakte geen echte testfout
   (de 32/32-telling was altijd al correct), maar zorgde er wel voor dat de
