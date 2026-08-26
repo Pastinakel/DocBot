@@ -1,12 +1,15 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-25. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-26. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
 - **P0** — blocks the current release path or risks a broken build.
 - **P1** — should be completed before/around the current release or immediately afterwards.
 - **P2** — valuable engineering improvement; not a reason to destabilize the current release.
+- **P3** — low-priority polish; correct as filed, but narrow-impact or
+  cosmetic enough that it can sit indefinitely without hurting the
+  project. Pick up opportunistically, not on a schedule.
 
 ---
 
@@ -618,7 +621,7 @@ Do not copy end-user changelog content into these docs verbatim; link concepts a
 
 ---
 
-## P1 — Run `--selftest` automatically when compiling, with results visible on the console
+## P1 — Run `--selftest` automatically when compiling, with results visible on the console (done)
 
 Filed by the project owner (2026-08-25). Right now, confirming
 `tests/SelfTests.ahk` passes against a compiled build is a manual step: run
@@ -702,8 +705,9 @@ the build sees them without a separate manual step.
   exercised the full interactive flow; not release-blocking by itself
   (declining the question was simply not honored, it didn't silently
   corrupt anything), but a real deploy-safety defect worth having fixed
-  regardless. **Still needs a fourth Windows run to confirm declining all
-  three questions now genuinely skips the `EPD_Machine` copy.**
+  regardless. **Confirmed on a fourth Windows run (2026-08-26) by the
+  project owner:** declining all three questions now genuinely skips the
+  `EPD_Machine` copy.
   **A cosmetic issue was also reported (2026-08-26):** the console showed
   garbled characters (BOM mojibake, e.g. "ï»¿"-style glyphs) right before
   "ok" on the very first results line only; the 32/32 pass count itself
@@ -758,65 +762,12 @@ the build sees them without a separate manual step.
 This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
 bump applies (`--selftest` already exists and works; this only invokes it
 automatically and surfaces its existing output). Implemented on
-`claude/next-5-todo-tasks-h6kn5k`; **not yet functionally validated on
-Windows** (git-only editing environment, per `docs/DECISIONS.md` D-037) —
-needs a real compile run to confirm the PowerShell helper actually
-times out/force-kills a hung `--selftest` and that a genuine test failure
-is surfaced and blocks deployment as designed.
-
----
-
-## P1 — Also offer the EPD_Machine copy question for a stable release, not only `-dev`/`-rc`
-
-Filed by the project owner (2026-08-25). `Build-EPD_Machine.bat` only asks
-"Ook een executable naar de naastgelegen map EPD_Machine kopieren?" when
-`IS_DEVELOP` is set — and `IS_DEVELOP` is only set when `global AppVersion`
-in the source contains `-dev` or `-rc`:
-
-```bat
-rem Alleen de centrale developversie of een RC mag vanaf een directe submap
-rem van DocBot optioneel ook naar de naastgelegen applicatiemap EPD_Machine
-rem worden uitgerold.
-set "IS_DEVELOP="
-findstr /B /C:"global AppVersion" "%SOURCE%" | findstr /C:"-dev" /C:"-rc" >nul
-if not errorlevel 1 set "IS_DEVELOP=1"
-```
-
-A stable numeric `AppVersion` (e.g. `2.3`, no prerelease suffix) never
-matches `-dev`/`-rc`, so `IS_DEVELOP` stays unset and the EPD_Machine
-question — and therefore the whole `EPD_Machine.exe`/packages copy path
-below it — is silently skipped when placing a stable release, even though
-the co-located `EPD_Machine` folder may need the same update.
-
-### Scope
-
-- [ ] Extend the `IS_DEVELOP`-gated condition (or introduce a clearer,
-  separate flag) so a stable numeric `AppVersion` also triggers the
-  "Ook een executable naar de naastgelegen map EPD_Machine kopieren?"
-  question, alongside the existing `-dev`/`-rc` case — not only when a
-  development or release-candidate build is placed.
-- [ ] Decide explicitly, and document the decision here and in a code
-  comment: should this stay scoped to stable + `-dev`/`-rc` only (i.e.
-  still exclude a feature/fix branch's own prerelease build, matching the
-  existing rationale that only the central dev/RC line and now stable
-  releases are expected to also update `EPD_Machine`), or should every
-  `AppVersion` shape ask the question? Default assumption unless the
-  project owner says otherwise: keep feature/fix branch builds excluded,
-  only add stable to the existing `-dev`/`-rc` allowance.
-- [ ] Re-check the variable name `IS_DEVELOP` once the condition covers
-  stable releases too — it will no longer mean "is a development build",
-  so keep or rename it deliberately rather than leaving a now-misleading
-  name.
-- [ ] Verify the rest of the `DO_EPD_COPY` path (the `OVERWRITE_EPD_PACKAGES`
-  question and the `:deploy` call for `EPD_Machine.exe`) already behaves
-  correctly once triggered from a stable build — it should, since that path
-  does not itself branch on `IS_DEVELOP` again, only on `DO_EPD_COPY`.
-- [ ] Update the `Build-EPD_Machine.bat` description in `README.md` (and the
-  code comment above `IS_DEVELOP`) so it no longer says only a "centrale
-  developversie of een RC" gets this option.
-
-This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
-bump applies.
+`claude/next-5-todo-tasks-h6kn5k` (merged via PR #57/#58).
+**Fully validated on a real managed Windows workstation by the project
+owner (2026-08-26):** the automatic post-compile `--selftest` run, the
+readable results file output (including after the BOM fix), the
+single-keypress J/n prompts (D-061), and the `DO_EPD_COPY` decline fix all
+confirmed working end to end. This item is closed.
 
 ---
 
@@ -1205,6 +1156,99 @@ Before extracting a subsystem, account for:
 - AppVersion/profile behavior.
 
 Prefer small behavior-preserving extractions with Windows regression tests over a rewrite.
+
+### Recommended first step (proposal, 2026-08-26)
+
+Start with **storage/migrations**, not telephony/SMS-UIA/GUI rendering. Reasons:
+
+- It is already the most decoupled seam in the file by a proven margin:
+  `tests/SelfTests.ahk` already calls `ReadSchemaVersion()`,
+  `RejectNewerSchemaVersion()`, `CreateHotstringItem()`,
+  `NormalizeHotstringItem()`, `AddMissingDefaultHotstrings()`,
+  `CreateSpeedDialEntry()`, `AddMissingDefaultSpeedDials()`, and
+  `GetUserDataProfile()` in isolation, with only a temporary
+  `global LocalConfig` substitution and no GUI/network/file-I/O
+  dependency. That is direct, already-passing evidence these functions
+  don't entangle with global GUI state the way telephony/SMS-UIA/GUI
+  rendering do.
+- D-053 already flagged this exact move — extracting these functions "into
+  their own included file (mirroring the existing `Telemetry.ahk` module
+  boundary)" — as the natural next step, and explicitly deferred it only
+  because it "cannot be validated by this agent (no Windows runtime
+  available, D-037)", not because of any doubt about the seam itself.
+- `Telemetry.ahk` is a live, working precedent for the target shape: a
+  `#Include`d file holding related globals + functions, no GUI, included
+  from `DocBot.ahk` without disturbing top-level init order.
+
+Concrete shape: a new `Storage.ahk` (or similar name) holding exactly the
+functions `tests/SelfTests.ahk` already covers, `#Include`d from
+`DocBot.ahk` at the same structural point `Telemetry.ahk` is included
+today. Validate with `--selftest` before and after the move (identical
+pass count and lines is the cheapest possible regression check for
+exactly this seam) plus a full manual Windows regression pass, on its own
+dedicated branch, not bundled with unrelated feature work. Explicitly do
+**not** start with telephony, SMS/UIA, or GUI rendering — those are the
+seams with heavy global-GUI-control-reference and callback-binding
+coupling this same section already warns about, and should only be
+attempted once the storage-helpers move has proven the `#Include`/
+`FileInstall`/top-level-init-order pattern works end to end without
+regressions.
+
+---
+
+## P3 — Also offer the EPD_Machine copy question for a stable release, not only `-dev`/`-rc`
+
+_Downgraded from P1 to P3 (2026-08-26, project-owner decision)._
+
+Filed by the project owner (2026-08-25). `Build-EPD_Machine.bat` only asks
+"Ook een executable naar de naastgelegen map EPD_Machine kopieren?" when
+`IS_DEVELOP` is set — and `IS_DEVELOP` is only set when `global AppVersion`
+in the source contains `-dev` or `-rc`:
+
+```bat
+rem Alleen de centrale developversie of een RC mag vanaf een directe submap
+rem van DocBot optioneel ook naar de naastgelegen applicatiemap EPD_Machine
+rem worden uitgerold.
+set "IS_DEVELOP="
+findstr /B /C:"global AppVersion" "%SOURCE%" | findstr /C:"-dev" /C:"-rc" >nul
+if not errorlevel 1 set "IS_DEVELOP=1"
+```
+
+A stable numeric `AppVersion` (e.g. `2.3`, no prerelease suffix) never
+matches `-dev`/`-rc`, so `IS_DEVELOP` stays unset and the EPD_Machine
+question — and therefore the whole `EPD_Machine.exe`/packages copy path
+below it — is silently skipped when placing a stable release, even though
+the co-located `EPD_Machine` folder may need the same update.
+
+### Scope
+
+- [ ] Extend the `IS_DEVELOP`-gated condition (or introduce a clearer,
+  separate flag) so a stable numeric `AppVersion` also triggers the
+  "Ook een executable naar de naastgelegen map EPD_Machine kopieren?"
+  question, alongside the existing `-dev`/`-rc` case — not only when a
+  development or release-candidate build is placed.
+- [ ] Decide explicitly, and document the decision here and in a code
+  comment: should this stay scoped to stable + `-dev`/`-rc` only (i.e.
+  still exclude a feature/fix branch's own prerelease build, matching the
+  existing rationale that only the central dev/RC line and now stable
+  releases are expected to also update `EPD_Machine`), or should every
+  `AppVersion` shape ask the question? Default assumption unless the
+  project owner says otherwise: keep feature/fix branch builds excluded,
+  only add stable to the existing `-dev`/`-rc` allowance.
+- [ ] Re-check the variable name `IS_DEVELOP` once the condition covers
+  stable releases too — it will no longer mean "is a development build",
+  so keep or rename it deliberately rather than leaving a now-misleading
+  name.
+- [ ] Verify the rest of the `DO_EPD_COPY` path (the `OVERWRITE_EPD_PACKAGES`
+  question and the `:deploy` call for `EPD_Machine.exe`) already behaves
+  correctly once triggered from a stable build — it should, since that path
+  does not itself branch on `IS_DEVELOP` again, only on `DO_EPD_COPY`.
+- [ ] Update the `Build-EPD_Machine.bat` description in `README.md` (and the
+  code comment above `IS_DEVELOP`) so it no longer says only a "centrale
+  developversie of een RC" gets this option.
+
+This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
+bump applies.
 
 ---
 

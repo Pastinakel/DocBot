@@ -2252,6 +2252,10 @@ call fail immediately.
   under `Get-Content`/`Invoke-Expression` delivery specifically, including
   that the resolved letter is echoed legibly and that unrelated keys are
   correctly ignored without corrupting the prompt line.
+- Confirmed on a real managed Windows workstation by the project owner
+  (2026-08-26): `[Console]::ReadKey()` behaves as expected under
+  `Get-Content`/`Invoke-Expression` delivery — `J`/`j`/`N`/`n` register
+  immediately and a bare Enter defaults to `J`.
 
 ---
 
