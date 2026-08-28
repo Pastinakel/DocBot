@@ -88,19 +88,64 @@ genuinely never run DocBot, or (b) OneDrive has not mounted far enough yet
 for even the folder structure/placeholders to be visible. Nothing in a
 single snapshot can tell these apart.
 
-Proposed resolution: do not try to classify intent from one measurement.
-Instead, give the existence check itself the same bounded-retry treatment
-as the loaders — re-check `DirExist(UserDataDir)` on the shared retry
-cadence (the same ~4-5 quick retries) before deciding to bootstrap, instead
-of deciding on the very first `false`. If it was OneDrive lag, the real
-profile surfaces within that window and DocBot proceeds on the existing
-data with no bootstrap and no risk of treating an existing user as new. If
-it is genuinely a first run, nothing appears within the window and
-bootstrap proceeds exactly as today, just delayed by that bounded amount.
-The GUI still opens immediately either way (unchanged, per D-026) — the
-only user-visible effect is that a real first-time user's profile
-directory/default files take up to the retry window to materialize instead
-of appearing instantly.
+Proposed resolution: do not try to classify intent from one passive
+measurement. Instead, actively probe writability, and let the probe double
+as the real bootstrap once it proves safe (suggested by the project owner):
+
+1. If the file can't be read: check whether it exists. If not, check
+   whether the folder exists. If neither exists, attempt to create a
+   uniquely-named temporary folder under `A_MyDocuments` (a real
+   `DirCreate`, not just a `DirExist` poll) — a write attempt is a strictly
+   stronger signal than re-polling `DirExist`, since a not-yet-mounted
+   OneDrive should fail an actual write, not just look empty.
+2. Once that temporary folder can be created, re-check whether `UserDataDir`
+   and the settings file are readable *now*:
+   - Yes → the real profile surfaced while the probe was running (pure
+     OneDrive-lag case); delete the temporary folder and proceed on the
+     real data. No bootstrap, no risk of treating an existing user as new.
+   - No → the temporary folder's successful creation just empirically
+     proved this location is writable and `UserDataDir` genuinely does not
+     exist — a high-confidence first run. Rename the temporary folder into
+     place as `UserDataDir` (reusing it rather than creating a second
+     folder) and bootstrap settings there as today.
+3. Retry the whole probe on the same bounded cadence as the other loaders
+   if the `DirCreate` itself fails — that failure is the "storage backend
+   not ready" signal and should log as such (distinct from a first-run
+   message).
+
+Two existing patterns in the codebase apply directly here and should be
+reused rather than re-invented:
+
+- **Multi-instance race on the rename step.** If autostart fires twice, or
+  a user launches DocBot manually while an autostart instance is still
+  probing, two instances could each create their own temporary folder and
+  both attempt to claim `UserDataDir`. `Telemetry_TryEnsureInstallationId()`
+  already solves the equivalent race for the installation ID by re-reading
+  immediately before use and letting an existing value win. Apply the same
+  rule here: immediately before renaming, re-check whether `UserDataDir`
+  now exists; if it does, discard the own temporary folder and use the
+  existing one instead of renaming over it.
+- **Cleanup of an orphaned probe folder.** If DocBot exits (crash, forced
+  kill, Windows restart) between creating the temporary folder and
+  renaming/deleting it, a stray folder is left in the user's Documents.
+  `PruneAbandonedProblemReportDirs()` (P1 "Remove temporary problem-report
+  artifacts") already sweeps a recognizable naming pattern older than seven
+  days on the existing daily cleanup timer — give the probe folder a
+  similarly recognizable name and fold it into that same sweep rather than
+  adding a new cleanup mechanism.
+
+**This must run asynchronously, after the GUI is already shown — not in the
+current synchronous auto-execute sequence.** `InitializeUserStorage()` is
+called before `BuildMainGui()`/`MainGui.Show()` today; if the probe/retry
+loop (or the earlier plain bounded-retry idea) stays there as written, a
+multi-minute retry window would delay the main window from appearing at
+all, which is exactly the blocking startup gate D-026 already rejected —
+only now scoped to one decision instead of everything. The probe must move
+to the same asynchronous, timer-driven shape the telemetry installation ID
+already uses: the GUI shows immediately on whatever data is available
+(exactly as it does today), and the probe/rename logic runs on the
+background retry timer afterward, refreshing the relevant in-memory
+state/GUI once it resolves either way.
 
 **Cheap first gate on top of the bounded retry:** before deciding anything,
 also check `DirExist(A_MyDocuments)` — the Documents root itself, which
@@ -134,6 +179,18 @@ the rest of this proposal before implementation.
 - Do **not** reintroduce a blocking/global startup writeability gate — that
   approach was deliberately rejected (D-026) because it makes unrelated
   functionality unavailable whenever Documents/OneDrive is briefly slow.
+  This applies to the retry mechanism itself, not only to the original
+  gate: `InitializeUserStorage()`, `LoadAppSettings()`, and the four JSON
+  loaders all currently run synchronously *before*
+  `BuildMainGui()`/`MainGui.Show()`. The **first, single, fast attempt**
+  can stay exactly where it is (it fails fast today, in well under a
+  second, so it does not delay the GUI) — but every *retry*, on any of
+  these loaders or on the first-run probe below, must be moved to run on a
+  background timer *after* the GUI is already shown, the same shape
+  `Telemetry_TryEnsureInstallationId()` already uses. Leaving a multi-minute
+  retry loop in the current synchronous position would delay the main
+  window itself, which is the same blocking gate D-026 rejected, only
+  scoped to fewer call sites.
 - Generalize the existing telemetry installation-ID pattern (D-027/D-028),
   but split *scheduling* from *error handling*: since all five loaders sit
   on the same Documents/OneDrive-backed folder and the log shows them
@@ -177,15 +234,29 @@ the rest of this proposal before implementation.
   approach described above for `LoadAppSettings()`, hotstrings, package
   settings/selections, speed dial, and SMS default texts.
 - [ ] Fix the silent no-log early return in `LoadAppSettings()`.
-- [ ] Get explicit project-owner sign-off on, then implement, the bounded
-  retry on `InitializeUserStorage()`'s `DirExist(UserDataDir)` check
-  described above, so a not-yet-mounted OneDrive is no longer
-  indistinguishable from a genuine first run.
+- [ ] Get explicit project-owner sign-off on, then implement, the
+  write-probe approach for `InitializeUserStorage()` described above
+  (create a temporary folder under `A_MyDocuments`, re-check for a real
+  profile, then either discard the probe or rename it into place), so a
+  not-yet-mounted OneDrive is no longer indistinguishable from a genuine
+  first run.
+- [ ] Reuse the existing "re-check immediately before use, let an existing
+  value win" pattern from `Telemetry_TryEnsureInstallationId()` for the
+  probe's rename step, to handle two DocBot instances racing to claim
+  `UserDataDir`.
+- [ ] Reuse the existing `PruneAbandonedProblemReportDirs()`-style sweep
+  (P1 "Remove temporary problem-report artifacts") to clean up an orphaned
+  probe folder left behind by a crash between creation and rename/delete;
+  give the probe folder a similarly recognizable name rather than adding a
+  second cleanup mechanism.
 - [ ] Confirm whether this organization's `%MyDocuments%` is itself
   OneDrive-redirected (Known Folder Move) or a plain local folder, and
   record the answer; implement the `DirExist(A_MyDocuments)` first-gate
   check above only once that is known, since it only strengthens the
   signal in the plain-local-folder case.
+- [ ] Ensure every retry loop (loaders and the first-run probe alike) is
+  wired to run on a background timer after `MainGui.Show()`, not left in
+  the current synchronous position before it.
 - [ ] Address the counter-zeroing/overwrite risk in
   `Telemetry_ReadCounter()`/`Telemetry_WriteCounter()`.
 - [ ] Update `docs/DECISIONS.md` and `docs/PROJECT_CONTEXT.md` §4.7.
