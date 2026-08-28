@@ -74,6 +74,38 @@ next full restart:
   personal hotstrings/speed dial/SMS default texts unavailable) with no
   further attempt to reload once storage becomes available again.
 
+### Open question: telling "not yet available" apart from a genuine first run
+
+`InitializeUserStorage()` treats `!DirExist(UserDataDir)` as "first run" and
+immediately bootstraps (copies from a seed profile, or creates a fresh
+directory) — a single, synchronous, one-shot check that runs before any of
+the loaders above. This is a different, harder ambiguity than the four
+loader failures: a JSON loader failing with "kon niet worden geladen" (not
+"bestaat niet") already proves the file exists but is temporarily
+unreadable — that case is unambiguous and safe to retry as proposed below.
+But `DirExist(UserDataDir) = false` looks identical whether (a) the user has
+genuinely never run DocBot, or (b) OneDrive has not mounted far enough yet
+for even the folder structure/placeholders to be visible. Nothing in a
+single snapshot can tell these apart.
+
+Proposed resolution: do not try to classify intent from one measurement.
+Instead, give the existence check itself the same bounded-retry treatment
+as the loaders — re-check `DirExist(UserDataDir)` on the shared retry
+cadence (the same ~4-5 quick retries) before deciding to bootstrap, instead
+of deciding on the very first `false`. If it was OneDrive lag, the real
+profile surfaces within that window and DocBot proceeds on the existing
+data with no bootstrap and no risk of treating an existing user as new. If
+it is genuinely a first run, nothing appears within the window and
+bootstrap proceeds exactly as today, just delayed by that bounded amount.
+The GUI still opens immediately either way (unchanged, per D-026) — the
+only user-visible effect is that a real first-time user's profile
+directory/default files take up to the retry window to materialize instead
+of appearing instantly.
+
+This changes first-run bootstrap timing, not just retry-on-known-existing-
+data behavior, so it needs explicit project-owner sign-off separately from
+the rest of this proposal before implementation.
+
 ### Proposal (needs project-owner sign-off before implementation)
 
 - Do **not** reintroduce a blocking/global startup writeability gate — that
@@ -122,6 +154,10 @@ next full restart:
   approach described above for `LoadAppSettings()`, hotstrings, package
   settings/selections, speed dial, and SMS default texts.
 - [ ] Fix the silent no-log early return in `LoadAppSettings()`.
+- [ ] Get explicit project-owner sign-off on, then implement, the bounded
+  retry on `InitializeUserStorage()`'s `DirExist(UserDataDir)` check
+  described above, so a not-yet-mounted OneDrive is no longer
+  indistinguishable from a genuine first run.
 - [ ] Address the counter-zeroing/overwrite risk in
   `Telemetry_ReadCounter()`/`Telemetry_WriteCounter()`.
 - [ ] Update `docs/DECISIONS.md` and `docs/PROJECT_CONTEXT.md` §4.7.
