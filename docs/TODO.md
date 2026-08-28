@@ -196,37 +196,68 @@ each feature independently, at the cost of sometimes blocking a feature
 whose own data actually already loaded fine.
 
 **What "largely blocked" means concretely**, while that combined readiness
-state is not yet true:
+state is not yet true — finalized 2026-08-28 against a mockup (see below):
+data-dependent content is **hidden outright, not dimmed/disabled**. An
+earlier draft of this proposal showed disabled/grayed controls so their
+presence stayed visible; the project owner rejected that in favor of
+hiding, including every control that could trigger a write (save buttons
+included) — nothing partially-loaded should be reachable at all, not even
+in a visibly-inert state.
 
-- Hotstring text replacement/expansion: suspended — do not act on partial
-  or default hotstring data.
+- **Overzicht page:** the banner plus the registration card (top of the
+  page) are the only things shown. Belactie, Tekstvervanging, and Gebruik
+  — the three lower cards — are hidden entirely, not shown disabled.
+- **Telefonie, Hotstrings, and Instellingen pages:** each shows only the
+  banner plus a short centered message; the page's entire normal content
+  (speed-dial list/editor, hotstring list/editor, storage/import/SMS
+  settings) is hidden, **including every save button** — there is nothing
+  left on these pages that could write partially-loaded state.
 - The clipboard-number → call/SMS-action flow: suspended. This is the part
   that depends on `CallAction`/`SmsCallActionTitle`/`TextReplacement` from
   `settings.ini`, so acting on a detected number without knowing the real
   setting would risk doing the wrong thing, not just nothing.
-- Package manager, speed-dial editing/dialing, SMS default-text settings:
-  unavailable (disabled/grayed rather than hidden, so their presence is
-  still visible).
 - Telephony registration, the link-code flow, and the long-poll event loop:
-  **unaffected, run exactly as today.**
-- Help/Over and other static, non-data-dependent pages: unaffected.
+  **unaffected, run exactly as today** — this is what stays on the
+  Overzicht page's registration card.
+- Help/Over and other static, non-data-dependent pages: **unaffected, not
+  touched by degraded mode at all** (project-owner decision, 2026-08-28) —
+  no mockup needed for them since nothing changes.
+- **Sidebar status indicators (bottom-left) — both "Telefonie:" and "Tekst
+  vervangen:" show a neutral, pulsing "Laden…" state**, not the normal
+  green/red Actief/Inactief. This corrects an earlier draft that left
+  "Telefonie:" green/"Actief" on the reasoning that registration is
+  unaffected — but `RefreshSidebarStatuses()` drives that particular
+  indicator from `CallAction`, not from registration status: it reports
+  whether DocBot currently knows what to do with a recognized phone number,
+  and until `settings.ini` has loaded, it genuinely does not know that yet.
+  Registration itself stays visible and correct in the Overzicht card
+  above; the sidebar dot is a different signal and must reflect its own
+  real uncertainty rather than borrowing telephony's "it still works" fact.
 
 **Making it visible, not silent:** the existing transient notification GUI
 (`ShowNotification()`, D-025) is built to auto-dismiss after a few seconds
 and is the wrong shape for a state that can last minutes. This needs a
-persistent indicator — e.g. a banner/status area in the main window that
-stays present for as long as degraded mode lasts and clears automatically
-the moment the combined readiness state becomes true (refreshing the
-now-unblocked lists/controls at the same time, consistent with how the
-shared retry timer already refreshes each loader's own state on success).
-Reuse the visual language of the existing notification styling where it
-fits; the exact layout is an implementation/Windows-validation detail, not
-something to lock in from this environment (`docs/DECISIONS.md` D-037).
+persistent indicator — a banner/status area in the main window that stays
+present for as long as degraded mode lasts and clears automatically the
+moment the combined readiness state becomes true (refreshing the
+now-unblocked page at the same time, consistent with how the shared retry
+timer already refreshes each loader's own state on success).
+
+**Mockup:** [DocBot Degraded Mode](https://claude.ai/code/artifact/defdebdf-87bd-4d38-8a2d-587eb8bbd896)
+shows the finalized design — the persistent warning-colored banner
+(spinner, non-dismissing), the Overzicht page with only the registration
+card left standing, the Telefonie/Hotstrings/Instellingen pages reduced to
+banner-plus-message, and both sidebar status dots on the neutral "Laden…"
+state, against a "Normaal" comparison artboard. Colors, sidebar, and card
+geometry are lifted directly from `DocBot.ahk`'s `C := Map(...)` palette
+and `BuildMainGui()` layout; exact pixel positions were compressed slightly
+to fit the banner into the fixed 700px-tall window and should be
+re-verified during implementation, not copied as final coordinates.
 
 The GUI shell itself must still appear immediately either way — this is
-about disabling/marking specific controls as unavailable once shown, not
-about delaying `MainGui.Show()` (see the synchronous-vs-background-timer
-point above, which still applies in full).
+about which content that shell shows, not about delaying `MainGui.Show()`
+(see the synchronous-vs-background-timer point above, which still applies
+in full).
 
 ### Proposal (needs project-owner sign-off before implementation)
 
@@ -319,10 +350,22 @@ point above, which still applies in full).
   SMS default-text settings on it (all-or-nothing, per project-owner
   decision) — while leaving telephony registration/linking/event-polling
   and the Help/Over pages unaffected.
+- [ ] Implement the finalized "hide, don't dim" behavior per the mockup:
+  on Overzicht, render only the banner and the registration card while the
+  readiness flag is false (Belactie/Tekstvervanging/Gebruik not shown at
+  all); on Telefonie/Hotstrings/Instellingen, render only the banner plus a
+  short message (no list, no editor, no save button of any kind).
+- [ ] Drive the "Telefonie:" sidebar status dot from the combined readiness
+  flag as well as `CallAction`, so it shows the neutral "Laden…" state
+  rather than green/Actief while settings haven't loaded — it reports
+  call-action readiness, not registration status, and registration stays
+  correctly visible in the Overzicht card regardless.
 - [ ] Design and implement a persistent (not auto-dismissing) in-GUI
-  indicator for degraded mode, distinct from the existing transient
+  banner for degraded mode, distinct from the existing transient
   `ShowNotification()` toast, that clears automatically once the combined
-  readiness flag becomes true and the now-unblocked lists/controls refresh.
+  readiness flag becomes true and the now-unblocked page refreshes. Match
+  the mockup's banner style (warning-colored, left accent bar, spinner)
+  as a starting point, re-verified on Windows.
 - [ ] Update `docs/DECISIONS.md` and `docs/PROJECT_CONTEXT.md` §4.7.
 - [ ] Update the README changelog; assess whether the telemetry
   documentation needs changes (the payload/fields themselves should not
