@@ -79,16 +79,25 @@ next full restart:
 - Do **not** reintroduce a blocking/global startup writeability gate — that
   approach was deliberately rejected (D-026) because it makes unrelated
   functionality unavailable whenever Documents/OneDrive is briefly slow.
-- Generalize the existing telemetry installation-ID pattern (D-027/D-028)
-  into a small shared "retry this specific loader in the background" helper,
-  and apply it individually to `LoadAppSettings()`,
-  `InitializeHotstringStorage()`, `InitializePackageSettings()`,
-  `InitializeSpeedDialStorage()`, and `InitializeSmsDefaultTextStorage()` —
-  each retry re-runs only that one loader and, on success, refreshes the
-  relevant in-memory state and any already-built GUI list/controls, exactly
-  as `Telemetry_TryEnsureInstallationId()` calls `Telemetry_Start()` once it
-  succeeds. Keep failures scoped per loader; one loader's continued failure
-  must not block or retry the others.
+- Generalize the existing telemetry installation-ID pattern (D-027/D-028),
+  but split *scheduling* from *error handling*: since all five loaders sit
+  on the same Documents/OneDrive-backed folder and the log shows them
+  failing and recovering together, use **one shared retry timer** (the same
+  quick/slow cadence already used for the installation ID) instead of five
+  independent timers duplicating the same schedule and logging the same
+  moment five times over. On each tick, the shared timer re-runs every
+  loader that has not yet succeeded and, per loader, refreshes only that
+  loader's in-memory state and any already-built GUI list/controls on
+  success — mirroring how `Telemetry_TryEnsureInstallationId()` calls
+  `Telemetry_Start()` once it succeeds.
+  Keep each loader's *own* success/failure and its own `Opslagfout` message
+  fully independent, though: coupling the retry trigger to a shared timer
+  must not couple the diagnosis. A loader that keeps failing for an
+  unrelated reason (a locked file, a corrupt document, antivirus scanning)
+  once its siblings have already recovered must still fail visibly and
+  distinctly on the next shared tick, not be silently carried along by
+  whichever loader succeeds first — do not collapse the five distinct
+  `Opslagfout` messages into one.
 - Close the silent gap in `LoadAppSettings()` specifically: log a baseline
   `Opslagfout` (or equivalent) when `ConfigFile` does not resolve, rather
   than returning with no diagnostic trace, so "not yet available" is
@@ -109,9 +118,9 @@ next full restart:
 
 - [ ] Confirm on the managed Windows autostart path (not an interactive
   launch) that the race reproduces, and capture a standard log showing it.
-- [ ] Design and implement the per-loader retry helper described above for
-  `LoadAppSettings()`, hotstrings, package settings/selections, speed dial,
-  and SMS default texts.
+- [ ] Design and implement the shared-timer/per-loader-diagnosis retry
+  approach described above for `LoadAppSettings()`, hotstrings, package
+  settings/selections, speed dial, and SMS default texts.
 - [ ] Fix the silent no-log early return in `LoadAppSettings()`.
 - [ ] Address the counter-zeroing/overwrite risk in
   `Telemetry_ReadCounter()`/`Telemetry_WriteCounter()`.
