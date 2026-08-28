@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-26. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-28. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -10,6 +10,120 @@ _Last updated: 2026-08-26. This file is a handover backlog, not a promise that e
 - **P3** — low-priority polish; correct as filed, but narrow-impact or
   cosmetic enough that it can sit indefinitely without hurting the
   project. Pick up opportunistically, not on a schedule.
+
+---
+
+## P0 — Autostart race: user-data storage not yet available at DocBot startup
+
+Filed 2026-08-28 from a user-supplied standard log
+(`docs/uploads/0dbac3d9-standaardlog.txt`, redacted). DocBot was started via
+autostart at Windows logon; within the same ~0.1s window right after the
+bundled packages finished loading, four separate `Opslagfout` entries were
+logged in immediate succession:
+
+1. `Het JSON-bestand kon niet worden geladen.` — personal hotstrings
+   (`InitializeHotstringStorage()` / `LoadHotstringsFromJson()`).
+2. `De pakketkeuzes konden niet worden geladen. Standaard worden geen
+   pakketten geactiveerd.` — package selections
+   (`InitializePackageSettings()` / `LoadPackageSettingsFromJson()`).
+3. `Het JSON-bestand kon niet worden geladen.` — speed dial
+   (`InitializeSpeedDialStorage()`).
+4. `Het JSON-bestand kon niet worden geladen.` — SMS default texts
+   (`InitializeSmsDefaultTextStorage()`).
+
+All four report the same underlying Windows error, "Het systeem kan geen
+toegang verkrijgen tot het bestand" (access denied) — consistent with the
+Documents/OneDrive-backed user-data folder not being fully available yet at
+the moment autostart fires. One minute later, `Telemetry_TryEnsureInstallationId()`
+also failed to persist a new installation ID (`✕ Telemetrie — Installatie-ID
+kon niet worden opgeslagen`), retried again a minute after that (per its
+documented quick-retry cadence, D-027/D-028), and DocBot ran for roughly
+nine minutes with no packages active. A manual restart ~9 minutes later
+loaded every store cleanly on the first attempt, confirming this is a
+startup-timing race against storage availability, not a persistent storage
+problem.
+
+### Root cause
+
+`Telemetry_TryEnsureInstallationId()` is the *only* startup loader with a
+retry path (quick retries every `TelemetryInstallationIdQuickRetryMs`, then
+hourly — D-027/D-028). Every other startup loader called from the
+auto-execute section (`LoadAppSettings()`, `InitializeHotstringStorage()`,
+`InitializePackageSettings()`, `InitializeSpeedDialStorage()`,
+`InitializeSmsDefaultTextStorage()`) attempts exactly once, and on failure
+falls back to in-memory defaults/empty state for the rest of that running
+session — with no retry and no path back to the real stored data until the
+next full restart:
+
+- `LoadAppSettings()` (`settings.ini`) is the most silent case: it starts
+  with `if !FileExist(ConfigFile): return`, so if the same transient
+  access-denied condition makes `ConfigFile` appear not to exist yet, the
+  function returns with **no log line at all** — `State["AutoSave"]`,
+  `State["CallAction"]`, `State["SmsCallActionTitle"]` and
+  `State["TextReplacement"]` silently keep their code defaults for the
+  session, indistinguishable in the log from a genuine first run.
+- `Telemetry_ReadCounter()` (used for `PhoneActions`, `LongHotstringActions`,
+  `SmsActions`) reads once via `IniRead` wrapped in a bare `try`/`catch` that
+  returns `0` on any failure. If this same race zeroes the in-memory
+  counters for a session, a later `Telemetry_WriteCounter()` call during
+  that same run would persist the artificially-low count over the real
+  cumulative value — turning a transient read failure into a permanent loss
+  of usage history, not merely a delayed one.
+- The four JSON loaders above each log a single `Opslagfout` and then run
+  the rest of the session on defaults/empty data (no packages active,
+  personal hotstrings/speed dial/SMS default texts unavailable) with no
+  further attempt to reload once storage becomes available again.
+
+### Proposal (needs project-owner sign-off before implementation)
+
+- Do **not** reintroduce a blocking/global startup writeability gate — that
+  approach was deliberately rejected (D-026) because it makes unrelated
+  functionality unavailable whenever Documents/OneDrive is briefly slow.
+- Generalize the existing telemetry installation-ID pattern (D-027/D-028)
+  into a small shared "retry this specific loader in the background" helper,
+  and apply it individually to `LoadAppSettings()`,
+  `InitializeHotstringStorage()`, `InitializePackageSettings()`,
+  `InitializeSpeedDialStorage()`, and `InitializeSmsDefaultTextStorage()` —
+  each retry re-runs only that one loader and, on success, refreshes the
+  relevant in-memory state and any already-built GUI list/controls, exactly
+  as `Telemetry_TryEnsureInstallationId()` calls `Telemetry_Start()` once it
+  succeeds. Keep failures scoped per loader; one loader's continued failure
+  must not block or retry the others.
+- Close the silent gap in `LoadAppSettings()` specifically: log a baseline
+  `Opslagfout` (or equivalent) when `ConfigFile` does not resolve, rather
+  than returning with no diagnostic trace, so "not yet available" is
+  distinguishable from "first run" in the standard log.
+- Fold the `PhoneActions`/`LongHotstringActions`/`SmsActions` counter reads
+  into the same retry/confirmation discipline already used for the
+  installation ID, so a transient read failure can no longer cause
+  `Telemetry_WriteCounter()` to overwrite a real cumulative count with a
+  session that started from a false `0`.
+- This is a startup-timing race that only reproduces through the real
+  autostart trigger on a managed Windows workstation; validate there, not
+  only via an interactively-launched interpreted or compiled run
+  (`docs/DECISIONS.md` D-037).
+- Record the generalized retry approach in `docs/DECISIONS.md` (mirroring
+  D-027/D-028) and update `docs/PROJECT_CONTEXT.md` §4.7 once implemented.
+
+### Scope
+
+- [ ] Confirm on the managed Windows autostart path (not an interactive
+  launch) that the race reproduces, and capture a standard log showing it.
+- [ ] Design and implement the per-loader retry helper described above for
+  `LoadAppSettings()`, hotstrings, package settings/selections, speed dial,
+  and SMS default texts.
+- [ ] Fix the silent no-log early return in `LoadAppSettings()`.
+- [ ] Address the counter-zeroing/overwrite risk in
+  `Telemetry_ReadCounter()`/`Telemetry_WriteCounter()`.
+- [ ] Update `docs/DECISIONS.md` and `docs/PROJECT_CONTEXT.md` §4.7.
+- [ ] Update the README changelog; assess whether the telemetry
+  documentation needs changes (the payload/fields themselves should not
+  change, only when/how reliably the counters are read).
+
+This changes `DocBot.ahk`/`Telemetry.ahk` behavior. Implement on a dedicated
+feature/fix branch from the then-current `develop`, update the
+branch-specific `AppVersion` in every commit that changes `DocBot.ahk`, and
+validate on the managed Windows workplace before merging.
 
 ---
 
