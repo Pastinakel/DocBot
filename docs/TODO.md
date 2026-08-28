@@ -174,6 +174,60 @@ This changes first-run bootstrap timing, not just retry-on-known-existing-
 data behavior, so it needs explicit project-owner sign-off separately from
 the rest of this proposal before implementation.
 
+### Degraded mode: block functionality visibly, not startup
+
+Project owner requirement (2026-08-28): silently running on defaults, as
+today, is not acceptable even once the retry mechanism above exists —
+retries can still take minutes. The user must be able to see that settings
+have not loaded yet, and most functionality must be genuinely unavailable
+during that window, not just quietly wrong. Telephony registration/linking
+is the one exception: it does not depend on any of the five stores above
+(it already succeeds independently today, per the log's `AllocNumber.xml`/
+`GetEvent.xml` exchanges completing while every other loader failed) and
+must keep working normally throughout.
+
+**Chosen granularity: all-or-nothing** (project-owner decision, not
+per-feature). A single readiness state covers the first-run probe above
+plus all five stores (`settings.ini`, hotstrings, package settings, speed
+dial, SMS default texts); functionality stays blocked until every one of
+them has succeeded, even if, say, only the SMS default texts are still
+retrying. This is simpler to build and to explain to the user than gating
+each feature independently, at the cost of sometimes blocking a feature
+whose own data actually already loaded fine.
+
+**What "largely blocked" means concretely**, while that combined readiness
+state is not yet true:
+
+- Hotstring text replacement/expansion: suspended — do not act on partial
+  or default hotstring data.
+- The clipboard-number → call/SMS-action flow: suspended. This is the part
+  that depends on `CallAction`/`SmsCallActionTitle`/`TextReplacement` from
+  `settings.ini`, so acting on a detected number without knowing the real
+  setting would risk doing the wrong thing, not just nothing.
+- Package manager, speed-dial editing/dialing, SMS default-text settings:
+  unavailable (disabled/grayed rather than hidden, so their presence is
+  still visible).
+- Telephony registration, the link-code flow, and the long-poll event loop:
+  **unaffected, run exactly as today.**
+- Help/Over and other static, non-data-dependent pages: unaffected.
+
+**Making it visible, not silent:** the existing transient notification GUI
+(`ShowNotification()`, D-025) is built to auto-dismiss after a few seconds
+and is the wrong shape for a state that can last minutes. This needs a
+persistent indicator — e.g. a banner/status area in the main window that
+stays present for as long as degraded mode lasts and clears automatically
+the moment the combined readiness state becomes true (refreshing the
+now-unblocked lists/controls at the same time, consistent with how the
+shared retry timer already refreshes each loader's own state on success).
+Reuse the visual language of the existing notification styling where it
+fits; the exact layout is an implementation/Windows-validation detail, not
+something to lock in from this environment (`docs/DECISIONS.md` D-037).
+
+The GUI shell itself must still appear immediately either way — this is
+about disabling/marking specific controls as unavailable once shown, not
+about delaying `MainGui.Show()` (see the synchronous-vs-background-timer
+point above, which still applies in full).
+
 ### Proposal (needs project-owner sign-off before implementation)
 
 - Do **not** reintroduce a blocking/global startup writeability gate — that
@@ -259,6 +313,16 @@ the rest of this proposal before implementation.
   the current synchronous position before it.
 - [ ] Address the counter-zeroing/overwrite risk in
   `Telemetry_ReadCounter()`/`Telemetry_WriteCounter()`.
+- [ ] Introduce a single combined readiness flag covering the first-run
+  probe and all five stores, and gate hotstring expansion, the
+  clipboard-number call/SMS-action flow, package manager, speed dial, and
+  SMS default-text settings on it (all-or-nothing, per project-owner
+  decision) — while leaving telephony registration/linking/event-polling
+  and the Help/Over pages unaffected.
+- [ ] Design and implement a persistent (not auto-dismissing) in-GUI
+  indicator for degraded mode, distinct from the existing transient
+  `ShowNotification()` toast, that clears automatically once the combined
+  readiness flag becomes true and the now-unblocked lists/controls refresh.
 - [ ] Update `docs/DECISIONS.md` and `docs/PROJECT_CONTEXT.md` §4.7.
 - [ ] Update the README changelog; assess whether the telemetry
   documentation needs changes (the payload/fields themselves should not
