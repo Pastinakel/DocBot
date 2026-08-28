@@ -102,6 +102,29 @@ only user-visible effect is that a real first-time user's profile
 directory/default files take up to the retry window to materialize instead
 of appearing instantly.
 
+**Cheap first gate on top of the bounded retry:** before deciding anything,
+also check `DirExist(A_MyDocuments)` — the Documents root itself, which
+Windows resolves independently of whether DocBot has ever run. This
+disambiguates the single most common real first-run case for free (one
+extra `DirExist` call): an existing employee with an already-synced
+OneDrive opening DocBot for the first time has `A_MyDocuments` available
+immediately, so `A_MyDocuments` present + `UserDataDir` absent is a
+high-confidence genuine first run — bootstrap can proceed promptly instead
+of waiting out the full retry window. `A_MyDocuments` itself absent is a
+strong "storage backend not ready" signal and should log as such (distinct
+from a first-run message) while the bounded retry above runs.
+
+This is not airtight, though, and does not replace the bounded retry as the
+actual safety net: if this organization's Documents folder is itself
+OneDrive-redirected (Known Folder Move) rather than a plain local folder
+with OneDrive alongside it, `A_MyDocuments` can be exactly as unavailable
+as `UserDataDir` during the same OneDrive-not-mounted window, and the canary
+gives no earlier signal in precisely the case that matters most. Which
+configuration this organization uses is not currently recorded anywhere in
+`docs/` — confirm and record it (alongside the similar open OneDrive/tenant
+items already tracked in `docs/DATA_PROTECTION.md`) before relying on the
+strength of this signal.
+
 This changes first-run bootstrap timing, not just retry-on-known-existing-
 data behavior, so it needs explicit project-owner sign-off separately from
 the rest of this proposal before implementation.
@@ -158,6 +181,11 @@ the rest of this proposal before implementation.
   retry on `InitializeUserStorage()`'s `DirExist(UserDataDir)` check
   described above, so a not-yet-mounted OneDrive is no longer
   indistinguishable from a genuine first run.
+- [ ] Confirm whether this organization's `%MyDocuments%` is itself
+  OneDrive-redirected (Known Folder Move) or a plain local folder, and
+  record the answer; implement the `DirExist(A_MyDocuments)` first-gate
+  check above only once that is known, since it only strengthens the
+  signal in the plain-local-folder case.
 - [ ] Address the counter-zeroing/overwrite risk in
   `Telemetry_ReadCounter()`/`Telemetry_WriteCounter()`.
 - [ ] Update `docs/DECISIONS.md` and `docs/PROJECT_CONTEXT.md` §4.7.
