@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-autostart-storage.2"
+global AppVersion := "2.4-autostart-storage.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -217,6 +217,17 @@ global OverviewPhoneActionsText := 0
 global OverviewLongHotstringActionsText := 0
 global OverviewSmsActionsText := 0
 
+; Voor RefreshInstellingenValuesAfterReady(): dezelfde besturingselementen
+; als de lokale variabelen in BuildMainGui(), zodat de Instellingen-pagina
+; na degraded mode met de dan pas echt geladen waarden ververst kan worden
+; in plaats van de bouwtijd-standaardwaarden te blijven tonen.
+global InstellingenAutoSaveCheck := 0
+global InstellingenFilePathEdit := 0
+global InstellingenSmsActionDropDown := 0
+global InstellingenSmsDefaultTextEdit := 0
+global InstellingenSmsDefaultTextHint := 0
+global InstellingenPendingSmsDefaultTexts := 0
+
 global SpeedDialLV := 0
 global SpeedDialEnabledCheck := 0
 global SpeedDialNameEdit := 0
@@ -288,6 +299,16 @@ global StorageRetryQuickMs := 60000
 global StorageRetryQuickCount := 5
 global StorageRetrySlowMs := 3600000
 
+; True zodra alle StorageRetryLoaders zijn geladen (alles-of-niets,
+; projecteigenaar-besluit 2026-08-28). Bepaalt of data-afhankelijke
+; kaarten/pagina's zichtbaar zijn; zie ShowPage(), MarkDegradedGateStart()/
+; MarkDegradedGateEnd() en ShowOnlyWhileDegraded() verderop.
+global StorageAllReady := false
+
+; Onthoudt, per pagina, vanaf welke index in Pages[pageKey] de eerstvolgende
+; MarkDegradedGateEnd() moet gelden. Zie MarkDegradedGateStart().
+global DegradedGateRangeStart := Map()
+
 ; Twee losse synchrone kansen vóór de achtergrondtimer overneemt: eerst
 ; alleen de gebruikersmap (moet er al staan vóórdat pakketten/logging iets
 ; met UserDataDir kunnen), dan — na InitializeBundledPackages(), die geen
@@ -355,6 +376,9 @@ BuildMainGui() {
     global SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText
     global SpeedDialLV, SpeedDialEnabledCheck, SpeedDialNameEdit, SpeedDialNumberEdit
     global HelpSections, HotstringHelpSectionIndex
+    global InstellingenAutoSaveCheck, InstellingenFilePathEdit, InstellingenSmsActionDropDown
+    global InstellingenSmsDefaultTextEdit, InstellingenSmsDefaultTextHint
+    global InstellingenPendingSmsDefaultTexts
 
     MainGui := Gui("-MaximizeBox", "DocBot")
     MainGui.BackColor := C["Window"]
@@ -420,6 +444,18 @@ BuildMainGui() {
     RegistrationNumberText := AddCardLabel("overzicht", 694, 136, 246, 34, State["IPT"]["UpdateTel"], "s21 bold c" C["Text"], "Right")
     RegistrationRefreshButton := AddFlatButton("overzicht", 740, 180, 200, 36, Chr(0xE72C) "  Verversen", RefreshRegistrationStatus, true)
 
+    ; Neemt tijdens degraded mode de plek in van de kaarten hieronder (die
+    ; dan verborgen zijn), zodat er geen bestaande y-posities hoeven te
+    ; verschuiven. De registratiekaart hierboven blijft altijd zichtbaar:
+    ; telefonie-koppeling hangt niet af van settings.ini/hotstrings/
+    ; pakketkeuzes/snelkiesnummers/sms-standaardteksten.
+    AddDegradedBanner(
+        "overzicht",
+        246,
+        "Instellingen worden geladen. Functionaliteit hieronder is tijdelijk beperkt. Telefonie-koppeling werkt gewoon door."
+    )
+    MarkDegradedGateStart("overzicht")
+
     AddCard("overzicht", 236, 246, 736, 142)
     AddCardLabel("overzicht", 260, 262, 180, 22, "Belactie", "s13 bold c" C["Text"])
     CallActionSelector := AddCallActionSelector(
@@ -460,6 +496,8 @@ BuildMainGui() {
     AddCardLabel("overzicht", 792, 562, 170, 18, "SMS-acties", "s9 c" C["Muted"])
     OverviewSmsActionsText := AddCardLabel("overzicht", 792, 582, 170, 34, Telemetry_GetSmsActions(), "s22 bold c" C["Text"])
 
+    MarkDegradedGateEnd("overzicht")
+
     overviewFooter := MainGui.AddText("x236 y672 w736 h18 Right Background" C["Window"], "Sluiten verbergt DocBot in het systeemvak")
     overviewFooter.SetFont("s8 c" C["Muted"], "Segoe UI")
     AddPageControl("overzicht", overviewFooter)
@@ -469,6 +507,9 @@ BuildMainGui() {
     ; -------------------------------------------------------------------------
 
     AddPageHeader("telefonie", "Telefonie", "Bel en beheer je snelkiesnummers.")
+
+    AddDegradedBanner("telefonie", 92, "Instellingen worden geladen. Snelkiesnummers zijn nog niet beschikbaar.")
+    MarkDegradedGateStart("telefonie")
 
     AddCard("telefonie", 236, 92, 736, 394)
     AddCardLabel("telefonie", 260, 114, 300, 24, "Snelkiesnummers", "s14 bold c" C["Text"])
@@ -503,6 +544,8 @@ BuildMainGui() {
     SpeedDialNumberEdit := AddRoundedEdit("telefonie", 700, 552, 120, 36, "")
     AddFlatButton("telefonie", 832, 552, 124, 36, Chr(0xE74E) "  Opslaan", SaveSpeedDialFromForm, true)
 
+    MarkDegradedGateEnd("telefonie")
+
     phoneFooter := MainGui.AddText("x236 y672 w736 h18 Right Background" C["Window"], "Sluiten verbergt DocBot in het systeemvak")
     phoneFooter.SetFont("s8 c" C["Muted"], "Segoe UI")
     AddPageControl("telefonie", phoneFooter)
@@ -512,6 +555,9 @@ BuildMainGui() {
     ; -------------------------------------------------------------------------
 
     AddPageHeader("tekstvervanging", "Tekstvervanging", "Beheer de hotstrings van DocBot.")
+
+    AddDegradedBanner("tekstvervanging", 92, "Instellingen worden geladen. Hotstrings zijn nog niet beschikbaar.")
+    MarkDegradedGateStart("tekstvervanging")
 
     AddCard("tekstvervanging", 236, 92, 736, 346)
     AddCardLabel("tekstvervanging", 260, 114, 300, 24, "Hotstrings", "s14 bold c" C["Text"])
@@ -593,6 +639,10 @@ BuildMainGui() {
     HotSaveButton := AddFlatButton("tekstvervanging", 808, 602, 148, 36, "💾  Opslaan", SaveHotstringFromForm, true)
     ApplyHotReplacementEditorState()
 
+    ; De privacyhint hieronder blijft bewust ongated: net als de footer op
+    ; andere pagina's is dit paginabrede, niet-data-afhankelijke chrome.
+    MarkDegradedGateEnd("tekstvervanging")
+
     ; y=663 centreert deze 22px-hoge regel verticaal in de 52px-ruimte
     ; tussen het einde van de kaart hierboven (y=648) en de vensterrand
     ; (700): 648 + (52-22)/2 = 663, met 15px marge boven en onder. Zelfde
@@ -615,14 +665,19 @@ BuildMainGui() {
 
     AddPageHeader("instellingen", "Instellingen", "Beheer de opslag, import en SMS-integratie.")
 
+    AddDegradedBanner("instellingen", 92, "Instellingen worden geladen. Deze pagina is nog niet beschikbaar.")
+    MarkDegradedGateStart("instellingen")
+
     AddCard("instellingen", 236, 92, 736, 194)
     AddCardLabel("instellingen", 260, 114, 250, 24, "Hotstringbestand", "s14 bold c" C["Text"])
 
     autoSaveCheck := MainGui.AddCheckbox("x260 y152 w340 h22 Background" C["Card"], "Hotstrings automatisch opslaan en laden")
     autoSaveCheck.Value := State["AutoSave"]
     AddPageControl("instellingen", autoSaveCheck)
+    InstellingenAutoSaveCheck := autoSaveCheck
 
     filePathEdit := AddRoundedEdit("instellingen", 260, 188, 520, 36, State["HotstringFile"])
+    InstellingenFilePathEdit := filePathEdit
     AddFlatButton("instellingen", 792, 188, 172, 36, "📁  Bladeren", BrowseHotstringFile.Bind(filePathEdit), false)
     AddFlatButton("instellingen", 260, 230, 220, 36, "↥  Oud .txt importeren", ImportLegacyHotstrings, false)
     AddFlatButton("instellingen", 692, 230, 132, 36, "📂  Laden", ManualLoadHotstrings.Bind(filePathEdit), false)
@@ -647,6 +702,7 @@ BuildMainGui() {
     if smsActionTitles.Length = 0
         smsActionDropDown.Enabled := false
     AddPageControl("instellingen", smsActionDropDown)
+    InstellingenSmsActionDropDown := smsActionDropDown
 
     AddCardLabel(
         "instellingen",
@@ -669,15 +725,18 @@ BuildMainGui() {
     )
     smsDefaultTextGroup := AddRoundedEditGroup("instellingen", 260, 494, 688, 100, "", true, 6)
     smsDefaultTextEdit := smsDefaultTextGroup["Edit"]
+    InstellingenSmsDefaultTextEdit := smsDefaultTextEdit
     ; Blijft leeg zolang de standaardtekst gewoon bruikbaar is; toont anders
     ; waarom het veld is uitgeschakeld (zie ApplySmsDefaultTextFieldState()).
     smsDefaultTextHint := AddCardLabel("instellingen", 260, 598, 688, 16, "", "s9 c" C["Muted"])
+    InstellingenSmsDefaultTextHint := smsDefaultTextHint
 
     ; Niet-opgeslagen tekst blijft per SMS-pagina in het geheugen staan
     ; zolang de Instellingen-pagina open is, ook als tussendoor van
     ; SMS-pagina wordt gewisseld. Pas op Opslaan wordt alles weggeschreven
     ; naar sms-default-texts.json, net als de rest van deze pagina.
     pendingSmsDefaultTexts := Map()
+    InstellingenPendingSmsDefaultTexts := pendingSmsDefaultTexts
     smsDefaultTextUiState := Map(
         "LastTitle", HasConfiguredSmsCallActions() ? ResolveSmsCallActionTitle(State["SmsCallActionTitle"]) : ""
     )
@@ -701,6 +760,8 @@ BuildMainGui() {
         true,
         C["Window"]
     )
+
+    MarkDegradedGateEnd("instellingen")
 
     ; -------------------------------------------------------------------------
     ; PAGINA: HELP
@@ -1741,20 +1802,86 @@ AddPageControl(pageKey, ctrl) {
     Pages[pageKey].Push(ctrl)
 }
 
+; Markeert het huidige einde van Pages[pageKey] als startpunt van een reeks
+; besturingselementen die tijdens degraded mode verborgen moeten blijven
+; (zie MarkDegradedGateEnd()). Werkt op een heel bereik in plaats van los
+; per control, zodat een pagina met tientallen besturingselementen in één
+; keer gedekt is en er nooit één per ongeluk vergeten wordt.
+MarkDegradedGateStart(pageKey) {
+    global Pages, DegradedGateRangeStart
+    DegradedGateRangeStart[pageKey] := Pages[pageKey].Length
+}
+
+; Markeert alle besturingselementen die sinds de laatste
+; MarkDegradedGateStart(pageKey) aan Pages[pageKey] zijn toegevoegd als
+; "verberg zolang niet alle opslag geladen is" (StorageAllReady=false).
+; ShowPage() respecteert dit, onafhankelijk van paginawissels.
+MarkDegradedGateEnd(pageKey) {
+    global Pages, DegradedGateRangeStart
+
+    startIndex := DegradedGateRangeStart.Has(pageKey) ? DegradedGateRangeStart[pageKey] : 0
+    loop Pages[pageKey].Length - startIndex {
+        ctrl := Pages[pageKey][startIndex + A_Index]
+        ctrl._degradedGate := "hide-while-degraded"
+    }
+}
+
+; Omgekeerd: ctrl is normaal verborgen en verschijnt uitsluitend zolang
+; StorageAllReady nog false is. Voor de degraded-mode-banner, zie
+; AddDegradedBanner().
+ShowOnlyWhileDegraded(ctrl) {
+    ctrl._degradedGate := "show-only-while-degraded"
+    return ctrl
+}
+
+; Blijvende (niet-vanzelf-verdwijnende) melding dat opslag nog niet
+; volledig is geladen — het tegenovergestelde van ShowNotification()/D-025,
+; die na een paar seconden vanzelf verdwijnt en dus niet geschikt is voor
+; een status die minuten kan duren. Neemt de ruimte in die de eerste, nu
+; verborgen kaart/inhoud van de pagina normaal gesproken inneemt, zodat er
+; geen bestaande x/y-posities hoeven te verschuiven. Geen geanimeerd
+; spinner-icoon: Segoe MDL2-glyphs in dezelfde tekstregel als gewone tekst
+; renderen niet correct zonder de custom-draw-aanpak van AddFlatButton(),
+; en een los animatietimertje voor uitsluitend dit venstertje weegt niet op
+; tegen het effect.
+AddDegradedBanner(pageKey, y, message) {
+    global MainGui
+
+    surface := MainGui.AddText("x236 y" y " w736 h38 Background FDF0DE", "")
+    ShowOnlyWhileDegraded(surface)
+    AddPageControl(pageKey, surface)
+
+    accent := MainGui.AddText("x236 y" y " w4 h38 Background F08200", "")
+    ShowOnlyWhileDegraded(accent)
+    AddPageControl(pageKey, accent)
+
+    body := MainGui.AddText("x252 y" (y + 11) " w704 h20 Background FDF0DE", message)
+    body.SetFont("s10 c5C3600", "Segoe UI")
+    ShowOnlyWhileDegraded(body)
+    AddPageControl(pageKey, body)
+}
+
 SetCueText(editCtrl, text) {
     ; EM_SETCUEBANNER = 0x1501
     SendMessage(0x1501, 0, StrPtr(text), editCtrl)
 }
 
 ShowPage(pageKey, *) {
-    global Pages, CurrentPage, NavButtons, NavBars, C
+    global Pages, CurrentPage, NavButtons, NavBars, C, StorageAllReady
 
     CurrentPage := pageKey
 
     for key, controls in Pages {
-        visible := key = pageKey
-        for _, ctrl in controls
-            ctrl.Opt(visible ? "-Hidden" : "+Hidden")
+        pageVisible := key = pageKey
+        for _, ctrl in controls {
+            gate := HasProp(ctrl, "_degradedGate") ? ctrl._degradedGate : ""
+            show := pageVisible
+            if gate = "hide-while-degraded" && !StorageAllReady
+                show := false
+            else if gate = "show-only-while-degraded" && StorageAllReady
+                show := false
+            ctrl.Opt(show ? "-Hidden" : "+Hidden")
+        }
     }
 
     ApplyHotReplacementEditorState()
@@ -7822,23 +7949,104 @@ StorageRetry_Tick(*) {
     StorageRetry_ScheduleIfNeeded()
 }
 
-StorageRetry_ScheduleIfNeeded() {
-    global StorageRetryLoaders, StorageRetryAttempts
-    global StorageRetryQuickMs, StorageRetryQuickCount, StorageRetrySlowMs
+StorageRetry_AllLoadersReady() {
+    global StorageRetryLoaders
 
     for loader in StorageRetryLoaders {
-        if !loader["Ready"] {
-            StorageRetryAttempts += 1
-            delay := StorageRetryAttempts < StorageRetryQuickCount
-                ? StorageRetryQuickMs
-                : StorageRetrySlowMs
-            SetTimer StorageRetry_Tick, -delay
-            return
-        }
+        if !loader["Ready"]
+            return false
+    }
+    return true
+}
+
+StorageRetry_ScheduleIfNeeded() {
+    global StorageRetryLoaders, StorageRetryAttempts, StorageAllReady
+    global StorageRetryQuickMs, StorageRetryQuickCount, StorageRetrySlowMs
+
+    if !StorageRetry_AllLoadersReady() {
+        StorageRetryAttempts += 1
+        delay := StorageRetryAttempts < StorageRetryQuickCount
+            ? StorageRetryQuickMs
+            : StorageRetrySlowMs
+        SetTimer StorageRetry_Tick, -delay
+        return
     }
 
     ; Alle laders zijn geladen: geen verdere pogingen meer nodig.
     SetTimer StorageRetry_Tick, 0
+
+    if !StorageAllReady {
+        StorageAllReady := true
+        StorageRetry_OnAllReady()
+    }
+}
+
+; Wordt precies één keer aangeroepen, de eerste keer dat alle laders klaar
+; zijn. Vóór BuildMainGui() (de gewone, snelle start zonder degraded mode)
+; bestaat MainGui nog niet: dan is er niets te verversen, want de eenmalige
+; ShowPage("overzicht") aan het eind van BuildMainGui() past de juiste
+; zichtbaarheid vanzelf toe met de dan al correcte StorageAllReady-waarde.
+; Ná een echte achtergrond-hersteld (degraded mode was actief) ververst dit
+; zowel de zichtbaarheid (banner weg, kaarten/pagina's terug) als de
+; getoonde waarden die tijdens BuildMainGui() nog met standaardwaarden zijn
+; opgebouwd.
+StorageRetry_OnAllReady() {
+    global MainGui, CurrentPage
+
+    if !IsObject(MainGui)
+        return
+
+    RefreshOverzichtValuesAfterReady()
+    RefreshInstellingenValuesAfterReady()
+    ShowPage(CurrentPage)
+}
+
+RefreshOverzichtValuesAfterReady() {
+    global CallActionSelector, TextReplacementCheck, State
+    global OverviewPhoneActionsText, OverviewLongHotstringActionsText, OverviewSmsActionsText
+
+    if IsObject(CallActionSelector)
+        CallActionSelector.Value := State["CallAction"]
+    if IsObject(TextReplacementCheck)
+        TextReplacementCheck.Value := State["TextReplacement"]
+    if IsObject(OverviewPhoneActionsText)
+        OverviewPhoneActionsText.Value := Telemetry_GetPhoneActions()
+    if IsObject(OverviewLongHotstringActionsText)
+        OverviewLongHotstringActionsText.Value := Telemetry_GetLongHotstringActions()
+    if IsObject(OverviewSmsActionsText)
+        OverviewSmsActionsText.Value := Telemetry_GetSmsActions()
+}
+
+; De Instellingen-velden zijn, anders dan CallActionSelector/
+; TextReplacementCheck hierboven, geen losse klasse met een settable
+; .Value die zichzelf herschildert — dit herhaalt daarom hetzelfde stukje
+; opbouwlogica uit BuildMainGui() (SMS-paginakeuze + bijbehorend
+; standaardtekstveld) met de dan pas echt geladen State/SmsDefaultTexts.
+RefreshInstellingenValuesAfterReady() {
+    global InstellingenAutoSaveCheck, InstellingenFilePathEdit, InstellingenSmsActionDropDown
+    global InstellingenSmsDefaultTextEdit, InstellingenSmsDefaultTextHint
+    global InstellingenPendingSmsDefaultTexts, State
+
+    if !IsObject(InstellingenAutoSaveCheck)
+        return
+
+    InstellingenAutoSaveCheck.Value := State["AutoSave"]
+    InstellingenFilePathEdit.Value := State["HotstringFile"]
+
+    smsActionTitles := GetSmsCallActionTitles()
+    if smsActionTitles.Length {
+        selectedIndex := FindSmsCallActionIndexByTitle(State["SmsCallActionTitle"])
+        if selectedIndex = 0
+            selectedIndex := 1
+        InstellingenSmsActionDropDown.Choose(selectedIndex)
+    }
+
+    ApplySmsDefaultTextFieldState(
+        InstellingenSmsActionDropDown,
+        InstellingenSmsDefaultTextEdit,
+        InstellingenSmsDefaultTextHint,
+        InstellingenPendingSmsDefaultTexts
+    )
 }
 
 StorageRetry_OnLoaderReady(name) {
