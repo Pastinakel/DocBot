@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-dev.3"
+global AppVersion := "2.4-autostart-storage.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -258,13 +258,36 @@ global PackageManagerStatusText := 0
 ; Bevat de op dit moment bij AutoHotkey geregistreerde dynamische hotstrings.
 global RuntimeHotstrings := Map()
 
+; Wordt in InitializeUserStorage() gezet vóór die functie de gebruikersmap
+; eventueel aanmaakt/kopieert, zodat later (o.a. LoadAppSettings()) kan
+; onderscheiden of een ontbrekend bestand een net gebootstrapte, lege map is
+; (normaal, geen fout) of een al bestaande map waar iets tijdelijk
+; onbereikbaar is (opslagfout, moet opnieuw geprobeerd worden).
+global UserDataDirIsPreexisting := false
+
+; Eén gedeelde achtergrondtimer voor alle opstartladers die op dezelfde
+; Documents/OneDrive-map leunen. Ze falen en herstellen doorgaans
+; gelijktijdig (dezelfde onderliggende oorzaak, bijv. OneDrive dat bij
+; autostart nog niet gemount is), dus draait er niet per lader een eigen
+; tijdklok. Elke lader houdt wél zijn eigen resultaat en foutmelding aan:
+; het slagen van de één mag het blijven mislukken van een ander nooit
+; maskeren. Cadans spiegelt de bestaande Telemetry_TryEnsureInstallationId()
+; (D-027/D-028): enkele snelle pogingen, daarna uursgewijs, zonder bovengrens.
+global StorageRetryLoaders := [
+    Map("Name", "Instellingen", "Fn", LoadAppSettings, "Ready", false),
+    Map("Name", "Hotstrings", "Fn", InitializeHotstringStorage, "Ready", false),
+    Map("Name", "Pakketkeuzes", "Fn", InitializePackageSettings, "Ready", false),
+    Map("Name", "Snelkiesnummers", "Fn", InitializeSpeedDialStorage, "Ready", false),
+    Map("Name", "SMS-standaardteksten", "Fn", InitializeSmsDefaultTextStorage, "Ready", false)
+]
+global StorageRetryAttempts := 0
+global StorageRetryQuickMs := 60000
+global StorageRetryQuickCount := 5
+global StorageRetrySlowMs := 3600000
+
 InitializeUserStorage()
 InitializeBundledPackages()
-LoadAppSettings()
-InitializeHotstringStorage()
-InitializePackageSettings()
-InitializeSpeedDialStorage()
-InitializeSmsDefaultTextStorage()
+StorageRetry_RunInitialAttempt()
 ReloadRuntimeHotstrings()
 Telemetry_Initialize(ConfigFile, AppVersion, GetTelemetryStatus)
 InitializeDiagnosticLogging()
@@ -6927,11 +6950,10 @@ InitializePackageSettings() {
     global DefaultPackageSettingsFile, PackageSettings
 
     if FileExist(DefaultPackageSettingsFile)
-        LoadPackageSettingsFromJson(DefaultPackageSettingsFile)
-    else {
-        PackageSettings := DefaultPackageSettings()
-        SavePackageSettingsToJson(DefaultPackageSettingsFile)
-    }
+        return LoadPackageSettingsFromJson(DefaultPackageSettingsFile)
+
+    PackageSettings := DefaultPackageSettings()
+    return SavePackageSettingsToJson(DefaultPackageSettingsFile)
 }
 
 LoadPackageSettingsFromJson(path) {
@@ -7446,19 +7468,17 @@ InitializeHotstringStorage() {
     global State
 
     if !State["AutoSave"]
-        return
+        return true
 
     path := Trim(State["HotstringFile"])
     if path = ""
-        return
+        return true
 
-    if FileExist(path) {
-        LoadHotstringsFromJson(path, false)
-        return
-    }
+    if FileExist(path)
+        return LoadHotstringsFromJson(path, false)
 
     ; Bij de eerste start wordt het standaardmodel direct aangemaakt.
-    SaveHotstringsToJson(path, false)
+    return SaveHotstringsToJson(path, false)
 }
 
 LoadHotstringsFromJson(path, showMessage := false) {
@@ -7662,6 +7682,112 @@ RefreshHotstringListIfReady() {
         RefreshHotstringList()
 }
 
+RefreshSpeedDialListIfReady() {
+    global SpeedDialLV
+
+    if IsObject(SpeedDialLV)
+        RefreshSpeedDialList()
+}
+
+; =============================================================================
+; OPSLAG - GEDEELDE RETRY BIJ TIJDELIJK NIET-BESCHIKBARE OPSLAG
+; =============================================================================
+; Zie de globals StorageRetryLoaders/StorageRetryAttempts hierboven voor de
+; achtergrond. StorageRetry_RunInitialAttempt() vervangt de vroegere directe
+; aanroepen van de vijf laders in het auto-execute-gedeelte: eerste, snelle
+; poging blijft synchroon (faalt vandaag al in ruim onder een seconde, dus
+; vertraagt dit MainGui.Show() niet), maar elke hérpoging loopt via
+; SetTimer op de achtergrond, ná het tonen van het venster.
+
+StorageRetry_RunInitialAttempt() {
+    global StorageRetryLoaders
+
+    for loader in StorageRetryLoaders {
+        try {
+            loader["Ready"] := !!loader["Fn"].Call()
+        } catch as error {
+            loader["Ready"] := false
+            DebugLog(
+                "✕",
+                "Opslagfout",
+                loader["Name"] " gaf een onverwachte fout: " error.Message
+            )
+        }
+    }
+
+    StorageRetry_ScheduleIfNeeded()
+}
+
+StorageRetry_Tick(*) {
+    global StorageRetryLoaders
+
+    for loader in StorageRetryLoaders {
+        if loader["Ready"]
+            continue
+
+        try {
+            ok := !!loader["Fn"].Call()
+        } catch as error {
+            ok := false
+            DebugLog(
+                "✕",
+                "Opslagfout",
+                loader["Name"] " gaf een onverwachte fout: " error.Message
+            )
+        }
+
+        if ok {
+            loader["Ready"] := true
+            StorageRetry_OnLoaderReady(loader["Name"])
+        }
+    }
+
+    StorageRetry_ScheduleIfNeeded()
+}
+
+StorageRetry_ScheduleIfNeeded() {
+    global StorageRetryLoaders, StorageRetryAttempts
+    global StorageRetryQuickMs, StorageRetryQuickCount, StorageRetrySlowMs
+
+    for loader in StorageRetryLoaders {
+        if !loader["Ready"] {
+            StorageRetryAttempts += 1
+            delay := StorageRetryAttempts < StorageRetryQuickCount
+                ? StorageRetryQuickMs
+                : StorageRetrySlowMs
+            SetTimer StorageRetry_Tick, -delay
+            return
+        }
+    }
+
+    ; Alle vijf laders zijn geladen: geen verdere pogingen meer nodig.
+    SetTimer StorageRetry_Tick, 0
+}
+
+StorageRetry_OnLoaderReady(name) {
+    switch name {
+        case "Instellingen":
+            ; Bekende beperking: als Hotstrings vóór Instellingen al (met
+            ; toen nog de code-standaardwaarden van State) is geladen, en de
+            ; gebruiker een niet-standaard State["HotstringFile"] heeft
+            ; ingesteld, wordt dat afwijkende pad pas na een volgende
+            ; herstart gebruikt. Zeldzaam — de meeste installaties gebruiken
+            ; het standaardpad — en niet erger dan het huidige gedrag zonder
+            ; retry, dus bewust niet in deze stap opgelost.
+            RefreshSidebarStatuses()
+        case "Hotstrings", "Pakketkeuzes":
+            ; Pakketstatus beïnvloedt welke hotstrings actief/Overruled/
+            ; Conflict zijn; ververs daarom bij beide dezelfde twee dingen.
+            ReloadRuntimeHotstrings()
+            RefreshHotstringListIfReady()
+        case "Snelkiesnummers":
+            RefreshSpeedDialListIfReady()
+        case "SMS-standaardteksten":
+            ; Geen aparte lijstweergave: de Instellingen-pagina leest
+            ; SmsDefaultTexts pas op het moment dat die pagina wordt geopend.
+    }
+}
+
 ; =============================================================================
 ; SNELKIESNUMMERS - OPSLAG
 ; =============================================================================
@@ -7721,10 +7847,8 @@ BuildSpeedDialDocument() {
 InitializeSpeedDialStorage() {
     global DefaultSpeedDialFile, UserDataDir
 
-    if FileExist(DefaultSpeedDialFile) {
-        LoadSpeedDialFromJson(DefaultSpeedDialFile, false)
-        return
-    }
+    if FileExist(DefaultSpeedDialFile)
+        return LoadSpeedDialFromJson(DefaultSpeedDialFile, false)
 
     ; Oudere versies gebruikten verschillende bestandsnamen en soms de
     ; programmamap. Neem de eerste gevonden versie veilig over; het laden
@@ -7738,14 +7862,12 @@ InitializeSpeedDialStorage() {
         if !FileExist(legacyPath)
             continue
         try FileCopy(legacyPath, DefaultSpeedDialFile, false)
-        if FileExist(DefaultSpeedDialFile) {
-            LoadSpeedDialFromJson(DefaultSpeedDialFile, false)
-            return
-        }
+        if FileExist(DefaultSpeedDialFile)
+            return LoadSpeedDialFromJson(DefaultSpeedDialFile, false)
     }
 
     ; Bij de eerste start wordt een lege lijst direct aangemaakt.
-    SaveSpeedDialToJson(DefaultSpeedDialFile, false)
+    return SaveSpeedDialToJson(DefaultSpeedDialFile, false)
 }
 
 LoadSpeedDialFromJson(path, showMessage := false) {
@@ -7949,13 +8071,11 @@ BuildSmsDefaultTextDocument() {
 InitializeSmsDefaultTextStorage() {
     global DefaultSmsDefaultTextFile
 
-    if FileExist(DefaultSmsDefaultTextFile) {
-        LoadSmsDefaultTextsFromJson(DefaultSmsDefaultTextFile, false)
-        return
-    }
+    if FileExist(DefaultSmsDefaultTextFile)
+        return LoadSmsDefaultTextsFromJson(DefaultSmsDefaultTextFile, false)
 
     ; Bij de eerste start wordt een lege lijst direct aangemaakt.
-    SaveSmsDefaultTextsToJson(DefaultSmsDefaultTextFile, false)
+    return SaveSmsDefaultTextsToJson(DefaultSmsDefaultTextFile, false)
 }
 
 LoadSmsDefaultTextsFromJson(path, showMessage := false) {
@@ -8366,7 +8486,11 @@ GetUserDataSeedDirectory() {
 }
 
 InitializeUserStorage() {
-    global UserDataDir, ConfigFile, DefaultHotstringFile
+    global UserDataDir, ConfigFile, DefaultHotstringFile, UserDataDirIsPreexisting
+
+    ; Vastleggen vóórdat onderstaande DirCopy/DirCreate de map eventueel
+    ; aanmaakt: dit is de enige plek die nog weet of de map al bestond.
+    UserDataDirIsPreexisting := DirExist(UserDataDir) ? true : false
 
     copiedFromDir := ""
 
@@ -8482,10 +8606,25 @@ RebaseCopiedHotstringPath(sourceDir) {
 }
 
 LoadAppSettings() {
-    global State, ConfigFile
+    global State, ConfigFile, UserDataDirIsPreexisting
 
-    if !FileExist(ConfigFile)
-        return
+    if !FileExist(ConfigFile) {
+        ; Op een net gebootstrapte, nieuwe profielmap is een ontbrekend
+        ; settings.ini gewoon een eerste start: de code-standaardwaarden in
+        ; State blijven dan correct staan, zonder foutmelding of retry.
+        ; Bestond de profielmap al, dan is een ontbrekend settings.ini
+        ; verdacht (bijv. OneDrive dat de placeholder nog niet toont) en
+        ; moet dit, net als de andere laders, opnieuw geprobeerd worden in
+        ; plaats van stilzwijgend op standaardwaarden te blijven draaien.
+        if !UserDataDirIsPreexisting
+            return true
+        ReportStorageError(
+            "settings.ini kon niet worden gevonden, terwijl de gebruikersmap "
+            "al bestaat.`n`n" ConfigFile,
+            false
+        )
+        return false
+    }
 
     try {
         State["AutoSave"] := ParseBooleanSetting(
@@ -8533,6 +8672,14 @@ LoadAppSettings() {
                 State["TextReplacement"]
             )
         )
+        return true
+    } catch as error {
+        ReportStorageError(
+            "settings.ini kon niet worden geladen.`n`n" ConfigFile "`n`n"
+            error.Message,
+            false
+        )
+        return false
     }
 }
 

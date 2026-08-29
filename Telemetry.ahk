@@ -21,6 +21,13 @@ global TelemetryRequest := 0
 global TelemetryPhoneActions := 0
 global TelemetryLongHotstringActions := 0
 global TelemetrySmsActions := 0
+; Wordt pas true nadat de drie gebruikstellers hierboven succesvol uit
+; settings.ini zijn gelezen. Vóór die bevestiging schrijft
+; Telemetry_RecordPhoneAction() e.a. bewust niets weg: een sessie die door
+; een leesfout met een niet-bevestigde 0 begint, mag de echte cumulatieve
+; telling nooit overschrijven (zie Telemetry_TryLoadCounters()).
+global TelemetryCountersConfirmed := false
+global TelemetryCounterRetryAttempts := 0
 global TelemetryConfigFile := ""
 global TelemetryAppVersion := ""
 global TelemetryStatusProvider := 0
@@ -73,6 +80,7 @@ Telemetry_Initialize(configFile, appVersion, statusProvider) {
     global TelemetryConfig, TelemetryInstallationId, TelemetryStartedAt
     global TelemetryConfigFile, TelemetryAppVersion, TelemetryStatusProvider
     global TelemetryPhoneActions, TelemetryLongHotstringActions, TelemetrySmsActions
+    global TelemetryCountersConfirmed, TelemetryCounterRetryAttempts
     global TelemetryPendingInstallationId
     global TelemetryInstallationIdPersistenceAttempts, TelemetryIsRunning
 
@@ -81,13 +89,19 @@ Telemetry_Initialize(configFile, appVersion, statusProvider) {
     TelemetryStatusProvider := statusProvider
     TelemetryConfig := Telemetry_BuildConfig()
 
-    TelemetryPhoneActions := Telemetry_ReadCounter("PhoneActions")
-    TelemetryLongHotstringActions := Telemetry_ReadCounter("LongHotstringActions")
-    TelemetrySmsActions := Telemetry_ReadCounter("SmsActions")
+    TelemetryPhoneActions := 0
+    TelemetryLongHotstringActions := 0
+    TelemetrySmsActions := 0
+    TelemetryCountersConfirmed := false
+    TelemetryCounterRetryAttempts := 0
     TelemetryInstallationId := ""
     TelemetryPendingInstallationId := ""
     TelemetryInstallationIdPersistenceAttempts := 0
     TelemetryIsRunning := false
+
+    ; Onafhankelijk van of telemetrie zelf aan staat: de tellers voeden ook
+    ; de lokale "Gebruik"-kaart op de Overzicht-pagina.
+    Telemetry_TryLoadCounters()
 
     if !TelemetryConfig["Enabled"]
         return
@@ -96,6 +110,54 @@ Telemetry_Initialize(configFile, appVersion, statusProvider) {
     ; beschikbaar maakt.
     TelemetryStartedAt := Telemetry_UtcTimestamp()
     Telemetry_TryEnsureInstallationId()
+}
+
+Telemetry_TryLoadCounters(*) {
+    global TelemetryConfigFile, TelemetryCountersConfirmed
+    global TelemetryPhoneActions, TelemetryLongHotstringActions, TelemetrySmsActions
+    global TelemetryCounterRetryAttempts
+    global TelemetryInstallationIdQuickRetryMs, TelemetryInstallationIdQuickRetryCount
+    global TelemetryInstallationIdSlowRetryMs
+
+    if TelemetryCountersConfirmed
+        return
+
+    okPhone := Telemetry_ReadCounter("PhoneActions", &phoneValue)
+    okHotstring := Telemetry_ReadCounter("LongHotstringActions", &hotstringValue)
+    okSms := Telemetry_ReadCounter("SmsActions", &smsValue)
+
+    if !okPhone || !okHotstring || !okSms {
+        Telemetry_LogError(
+            "Gebruikstellers konden niet worden gelezen uit " TelemetryConfigFile
+        )
+        ; Hergebruikt bewust dezelfde snelle/langzame cadans als de
+        ; installatie-ID-retry hierboven: beide races op dezelfde
+        ; Documents/OneDrive-map, geen reden voor een tweede eigen klok.
+        TelemetryCounterRetryAttempts += 1
+        delay := TelemetryCounterRetryAttempts < TelemetryInstallationIdQuickRetryCount
+            ? TelemetryInstallationIdQuickRetryMs
+            : TelemetryInstallationIdSlowRetryMs
+        SetTimer Telemetry_TryLoadCounters, -delay
+        return
+    }
+
+    ; Tel acties die tijdens het wachten al in het geheugen zijn bijgehouden
+    ; (Telemetry_RecordPhoneAction() e.a., die vóór bevestiging bewust niet
+    ; naar schijf schrijven) op bij de nu bevestigde, echte cumulatieve
+    ; waarde, bevestig de tellers, en schrijf het samengevoegde resultaat
+    ; direct één keer weg in plaats van te wachten op de volgende actie.
+    TelemetryPhoneActions += phoneValue
+    TelemetryLongHotstringActions += hotstringValue
+    TelemetrySmsActions += smsValue
+    TelemetryCountersConfirmed := true
+    SetTimer Telemetry_TryLoadCounters, 0
+
+    if TelemetryPhoneActions != phoneValue
+        Telemetry_WriteCounter("PhoneActions", TelemetryPhoneActions)
+    if TelemetryLongHotstringActions != hotstringValue
+        Telemetry_WriteCounter("LongHotstringActions", TelemetryLongHotstringActions)
+    if TelemetrySmsActions != smsValue
+        Telemetry_WriteCounter("SmsActions", TelemetrySmsActions)
 }
 
 Telemetry_TryEnsureInstallationId(*) {
@@ -210,6 +272,7 @@ Telemetry_Shutdown() {
     global TelemetryRequest, TelemetryIsRunning
 
     SetTimer Telemetry_TryEnsureInstallationId, 0
+    SetTimer Telemetry_TryLoadCounters, 0
     SetTimer Telemetry_SendStartupHeartbeat, 0
     SetTimer Telemetry_SendHeartbeat, 0
     TelemetryIsRunning := false
@@ -219,16 +282,21 @@ Telemetry_Shutdown() {
 }
 
 Telemetry_RecordPhoneAction() {
-    global TelemetryPhoneActions
+    global TelemetryPhoneActions, TelemetryCountersConfirmed
     TelemetryPhoneActions += 1
-    Telemetry_WriteCounter("PhoneActions", TelemetryPhoneActions)
+    ; Vóór bevestiging (zie Telemetry_TryLoadCounters()) nog niet wegschrijven:
+    ; de echte cumulatieve waarde is dan nog niet bekend, en schrijven zou
+    ; die overschrijven met een sessie die bij een niet-bevestigde 0 begon.
+    if TelemetryCountersConfirmed
+        Telemetry_WriteCounter("PhoneActions", TelemetryPhoneActions)
     return TelemetryPhoneActions
 }
 
 Telemetry_RecordLongHotstring() {
-    global TelemetryLongHotstringActions
+    global TelemetryLongHotstringActions, TelemetryCountersConfirmed
     TelemetryLongHotstringActions += 1
-    Telemetry_WriteCounter("LongHotstringActions", TelemetryLongHotstringActions)
+    if TelemetryCountersConfirmed
+        Telemetry_WriteCounter("LongHotstringActions", TelemetryLongHotstringActions)
     return TelemetryLongHotstringActions
 }
 
@@ -243,9 +311,10 @@ Telemetry_GetLongHotstringActions() {
 }
 
 Telemetry_RecordSmsAction() {
-    global TelemetrySmsActions
+    global TelemetrySmsActions, TelemetryCountersConfirmed
     TelemetrySmsActions += 1
-    Telemetry_WriteCounter("SmsActions", TelemetrySmsActions)
+    if TelemetryCountersConfirmed
+        Telemetry_WriteCounter("SmsActions", TelemetrySmsActions)
     return TelemetrySmsActions
 }
 
@@ -254,12 +323,16 @@ Telemetry_GetSmsActions() {
     return TelemetrySmsActions
 }
 
-Telemetry_ReadCounter(name) {
+Telemetry_ReadCounter(name, &value) {
     global TelemetryConfigFile
 
-    try return Max(0, Integer(IniRead(TelemetryConfigFile, "Usage", name, 0)))
-    catch
-        return 0
+    try {
+        value := Max(0, Integer(IniRead(TelemetryConfigFile, "Usage", name, 0)))
+        return true
+    } catch {
+        value := 0
+        return false
+    }
 }
 
 Telemetry_WriteCounter(name, value) {
