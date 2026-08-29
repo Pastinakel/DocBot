@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-autostart-storage.1"
+global AppVersion := "2.4-autostart-storage.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -273,7 +273,10 @@ global UserDataDirIsPreexisting := false
 ; het slagen van de één mag het blijven mislukken van een ander nooit
 ; maskeren. Cadans spiegelt de bestaande Telemetry_TryEnsureInstallationId()
 ; (D-027/D-028): enkele snelle pogingen, daarna uursgewijs, zonder bovengrens.
+; "Gebruikersmap" staat altijd eerst: de overige vijf laders lezen/schrijven
+; allemaal binnen UserDataDir en kunnen pas slagen zodra die map er echt is.
 global StorageRetryLoaders := [
+    Map("Name", "Gebruikersmap", "Fn", InitializeUserStorage, "Ready", false),
     Map("Name", "Instellingen", "Fn", LoadAppSettings, "Ready", false),
     Map("Name", "Hotstrings", "Fn", InitializeHotstringStorage, "Ready", false),
     Map("Name", "Pakketkeuzes", "Fn", InitializePackageSettings, "Ready", false),
@@ -285,7 +288,14 @@ global StorageRetryQuickMs := 60000
 global StorageRetryQuickCount := 5
 global StorageRetrySlowMs := 3600000
 
-InitializeUserStorage()
+; Twee losse synchrone kansen vóór de achtergrondtimer overneemt: eerst
+; alleen de gebruikersmap (moet er al staan vóórdat pakketten/logging iets
+; met UserDataDir kunnen), dan — na InitializeBundledPackages(), die geen
+; relatie met UserDataDir heeft en zo de bestaande logvolgorde intact
+; laat — de overige vijf laders vóór het eerst. StorageRetry_AttemptLoader()
+; slaat een al geslaagde lader over, dus de tweede aanroep herprobeert de
+; gebruikersmap alleen als die nét nog niet lukte.
+StorageRetry_RunInitialAttemptForUserDataDir()
 InitializeBundledPackages()
 StorageRetry_RunInitialAttempt()
 ReloadRuntimeHotstrings()
@@ -2937,6 +2947,7 @@ RunDiagnosticsMaintenance() {
     PruneExpiredDebugLogEntries()
     PruneAbandonedProblemReportDirs()
     PruneAbandonedExtendedLogFiles()
+    PruneAbandonedUserStorageProbeDirs()
 }
 
 ; Verwijdert individuele standaardlogregels ouder dan DebugLogRetentionDays,
@@ -3982,6 +3993,68 @@ PruneAbandonedProblemReportDirs() {
     if (mislukt > 0)
         samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
     DebugLog("i", "Probleemrapportmap opschonen", samenvatting)
+}
+
+; Vangnet voor een tijdelijke UserStorageProbe_*-map (zie InitializeUserStorage())
+; die overblijft als DocBot crasht/geforceerd stopt tussen het aanmaken en
+; het hernoemen naar UserDataDir of opruimen ervan. Zelfde patroon als
+; PruneAbandonedProblemReportDirs() hierboven, alleen in A_MyDocuments in
+; plaats van A_Temp. De volledige A_MyDocuments-pad wordt bewust niet
+; gelogd (kan de Windows-gebruikersnaam bevatten).
+PruneAbandonedUserStorageProbeDirs() {
+    static maxAgeDays := 7
+
+    cutoff := DateAdd(A_Now, -maxAgeDays, "Days")
+    gezien := 0
+    onherkend := 0
+    voorbeeldOnherkend := ""
+    verlopen := 0
+    verwijderd := 0
+    mislukt := 0
+    laatsteFout := ""
+
+    try {
+        Loop Files, A_MyDocuments "\DocBot_userdata_probe_*", "D" {
+            gezien += 1
+            if !RegExMatch(A_LoopFileName, "^DocBot_userdata_probe_(\d{8})_(\d{6})_\d+$", &m) {
+                onherkend += 1
+                if (voorbeeldOnherkend = "")
+                    voorbeeldOnherkend := A_LoopFileName
+                continue  ; onbekende mapnaam: niet aanraken
+            }
+
+            stamp := m[1] m[2]
+            if (stamp < cutoff) {
+                verlopen += 1
+                try {
+                    DirDelete(A_LoopFileFullPath, true)
+                    verwijderd += 1
+                } catch as dirError {
+                    mislukt += 1
+                    laatsteFout := dirError.Message
+                }
+            }
+        }
+    } catch as sweepError {
+        DebugLog(
+            "!",
+            "Tijdelijke gebruikersmap opschonen",
+            "Doorzoeken van Documents mislukt: " sweepError.Message
+        )
+        return
+    }
+
+    ; Altijd loggen, ook bij 0 gezien — zelfde reden als bij
+    ; PruneAbandonedProblemReportDirs() hierboven (D-044 addendum 3).
+    samenvatting := Format(
+        "{1} map(pen) gezien, {2} niet herkend op naampatroon, {3} verlopen (>7 dagen), {4} verwijderd, {5} mislukt.",
+        gezien, onherkend, verlopen, verwijderd, mislukt
+    )
+    if (onherkend > 0)
+        samenvatting .= " Voorbeeld onherkende naam: " SanitizeLogText(voorbeeldOnherkend)
+    if (mislukt > 0)
+        samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
+    DebugLog("i", "Tijdelijke gebruikersmap opschonen", samenvatting)
 }
 
 ; Vangnet voor het losse uitgebreide-logbestand van StartExtendedProblemLogging()
@@ -7699,21 +7772,40 @@ RefreshSpeedDialListIfReady() {
 ; vertraagt dit MainGui.Show() niet), maar elke hérpoging loopt via
 ; SetTimer op de achtergrond, ná het tonen van het venster.
 
+; Eén poging voor precies deze lader; werkt zowel voor de synchrone eerste
+; kans(en) als voor elke latere tick. Slaat een al geslaagde lader over
+; (idempotent: veilig om StorageRetry_RunInitialAttempt() twee keer aan te
+; roepen). Geeft de staat vóór deze poging terug, zodat de aanroeper kan
+; zien of dit een verse overgang naar "klaar" is.
+StorageRetry_AttemptLoader(loader) {
+    wasReady := loader["Ready"]
+    if wasReady
+        return wasReady
+
+    try {
+        loader["Ready"] := !!loader["Fn"].Call()
+    } catch as error {
+        loader["Ready"] := false
+        DebugLog(
+            "✕",
+            "Opslagfout",
+            loader["Name"] " gaf een onverwachte fout: " error.Message
+        )
+    }
+
+    return wasReady
+}
+
+StorageRetry_RunInitialAttemptForUserDataDir() {
+    global StorageRetryLoaders
+    StorageRetry_AttemptLoader(StorageRetryLoaders[1])
+}
+
 StorageRetry_RunInitialAttempt() {
     global StorageRetryLoaders
 
-    for loader in StorageRetryLoaders {
-        try {
-            loader["Ready"] := !!loader["Fn"].Call()
-        } catch as error {
-            loader["Ready"] := false
-            DebugLog(
-                "✕",
-                "Opslagfout",
-                loader["Name"] " gaf een onverwachte fout: " error.Message
-            )
-        }
-    }
+    for loader in StorageRetryLoaders
+        StorageRetry_AttemptLoader(loader)
 
     StorageRetry_ScheduleIfNeeded()
 }
@@ -7722,24 +7814,9 @@ StorageRetry_Tick(*) {
     global StorageRetryLoaders
 
     for loader in StorageRetryLoaders {
-        if loader["Ready"]
-            continue
-
-        try {
-            ok := !!loader["Fn"].Call()
-        } catch as error {
-            ok := false
-            DebugLog(
-                "✕",
-                "Opslagfout",
-                loader["Name"] " gaf een onverwachte fout: " error.Message
-            )
-        }
-
-        if ok {
-            loader["Ready"] := true
+        wasReady := StorageRetry_AttemptLoader(loader)
+        if loader["Ready"] && !wasReady
             StorageRetry_OnLoaderReady(loader["Name"])
-        }
     }
 
     StorageRetry_ScheduleIfNeeded()
@@ -7760,12 +7837,16 @@ StorageRetry_ScheduleIfNeeded() {
         }
     }
 
-    ; Alle vijf laders zijn geladen: geen verdere pogingen meer nodig.
+    ; Alle laders zijn geladen: geen verdere pogingen meer nodig.
     SetTimer StorageRetry_Tick, 0
 }
 
 StorageRetry_OnLoaderReady(name) {
     switch name {
+        case "Gebruikersmap":
+            ; Geen eigen verversing nodig: de overige laders in dezelfde
+            ; tick (zie StorageRetry_Tick()) krijgen nu pas een kans om te
+            ; slagen en verversen dan zelf wat nodig is.
         case "Instellingen":
             ; Bekende beperking: als Hotstrings vóór Instellingen al (met
             ; toen nog de code-standaardwaarden van State) is geladen, en de
@@ -8485,44 +8566,37 @@ GetUserDataSeedDirectory() {
     return ""
 }
 
+; Beslist niet langer in één keer, op basis van alleen DirExist(UserDataDir),
+; of dit een eerste start is: die passieve check ziet er identiek uit
+; zowel wanneer de gebruiker DocBot echt nog nooit heeft gedraaid, als
+; wanneer OneDrive bij autostart de map nog niet laat zien. Bestaat de map
+; al, dan is er sowieso geen twijfel — ga direct verder. Bestaat de map nog
+; niet, dan beslist UserStorageProbe_TryBootstrap() dat via een echte
+; schrijftest (zie hieronder) in plaats van een gok; lukt die schrijftest
+; niet, dan geeft deze functie false terug en herprobeert de gedeelde
+; StorageRetry-achtergrondtimer het later opnieuw — DocBot start voortaan
+; altijd gewoon door (geen MsgBox()/ExitApp() meer op deze plek).
 InitializeUserStorage() {
-    global UserDataDir, ConfigFile, DefaultHotstringFile, UserDataDirIsPreexisting
+    global UserDataDir, UserDataDirIsPreexisting
 
-    ; Vastleggen vóórdat onderstaande DirCopy/DirCreate de map eventueel
-    ; aanmaakt: dit is de enige plek die nog weet of de map al bestond.
     UserDataDirIsPreexisting := DirExist(UserDataDir) ? true : false
 
-    copiedFromDir := ""
-
-    try {
-        if !DirExist(UserDataDir) {
-            seedDir := GetUserDataSeedDirectory()
-
-            ; Test start eenmalig vanuit main. Dev start bij voorkeur vanuit
-            ; test en valt terug op main als er nog geen testprofiel bestaat.
-            if seedDir != "" && DirExist(seedDir) {
-                DirCopy(seedDir, UserDataDir, false)
-                copiedFromDir := seedDir
-            } else {
-                DirCreate(UserDataDir)
-            }
-        }
-
-        if copiedFromDir != ""
-            RebaseCopiedHotstringPath(copiedFromDir)
-    } catch as error {
-        MsgBox(
-            "De gebruikersmap kon niet worden voorbereid.`n`n"
-            UserDataDir "`n`n" error.Message,
-            "DocBot",
-            "Icon!"
-        )
-        ExitApp()
+    if UserDataDirIsPreexisting {
+        MigrateLegacyUserData()
+        return true
     }
 
-    ; Eenmalige, voorzichtige migratie vanaf oudere versies die hun bestanden
-    ; naast het script bewaarden. Bestaande bestanden in de gebruikersmap
-    ; worden nooit overschreven.
+    return UserStorageProbe_TryBootstrap()
+}
+
+; Eenmalige, voorzichtige migratie vanaf oudere versies die hun bestanden
+; naast het script bewaarden. Bestaande bestanden in de gebruikersmap
+; worden nooit overschreven. Losgetrokken van InitializeUserStorage() zodat
+; zowel het bestaande-map-pad hierboven als beide paden van
+; UserStorageProbe_* hieronder 'm kunnen aanroepen.
+MigrateLegacyUserData() {
+    global ConfigFile, DefaultHotstringFile
+
     legacyConfig := A_ScriptDir "\DocBot.ini"
     legacyHotstrings := A_ScriptDir "\hotstrings.json"
 
@@ -8554,6 +8628,91 @@ InitializeUserStorage() {
             }
         }
     }
+}
+
+; Maakt een uniek genoemde tijdelijke map aan onder A_MyDocuments — een
+; echte schrijftest, sterker dan nogmaals DirExist() pollen: een nog niet
+; gemounte OneDrive hoort een echte schrijfpoging te laten mislukken, niet
+; alleen leeg te ogen. Lukt dat schrijven niet, dan is "opslag nog niet
+; beschikbaar" bewezen (geen "eerste start"-conclusie) en volgt een nieuwe
+; poging via de gedeelde StorageRetry-timer. De naam is herkenbaar voor
+; PruneAbandonedUserStorageProbeDirs() (zie diagnostiek-sectie), voor het
+; geval DocBot crasht tussen aanmaken en hernoemen/opruimen.
+UserStorageProbe_TryBootstrap() {
+    probeDir := A_MyDocuments "\DocBot_userdata_probe_"
+        FormatTime(A_Now, "yyyyMMdd_HHmmss") "_" A_PID
+
+    try {
+        DirCreate(probeDir)
+    } catch as error {
+        DebugLog(
+            "✕",
+            "Opslagfout",
+            "Gebruikersmap kon nog niet worden voorbereid (opslag "
+            "waarschijnlijk nog niet beschikbaar): " error.Message
+        )
+        return false
+    }
+
+    return UserStorageProbe_ResolveAfterCreate(probeDir)
+}
+
+; De probe-map is aantoonbaar schrijfbaar. Nu pas de echte beslissing nemen.
+UserStorageProbe_ResolveAfterCreate(probeDir) {
+    global UserDataDir, UserDataDirIsPreexisting
+
+    ; Zelfde soort race als bij het telemetrie-installatie-ID
+    ; (Telemetry_TryEnsureInstallationId): een tweede DocBot-instantie
+    ; (dubbele autostart, of een handmatige start terwijl de eerste nog aan
+    ; het proberen is) kan de echte map inmiddels al hebben aangemaakt, of
+    ; die kan tijdens het aanmaken van de probe alsnog zijn verschenen
+    ; (pure OneDrive-vertraging, geen eerste start). Vlak vóór gebruik nog
+    ; eens controleren en de bestaande waarde laten winnen, in plaats van de
+    ; eigen probe-map erover heen te claimen.
+    if DirExist(UserDataDir) {
+        try DirDelete(probeDir, true)
+        UserDataDirIsPreexisting := true
+        MigrateLegacyUserData()
+        return true
+    }
+
+    ; De probe-map is écht schrijfbaar gebleken en UserDataDir bestaat nog
+    ; steeds niet: hoge zekerheid dat dit een eerste start is. Hernoem de
+    ; probe-map naar de echte plek in plaats van 'm weg te gooien en apart
+    ; een nieuwe aan te maken.
+    seedDir := GetUserDataSeedDirectory()
+    copiedFromDir := ""
+
+    try {
+        if seedDir != "" && DirExist(seedDir) {
+            ; Eerst leegmaken en opnieuw vullen via DirCopy (die de
+            ; bestemming zelf aanmaakt) in plaats van in de al aangemaakte
+            ; lege probe-map te kopiëren: zo blijft dit pad identiek aan het
+            ; niet-probe-gedrag hierboven.
+            DirDelete(probeDir, true)
+            DirCopy(seedDir, probeDir, false)
+            copiedFromDir := seedDir
+        }
+
+        DirMove(probeDir, UserDataDir)
+    } catch as error {
+        DebugLog(
+            "✕",
+            "Opslagfout",
+            "Gebruikersmap kon niet worden voltooid vanuit de tijdelijke "
+            "map: " error.Message
+        )
+        try DirDelete(probeDir, true)
+        return false
+    }
+
+    UserDataDirIsPreexisting := false
+
+    if copiedFromDir != ""
+        RebaseCopiedHotstringPath(copiedFromDir)
+
+    MigrateLegacyUserData()
+    return true
 }
 
 
