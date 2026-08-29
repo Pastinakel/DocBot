@@ -88,24 +88,31 @@ The current startup flow in `DocBot.ahk` is approximately:
 
 1. validate local configuration;
 2. calculate `AppVersion` and choose user-data profile;
-3. initialize global UI/config/state objects;
-4. `InitializeUserStorage()`;
-5. initialize bundled package cache/data;
-6. load application settings;
-7. initialize personal hotstring storage/migrations;
-8. initialize package settings/migrations;
-9. initialize speed-dial storage/migrations;
-10. initialize SMS default-text storage (`sms-default-texts.json`);
-11. register/reload runtime hotstrings;
-12. initialize telemetry;
-13. process update-restart command-line state if present;
-14. build the main GUI and tray menu;
-15. register Windows messages and exit handler;
-16. show GUI and apply custom visual rendering;
-17. start clipboard polling;
-18. start registration-button countdown timer;
-19. request telephony registration and start chained event polling;
-20. start/check `signal.txt` update/shutdown coordination.
+3. initialize global UI/config/state objects, including the shared
+   `StorageRetryLoaders` array (D-063);
+4. one synchronous attempt at `InitializeUserStorage()` (a real write-probe
+   if the profile folder does not exist yet, not a hard exit on failure —
+   see §7.4);
+5. initialize bundled package cache/data (unaffected by user-data
+   availability — reads from the deployed package share, not Documents);
+6. one synchronous attempt each, together, at application settings,
+   personal hotstring storage, package settings, speed-dial storage, and
+   SMS default-text storage (`StorageRetry_RunInitialAttempt()`); any that
+   fail schedule a shared background retry (§7.4) rather than blocking;
+7. register/reload runtime hotstrings;
+8. initialize telemetry, including the same shared-cadence retry for the
+   installation ID (D-027/D-028) and the usage counters (D-063);
+9. process update-restart command-line state if present;
+10. build the main GUI and tray menu — `StorageAllReady` (§7.4) is already
+    known by this point, so degraded-mode visibility (D-064) is correct
+    from the first paint, not something applied afterward;
+11. register Windows messages and exit handler;
+12. show GUI and apply custom visual rendering;
+13. start clipboard polling (suppressed while degraded — §7.4/D-064);
+14. start registration-button countdown timer;
+15. request telephony registration and start chained event polling —
+    unaffected by user-data availability throughout;
+16. start/check `signal.txt` update/shutdown coordination.
 
 Changing this order can have user-data, UI, or network side effects. Treat initialization order as behavior, not formatting.
 
@@ -206,6 +213,54 @@ LocalAppData is used for machine-local/runtime artifacts, notably:
 - extracted/cached bundled packages.
 
 Development package extraction is separated from production package cache to avoid test builds overwriting production cache.
+
+### 7.4 Startup availability: write-probe and background retry (D-063/D-064)
+
+Documents/OneDrive may not be fully mounted yet at the moment autostart
+fires, so every loader in §7.2 can hit a transient access-denied error at
+startup. This is handled uniformly, not per-loader:
+
+- `StorageRetryLoaders` (a global array: user-data folder, settings,
+  hotstrings, package settings, speed dial, SMS default texts) drives one
+  shared background timer instead of five-plus independent ones, since
+  they sit on the same folder and fail/recover together in practice —
+  but each loader's own success/failure and log message stay fully
+  independent, so one loader's continued failure is never masked by its
+  siblings succeeding.
+- `InitializeUserStorage()` no longer decides "first run" from a single
+  `DirExist(UserDataDir)` check. If the folder does not exist,
+  `UserStorageProbe_TryBootstrap()`/`UserStorageProbe_ResolveAfterCreate()`
+  create a uniquely-named temporary folder under `A_MyDocuments` as a real
+  write test, then re-check whether the real folder appeared in the
+  meantime (OneDrive lag, not a first run) before claiming the probe
+  folder as `UserDataDir` via `DirMove()`. A directory-prep failure no
+  longer hard-exits the app; it retries on the shared timer like
+  everything else. `PruneAbandonedUserStorageProbeDirs()` (wired into the
+  existing daily `RunDiagnosticsMaintenance()`) sweeps an orphaned probe
+  folder left by a crash mid-sequence.
+- `StorageAllReady` is true once every entry in `StorageRetryLoaders` has
+  succeeded (all-or-nothing). It is computed before `BuildMainGui()` runs
+  (so the common case — nothing was ever unavailable — never shows
+  degraded UI), and re-derived after every background retry tick.
+  `StorageRetry_OnAllReady()` fires exactly once, the first time it
+  becomes true; when that happens after the GUI already exists, it
+  refreshes controls built with stale/default values and re-applies page
+  visibility, sidebar status, and the tray menu.
+- While `StorageAllReady` is false: the Overzicht page shows only a
+  persistent banner and the telephony registration card (registration
+  itself does not depend on any of these loaders); Telefonie/Hotstrings/
+  Instellingen show only the banner, with their entire normal content —
+  save buttons included — hidden rather than disabled; the sidebar's
+  "Telefonie:"/"Tekst vervangen:" dots show a neutral "Laden…" state; the
+  tray menu's "Belactie"/"Tekstvervanging" items are disabled; a
+  recognized clipboard number shows a one-off toast instead of acting on
+  not-yet-reliable settings. See D-064 for the full reasoning, including
+  why this is hide-not-dim and all-or-nothing rather than per-feature.
+- `ShowPage()` gained a per-control `_degradedGate` property so gated
+  controls stay hidden across page navigation — its pre-existing
+  visibility logic would otherwise unconditionally re-show every control
+  on the page being navigated to. `MarkDegradedGateStart()`/
+  `MarkDegradedGateEnd()` gate a whole range of `Pages[pageKey]` at once.
 
 ## 8. Migrations
 
@@ -466,7 +521,9 @@ Notable rendering behaviors:
 - custom colors are held in a shared color map;
 - rounded controls and flat/custom button rendering are applied after GUI creation/show;
 - some controls require an explicit redraw/repaint after show to avoid initial native Windows borders/styles;
-- the call/SMS choice dialog keeps explicit keyboard-selection state and receives `WM_KEYDOWN` centrally.
+- the call/SMS choice dialog keeps explicit keyboard-selection state and receives `WM_KEYDOWN` centrally;
+- `ShowPage()`'s per-control `_degradedGate` property layers degraded-mode
+  visibility (§7.4/D-064) on top of ordinary page-switch visibility.
 
 Managed Windows constraints matter: native shell notifications are not trusted for critical feedback because group policy can suppress them without an AutoHotkey error.
 
@@ -491,6 +548,16 @@ read existing InstallationId
 ```
 
 Retry behavior is intentionally asynchronous so temporary OneDrive failure does not block the entire application.
+
+The three usage counters (`PhoneActions`/`LongHotstringActions`/
+`SmsActions`) follow the same asynchronous-retry shape via
+`Telemetry_TryLoadCounters()` (D-063): a failed read no longer silently
+defaults to `0`. `TelemetryCountersConfirmed` gates
+`Telemetry_RecordXAction()`'s write until the real cumulative base has
+been read back successfully, so a session that starts before that read
+succeeds cannot persist an artificially-low count over the real one;
+actions recorded before confirmation are added to the real base once it
+loads.
 
 ### 14.2 Heartbeat scheduling
 

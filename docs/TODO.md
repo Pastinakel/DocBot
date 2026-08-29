@@ -327,68 +327,91 @@ in full).
 - Record the generalized retry approach in `docs/DECISIONS.md` (mirroring
   D-027/D-028) and update `docs/PROJECT_CONTEXT.md` §4.7 once implemented.
 
+### Implementation status (2026-08-28)
+
+Implemented on `claude/docbot-autostart-telemetry-s8bhu8`
+(`AppVersion 2.4-autostart-storage.1` through `.4`), in four steps/commits
+mirroring the scope below. Recorded as `docs/DECISIONS.md` D-063 (shared
+retry + write-probe) and D-064 (degraded-mode UI). **Not yet functionally
+validated on Windows (D-037)** — the last scope item below is still open
+and is the remaining blocker before this can be merged.
+
 ### Scope
 
-- [ ] Design and implement the shared-timer/per-loader-diagnosis retry
+- [x] Design and implement the shared-timer/per-loader-diagnosis retry
   approach described above for `LoadAppSettings()`, hotstrings, package
   settings/selections, speed dial, and SMS default texts.
-- [ ] Fix the silent no-log early return in `LoadAppSettings()`.
-- [ ] Get explicit project-owner sign-off on, then implement, the
+- [x] Fix the silent no-log early return in `LoadAppSettings()`.
+- [x] Get explicit project-owner sign-off on, then implement, the
   write-probe approach for `InitializeUserStorage()` described above
   (create a temporary folder under `A_MyDocuments`, re-check for a real
   profile, then either discard the probe or rename it into place), so a
   not-yet-mounted OneDrive is no longer indistinguishable from a genuine
   first run.
-- [ ] Reuse the existing "re-check immediately before use, let an existing
+- [x] Reuse the existing "re-check immediately before use, let an existing
   value win" pattern from `Telemetry_TryEnsureInstallationId()` for the
   probe's rename step, to handle two DocBot instances racing to claim
   `UserDataDir`.
-- [ ] Reuse the existing `PruneAbandonedProblemReportDirs()`-style sweep
+- [x] Reuse the existing `PruneAbandonedProblemReportDirs()`-style sweep
   (P1 "Remove temporary problem-report artifacts") to clean up an orphaned
   probe folder left behind by a crash between creation and rename/delete;
   give the probe folder a similarly recognizable name rather than adding a
   second cleanup mechanism.
-- [ ] Ensure every retry loop (loaders and the first-run probe alike) is
+- [x] Ensure every retry loop (loaders and the first-run probe alike) is
   wired to run on a background timer after `MainGui.Show()`, not left in
   the current synchronous position before it.
-- [ ] Address the counter-zeroing/overwrite risk in
+- [x] Address the counter-zeroing/overwrite risk in
   `Telemetry_ReadCounter()`/`Telemetry_WriteCounter()`.
-- [ ] Introduce a single combined readiness flag covering the first-run
+- [x] Introduce a single combined readiness flag covering the first-run
   probe and all five stores, and gate hotstring expansion, the
   clipboard-number call/SMS-action flow, package manager, speed dial, and
   SMS default-text settings on it (all-or-nothing, per project-owner
   decision) — while leaving telephony registration/linking/event-polling
   and the Help/Over pages unaffected.
-- [ ] Implement the finalized "hide, don't dim" behavior per the mockup:
+- [x] Implement the finalized "hide, don't dim" behavior per the mockup:
   on Overzicht, render only the banner and the registration card while the
   readiness flag is false (Belactie/Tekstvervanging/Gebruik not shown at
   all); on Telefonie/Hotstrings/Instellingen, render only the banner plus a
   short message (no list, no editor, no save button of any kind).
-- [ ] Drive **both** sidebar status dots from the combined readiness flag,
+- [x] Drive **both** sidebar status dots from the combined readiness flag,
   not only their own setting — `RefreshSidebarStatuses()` sets
   "Telefonie:" from `CallAction` and "Tekst vervangen:" from
   `State["TextReplacement"]` the same way, so both currently risk showing
   a stale/default green-or-red state while degraded rather than "Laden…".
   Registration itself stays correctly visible in the Overzicht card
   regardless — only these two sidebar dots need the neutral state.
-- [ ] Show a one-off `ShowNotification()` toast when a clipboard phone
+- [x] Show a one-off `ShowNotification()` toast when a clipboard phone
   number is recognized while degraded mode is active, rather than
   suspending the call/SMS-action flow silently.
-- [ ] Disable the tray menu's "Tekstvervanging" checkbox item during
+- [x] Disable the tray menu's "Tekstvervanging" checkbox item during
   degraded mode (and audit the rest of the tray menu for any other item
   that reads/writes `State` the same direct way), so a toggle made there
   on a not-yet-loaded default can't be silently overwritten once the real
-  value loads.
-- [ ] Design and implement a persistent (not auto-dismissing) in-GUI
+  value loads. The audit found a second item needing the same gate: the
+  "Belactie" submenu (`SetTrayCallAction()`) writes `State["CallAction"]`
+  and calls `SaveAppSettings()` exactly like `ToggleTraySetting()` does —
+  both are now disabled while degraded.
+- [x] Design and implement a persistent (not auto-dismissing) in-GUI
   banner for degraded mode, distinct from the existing transient
   `ShowNotification()` toast, that clears automatically once the combined
   readiness flag becomes true and the now-unblocked page refreshes. Match
   the mockup's banner style (warning-colored, left accent bar, spinner)
-  as a starting point, re-verified on Windows.
-- [ ] Update `docs/DECISIONS.md` and `docs/PROJECT_CONTEXT.md` §4.7.
-- [ ] Update the README changelog; assess whether the telemetry
+  as a starting point, re-verified on Windows. Implemented as a plain
+  warning-colored bar with a left accent, without the mockup's animated
+  spinner: a Segoe MDL2 icon glyph mixed into the same `AddText` string as
+  regular text does not render as an icon without `AddFlatButton()`'s
+  custom-draw machinery, and a dedicated animation timer for one static
+  status bar wasn't judged worth the added complexity.
+- [x] Update `docs/DECISIONS.md` and `docs/PROJECT_CONTEXT.md` §4.7.
+  Also updated `docs/ARCHITECTURE.md` §5/§7.4/§13/§14.1 (not originally
+  listed here, but the auto-execute sequence and user-data architecture
+  sections were now stale) and README's Telemetrie section (the installed
+  counters' read-confirm-before-write behavior changed, even though the
+  payload fields themselves did not — see `docs/DECISIONS.md` D-063).
+- [x] Update the README changelog; assess whether the telemetry
   documentation needs changes (the payload/fields themselves should not
-  change, only when/how reliably the counters are read).
+  change, only when/how reliably the counters are read). Assessed: fields
+  unchanged, reliability behavior changed and is now documented (see above).
 - [ ] **Last step, against the finished build:** validate on the managed
   Windows autostart path (not an interactive launch) that the retry/probe/
   degraded-mode behavior actually engages and recovers correctly. Don't
@@ -396,7 +419,11 @@ in full).
   delayed storage (e.g. briefly deny/delay access to the profile folder or
   the specific JSON files at the moment autostart fires) so this can be
   exercised and re-tested on demand, and capture a standard log showing the
-  fixed behavior for the record.
+  fixed behavior for the record. Also specifically exercise: page
+  navigation while degraded, the degraded-to-ready transition while a
+  gated page is the current one, and the Instellingen SMS-field refresh —
+  the parts of `docs/DECISIONS.md` D-064 flagged as the highest-risk and
+  least-proven-by-source-review-alone.
 
 This changes `DocBot.ahk`/`Telemetry.ahk` behavior. Implement on a dedicated
 feature/fix branch from the then-current `develop`, update the
