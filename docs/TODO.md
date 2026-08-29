@@ -147,28 +147,22 @@ already uses: the GUI shows immediately on whatever data is available
 background retry timer afterward, refreshing the relevant in-memory
 state/GUI once it resolves either way.
 
-**Cheap first gate on top of the bounded retry:** before deciding anything,
-also check `DirExist(A_MyDocuments)` — the Documents root itself, which
-Windows resolves independently of whether DocBot has ever run. This
-disambiguates the single most common real first-run case for free (one
-extra `DirExist` call): an existing employee with an already-synced
-OneDrive opening DocBot for the first time has `A_MyDocuments` available
-immediately, so `A_MyDocuments` present + `UserDataDir` absent is a
-high-confidence genuine first run — bootstrap can proceed promptly instead
-of waiting out the full retry window. `A_MyDocuments` itself absent is a
-strong "storage backend not ready" signal and should log as such (distinct
-from a first-run message) while the bounded retry above runs.
-
-This is not airtight, though, and does not replace the bounded retry as the
-actual safety net: if this organization's Documents folder is itself
-OneDrive-redirected (Known Folder Move) rather than a plain local folder
-with OneDrive alongside it, `A_MyDocuments` can be exactly as unavailable
-as `UserDataDir` during the same OneDrive-not-mounted window, and the canary
-gives no earlier signal in precisely the case that matters most. Which
-configuration this organization uses is not currently recorded anywhere in
-`docs/` — confirm and record it (alongside the similar open OneDrive/tenant
-items already tracked in `docs/DATA_PROTECTION.md`) before relying on the
-strength of this signal.
+**Considered and dropped: a `DirExist(A_MyDocuments)` first gate.** An
+earlier draft of this proposal added a cheap pre-check on the Documents
+root itself, to let a high-confidence first run (existing OneDrive user,
+first DocBot launch) bootstrap immediately instead of waiting out the full
+retry window. Dropped (project-owner decision, 2026-08-28): it was a speed
+optimization only, never part of the actual safety net — the write-probe
+above is already correct and safe on its own regardless of whether this
+organization's Documents folder is itself OneDrive-redirected (Known
+Folder Move) or a plain local folder, so nothing about correctness depends
+on knowing that. The only cost of dropping it is that a genuine first run
+waits out the same bounded retry window (a few minutes, at most once per
+user, with the GUI already usable in degraded mode throughout) instead of
+bootstrapping promptly — not worth adding a dependency on confirming this
+organization's OneDrive/Documents configuration for. If a real complaint
+about first-run bootstrap latency ever surfaces, revisit this as a
+targeted follow-up rather than building it in now.
 
 This changes first-run bootstrap timing, not just retry-on-known-existing-
 data behavior, so it needs explicit project-owner sign-off separately from
@@ -347,11 +341,6 @@ in full).
   probe folder left behind by a crash between creation and rename/delete;
   give the probe folder a similarly recognizable name rather than adding a
   second cleanup mechanism.
-- [ ] Confirm whether this organization's `%MyDocuments%` is itself
-  OneDrive-redirected (Known Folder Move) or a plain local folder, and
-  record the answer; implement the `DirExist(A_MyDocuments)` first-gate
-  check above only once that is known, since it only strengthens the
-  signal in the plain-local-folder case.
 - [ ] Ensure every retry loop (loaders and the first-run probe alike) is
   wired to run on a background timer after `MainGui.Show()`, not left in
   the current synchronous position before it.
