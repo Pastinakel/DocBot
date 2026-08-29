@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-autostart-storage.3"
+global AppVersion := "2.4-autostart-storage.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2102,7 +2102,20 @@ RefreshRegistrationTexts() {
 }
 
 RefreshSidebarStatuses() {
-    global State, SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText, C
+    global State, SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText, C, StorageAllReady
+
+    if !StorageAllReady {
+        ; Beide indicatoren lezen State-velden (CallAction/TextReplacement)
+        ; die pas betrouwbaar zijn zodra alle opslag is geladen. Telefonie-
+        ; koppeling zelf werkt intussen gewoon door (zie de registratiekaart
+        ; op de Overzicht-pagina); dit stipje gaat specifiek over of DocBot
+        ; al weet wát er met een herkend nummer moet gebeuren.
+        SidebarPhoneDot.SetFont("s8 cF08200", "Segoe UI")
+        SidebarPhoneText.Value := "Laden…"
+        SidebarTextDot.SetFont("s8 cF08200", "Segoe UI")
+        SidebarTextText.Value := "Laden…"
+        return
+    }
 
     if State["CallAction"] = 0 {
         SidebarPhoneDot.SetFont("s8 c" C["Danger"], "Segoe UI")
@@ -4272,7 +4285,7 @@ ResetProblemReportAfterCompletion() {
 }
 
 ClipBoardPoller() {
-    global State
+    global State, StorageAllReady
     static lastSeq := DllCall("GetClipboardSequenceNumber")  ; voorkomt dat de klembordinhoud bij opstarten al wordt opgepakt
 
     seq := DllCall("GetClipboardSequenceNumber")
@@ -4282,17 +4295,34 @@ ClipBoardPoller() {
     lastSeq := seq
 
     externalTel := NormalizePhoneNumberExternal(A_ClipBoard)
+    internalTel := externalTel = "" ? NormalizePhoneNumberInternal(A_ClipBoard) : ""
+
+    if externalTel = "" && internalTel = ""
+        return
+
+    if !StorageAllReady {
+        ; CallAction en de andere instellingen die de belactie-flow
+        ; hieronder gebruikt zijn nog niet betrouwbaar geladen. Niet
+        ; stilzwijgend niets doen (dat lijkt alsof DocBot het nummer niet
+        ; heeft gezien) en niet handelen op een mogelijk onjuiste
+        ; standaardwaarde: laat het via een korte melding weten. Zie ook de
+        ; banner op de Overzicht-pagina.
+        ShowNotification(
+            "Telefoonnummer herkend, maar instellingen laden nog. Probeer het over een moment opnieuw.",
+            5000,
+            "warning"
+        )
+        return
+    }
+
     if externalTel != "" {
         SetClipBoardNumber(externalTel)
         HandleClipboardNumberDetected()
         return
     }
 
-    internalTel := NormalizePhoneNumberInternal(A_ClipBoard)
-    if internalTel != "" {
-        SetClipBoardNumber(internalTel)
-        HandleInternalClipboardNumberDetected()
-    }
+    SetClipBoardNumber(internalTel)
+    HandleInternalClipboardNumberDetected()
 }
 
 ; Centrale set/clear van het klembordnummer in de IPT-status, met een
@@ -7999,6 +8029,8 @@ StorageRetry_OnAllReady() {
     RefreshOverzichtValuesAfterReady()
     RefreshInstellingenValuesAfterReady()
     ShowPage(CurrentPage)
+    RefreshSidebarStatuses()
+    BuildTrayMenu()
 }
 
 RefreshOverzichtValuesAfterReady() {
@@ -9171,7 +9203,7 @@ HandleAppExit(*) {
 
 BuildTrayMenu() {
     global State, IsDevMode, SpeedDialEntries, TraySpeedDialMaxEntries
-    global ProblemReportSession
+    global ProblemReportSession, StorageAllReady
 
     A_TrayMenu.Delete()
 
@@ -9211,6 +9243,16 @@ BuildTrayMenu() {
 
     if State["TextReplacement"]
         A_TrayMenu.Check("Tekstvervanging")
+
+    if !StorageAllReady {
+        ; Beide items schrijven rechtstreeks naar State/settings.ini
+        ; (SetTrayCallAction()/ToggleTraySetting()), buiten het hoofdvenster
+        ; om. Zolang niet alle opslag geladen is, zou een wijziging hier de
+        ; dan pas net echt geladen waarde meteen weer overschrijven met een
+        ; keuze gebaseerd op een nog niet bevestigde standaardwaarde.
+        A_TrayMenu.Disable("Belactie")
+        A_TrayMenu.Disable("Tekstvervanging")
+    }
 
     ; Alleen als submenu-alternatief: platte lijst direct in het hoofdmenu,
     ; met een disabled sectiekopje erboven (zelfde patroon als het
