@@ -312,16 +312,23 @@ in full).
   `Telemetry_WriteCounter()` to overwrite a real cumulative count with a
   session that started from a false `0`.
 - This is a startup-timing race that only reproduces through the real
-  autostart trigger on a managed Windows workstation; validate there, not
-  only via an interactively-launched interpreted or compiled run
-  (`docs/DECISIONS.md` D-037).
+  autostart trigger on a managed Windows workstation, not an interactively-
+  launched interpreted or compiled run (`docs/DECISIONS.md` D-037) — but
+  that validation is the **last** step, against the finished fix, not a
+  precondition for starting work. Waiting for the race to spontaneously
+  recur again on its own is not a reliable way to test it: the original log
+  is sufficient evidence the bug is real, and there is no way to force an
+  as-yet-unfixed build to hit the race on demand. Once there is a build to
+  test, deliberately simulate the delayed-storage condition instead of
+  waiting for a natural recurrence — e.g. briefly deny/delay access to the
+  profile folder (or the specific JSON files) at the exact moment autostart
+  fires — so the retry/probe/degraded-mode behavior can be exercised and
+  confirmed on demand rather than hoped for.
 - Record the generalized retry approach in `docs/DECISIONS.md` (mirroring
   D-027/D-028) and update `docs/PROJECT_CONTEXT.md` §4.7 once implemented.
 
 ### Scope
 
-- [ ] Confirm on the managed Windows autostart path (not an interactive
-  launch) that the race reproduces, and capture a standard log showing it.
 - [ ] Design and implement the shared-timer/per-loader-diagnosis retry
   approach described above for `LoadAppSettings()`, hotstrings, package
   settings/selections, speed dial, and SMS default texts.
@@ -382,6 +389,14 @@ in full).
 - [ ] Update the README changelog; assess whether the telemetry
   documentation needs changes (the payload/fields themselves should not
   change, only when/how reliably the counters are read).
+- [ ] **Last step, against the finished build:** validate on the managed
+  Windows autostart path (not an interactive launch) that the retry/probe/
+  degraded-mode behavior actually engages and recovers correctly. Don't
+  wait for the original race to spontaneously recur — deliberately simulate
+  delayed storage (e.g. briefly deny/delay access to the profile folder or
+  the specific JSON files at the moment autostart fires) so this can be
+  exercised and re-tested on demand, and capture a standard log showing the
+  fixed behavior for the record.
 
 This changes `DocBot.ahk`/`Telemetry.ahk` behavior. Implement on a dedicated
 feature/fix branch from the then-current `develop`, update the
