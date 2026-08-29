@@ -215,7 +215,20 @@ in a visibly-inert state.
 - The clipboard-number → call/SMS-action flow: suspended. This is the part
   that depends on `CallAction`/`SmsCallActionTitle`/`TextReplacement` from
   `settings.ini`, so acting on a detected number without knowing the real
-  setting would risk doing the wrong thing, not just nothing.
+  setting would risk doing the wrong thing, not just nothing. Not silent,
+  though (project-owner decision, 2026-08-28): show a one-off
+  `ShowNotification()` toast when a number is recognized during degraded
+  mode (e.g. "Nummer herkend, maar instellingen laden nog") — otherwise the
+  suspension looks like DocBot failed to notice the number at all, which is
+  worse than an explained no-op.
+- The tray menu's "Tekstvervanging" checkbox item (`ToggleTraySetting.Bind
+  ("TextReplacement")`) reads/writes `State["TextReplacement"]` directly,
+  bypassing the main window entirely: disable it too during degraded mode
+  (project-owner decision, 2026-08-28), otherwise a toggle made there on the
+  not-yet-loaded in-memory default would itself get overwritten the moment
+  the real value loads, silently discarding what the user just set. Check
+  the tray menu for any other item reading/writing degraded-mode-affected
+  `State` the same direct way and apply the same rule.
 - Telephony registration, the link-code flow, and the long-poll event loop:
   **unaffected, run exactly as today** — this is what stays on the
   Overzicht page's registration card.
@@ -355,11 +368,21 @@ in full).
   readiness flag is false (Belactie/Tekstvervanging/Gebruik not shown at
   all); on Telefonie/Hotstrings/Instellingen, render only the banner plus a
   short message (no list, no editor, no save button of any kind).
-- [ ] Drive the "Telefonie:" sidebar status dot from the combined readiness
-  flag as well as `CallAction`, so it shows the neutral "Laden…" state
-  rather than green/Actief while settings haven't loaded — it reports
-  call-action readiness, not registration status, and registration stays
-  correctly visible in the Overzicht card regardless.
+- [ ] Drive **both** sidebar status dots from the combined readiness flag,
+  not only their own setting — `RefreshSidebarStatuses()` sets
+  "Telefonie:" from `CallAction` and "Tekst vervangen:" from
+  `State["TextReplacement"]` the same way, so both currently risk showing
+  a stale/default green-or-red state while degraded rather than "Laden…".
+  Registration itself stays correctly visible in the Overzicht card
+  regardless — only these two sidebar dots need the neutral state.
+- [ ] Show a one-off `ShowNotification()` toast when a clipboard phone
+  number is recognized while degraded mode is active, rather than
+  suspending the call/SMS-action flow silently.
+- [ ] Disable the tray menu's "Tekstvervanging" checkbox item during
+  degraded mode (and audit the rest of the tray menu for any other item
+  that reads/writes `State` the same direct way), so a toggle made there
+  on a not-yet-loaded default can't be silently overwritten once the real
+  value loads.
 - [ ] Design and implement a persistent (not auto-dismissing) in-GUI
   banner for degraded mode, distinct from the existing transient
   `ShowNotification()` toast, that clears automatically once the combined
