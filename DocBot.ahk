@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-onboarding-tips.2"
+global AppVersion := "2.4-onboarding-tips.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -248,7 +248,7 @@ global TipDefinitions := [
     Map(
         "Key", "Phone",
         "Condition", TipConditionPhone,
-        "Text", 'Tip: je hebt nog niet gebeld via DocBot. Koppel eerst je telefoon op Overzicht — bekijk de <a href="help">Help</a>-pagina voor uitleg.',
+        "Text", 'Tip: DocBot kan automatisch voor je bellen. Bekijk <a href="help">hier</a> hoe dat werkt.',
         "HelpHandler", OpenPhoneTipHelp
     ),
     Map(
@@ -260,7 +260,7 @@ global TipDefinitions := [
     Map(
         "Key", "Sms",
         "Condition", TipConditionSms,
-        "Text", 'Tip: je hebt nog geen sms verstuurd via DocBot. Bekijk de <a href="help">Help</a>-pagina voor uitleg over bellen en sms.',
+        "Text", 'Tip: DocBot kan sms sturen voor je automatiseren. Bekijk <a href="help">hier</a> hoe.',
         "HelpHandler", OpenSmsTipHelp
     ),
     Map(
@@ -1977,9 +1977,17 @@ TipConditionPhone() {
     return Telemetry_GetPhoneActions() = 0
 }
 
+; Was eerst Hotstrings.Length = 0 (de personal-hotstringlijst zelf, zie het
+; oorspronkelijke docs/TODO.md-item). In de praktijk seedt
+; DefaultPersonalHotstrings()/AddMissingDefaultHotstrings() elke gebruiker al
+; bij de schema-upgrade met LocalConfig["DefaultHotstrings"], dus
+; Hotstrings.Length is vrijwel nooit 0 en de tip verscheen daardoor nooit
+; (bevestigd door de projecteigenaar). De "Lange hotstrings"-actieteller
+; (net als de telefoon-/sms-tellers) meet daadwerkelijk gebruik in plaats van
+; alleen lijstlengte, en is dus wél 0 zolang iemand nog geen meerregelige
+; hotstring heeft laten uitvoeren.
 TipConditionHotstrings() {
-    global Hotstrings
-    return Hotstrings.Length = 0
+    return Telemetry_GetLongHotstringActions() = 0
 }
 
 TipConditionSms() {
