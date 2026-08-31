@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-onboarding-tips.3"
+global AppVersion := "2.4-onboarding-tips.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -254,7 +254,7 @@ global TipDefinitions := [
     Map(
         "Key", "Hotstrings",
         "Condition", TipConditionHotstrings,
-        "Text", 'Tip: je hebt nog geen hotstrings aangemaakt. Bekijk de <a href="help">Help</a>-pagina om te zien hoe tekstvervanging werkt.',
+        "Text", 'Tip: DocBot kan standaardteksten voor je invoeren. Bekijk <a href="help">hier</a> hoe.',
         "HelpHandler", OpenHotstringTipHelp
     ),
     Map(
@@ -611,10 +611,6 @@ BuildMainGui() {
 
     MarkDegradedGateEnd("telefonie")
 
-    phoneFooter := MainGui.AddText("x236 y672 w736 h18 Right Background" C["Window"], "Sluiten verbergt DocBot in het systeemvak")
-    phoneFooter.SetFont("s8 c" C["Muted"], "Segoe UI")
-    AddPageControl("telefonie", phoneFooter)
-
     ; -------------------------------------------------------------------------
     ; PAGINA: TEKSTVERVANGING
     ; -------------------------------------------------------------------------
@@ -708,17 +704,23 @@ BuildMainGui() {
     ; andere pagina's is dit paginabrede, niet-data-afhankelijke chrome.
     MarkDegradedGateEnd("tekstvervanging")
 
-    ; y=663 centreert deze 22px-hoge regel verticaal in de 52px-ruimte
-    ; tussen het einde van de kaart hierboven (y=648) en de vensterrand
-    ; (700): 648 + (52-22)/2 = 663, met 15px marge boven en onder. Zelfde
-    ; tekstgrootte (s10) als de GitHub-link op de Over-pagina. Als
-    ; paginabreed element (geen kaartinhoud) blijft de melding zichtbaar in
-    ; zowel de compacte als de uitgeklapte weergave van de hotstringeditor.
+    ; h=38 gecentreerd in de 52px-ruimte tussen het einde van de kaart
+    ; hierboven (y=648) en de vensterrand (700): 648 + (52-38)/2 = 655, met
+    ; 7px marge boven en onder. Zelfde gele stijl als de onboardingtip-balk
+    ; op Overzicht (TipBannerSurface/-Accent/-Link), maar zonder sluitkruisje
+    ; en altijd zichtbaar op deze pagina: dit is een blijvende privacyregel,
+    ; geen aan/uit-tip. Als paginabreed element (geen kaartinhoud) blijft de
+    ; melding zichtbaar in zowel de compacte als de uitgeklapte weergave van
+    ; de hotstringeditor.
+    HotPrivacySurface := MainGui.AddText("x236 y655 w736 h38 BackgroundFDF0DE", "")
+    AddPageControl("tekstvervanging", HotPrivacySurface)
+    HotPrivacyAccent := MainGui.AddText("x236 y655 w4 h38 BackgroundF08200", "")
+    AddPageControl("tekstvervanging", HotPrivacyAccent)
     HotPrivacyHint := MainGui.AddLink(
-        "x260 y663 w650 h22 Background" C["Window"],
+        "x252 y666 w704 h20 BackgroundFDF0DE",
         'ℹ️  Zet geen patiëntgegevens in hotstrings. Bekijk de richtlijn op de <a href="help">Help</a>-pagina.'
     )
-    HotPrivacyHint.SetFont("s10 c" C["Muted"], "Segoe UI")
+    HotPrivacyHint.SetFont("s10 c5C3600", "Segoe UI")
     ; Opent Help mét de bijbehorende accordeonsectie al uitgeklapt, in
     ; plaats van alleen naar de Help-pagina te navigeren.
     HotPrivacyHint.OnEvent("Click", OpenHotstringHelpSection)

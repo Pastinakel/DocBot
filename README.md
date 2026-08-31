@@ -499,15 +499,20 @@ Changelog
 
 ### 2.4 — In ontwikkeling
 - Overzicht toont bij het opstarten soms een gele tip die wijst op een nog
-  ongebruikte functie: telefonie koppelen, hotstrings aanmaken of sms
-  versturen, plus een tip over het sluiten van DocBot naar het systeemvak
-  (die laatste vervangt de vaste tekst die eerder altijd onderaan Overzicht
-  stond). Per opstartsessie wordt willekeurig hooguit één tip getoond, en
-  alleen als de bijbehorende teller nog op 0 staat (of, voor de
+  ongebruikte functie: telefonie koppelen, hotstrings aanmaken of
+  standaardteksten (sms) invoeren, plus een tip over het sluiten van DocBot
+  naar het systeemvak (die laatste vervangt de vaste tekst die eerder altijd
+  onderaan Overzicht stond; de identieke tekst op Telefonie is simpelweg
+  verwijderd). Per opstartsessie wordt willekeurig hooguit één tip getoond,
+  en alleen als de bijbehorende teller nog op 0 staat (of, voor de
   systeemvak-tip, altijd) én de tip niet in de afgelopen 10 dagen al
   getoond is. De tip blijft zichtbaar tot de teller verandert of de
   gebruiker op het kruisje klikt, en verschijnt in totaal maximaal 5 keer
   per tip.
+- De privacyhint op Tekstvervanging ("Zet geen patiëntgegevens in
+  hotstrings...") heeft dezelfde gele stijl gekregen als de nieuwe
+  onboardingtips, maar blijft — anders dan die tips — altijd zichtbaar en
+  heeft geen sluitkruisje: het is een blijvende regel, geen aan/uit-tip.
 - DocBot herkent nu actief of Documents/OneDrive bij het opstarten (bijvoorbeeld
   via autostart, vóórdat OneDrive volledig gemount is) nog niet beschikbaar is,
   in plaats van dat één mislukte poging voor de rest van de sessie stilzwijgend
