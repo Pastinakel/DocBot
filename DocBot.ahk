@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-autostart-storage.6"
+global AppVersion := "2.4-autostart-storage.7"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -9265,23 +9265,33 @@ BuildTrayMenu() {
     ; met een disabled sectiekopje erboven (zelfde patroon als het
     ; geregistreerd-nummer-label bovenaan). Streep + blok worden samen
     ; overgeslagen zonder entries.
-    activeSpeedDials := []
-    for _, entry in SpeedDialEntries {
-        if entry["actief"]
-            activeSpeedDials.Push(entry)
-    }
-
-    if activeSpeedDials.Length > 0 {
-        A_TrayMenu.Add()
-        A_TrayMenu.Add("Snelkiesnummers", (*) => 0)
-        A_TrayMenu.Disable("Snelkiesnummers")
-
-        Loop Min(activeSpeedDials.Length, TraySpeedDialMaxEntries) {
-            entry := activeSpeedDials[A_Index]
-            A_TrayMenu.Add(entry["naam"] . " (" . entry["nummer"] . ")", CallSpeedDialEntry.Bind(entry["nummer"]))
+    ;
+    ; Zolang StorageAllReady nog false is, staat SpeedDialEntries nog op de
+    ; code-standaardwaarden (DefaultSpeedDialEntries()) in plaats van de
+    ; echte speeddial.json — en CallSpeedDialEntry() belt meteen echt via
+    ; IPT_callNumber(). Dit blok blijft daarom net als "Belactie"/
+    ; "Tekstvervanging" hierboven volledig weg tijdens degraded mode, in
+    ; plaats van (mogelijk verouderde) nummers klikbaar te tonen — zie
+    ; docs/DECISIONS.md D-064.
+    if StorageAllReady {
+        activeSpeedDials := []
+        for _, entry in SpeedDialEntries {
+            if entry["actief"]
+                activeSpeedDials.Push(entry)
         }
-        if activeSpeedDials.Length > TraySpeedDialMaxEntries
-            A_TrayMenu.Add("Alle snelkiesnummers...", ShowSpeedDialsFromTray)
+
+        if activeSpeedDials.Length > 0 {
+            A_TrayMenu.Add()
+            A_TrayMenu.Add("Snelkiesnummers", (*) => 0)
+            A_TrayMenu.Disable("Snelkiesnummers")
+
+            Loop Min(activeSpeedDials.Length, TraySpeedDialMaxEntries) {
+                entry := activeSpeedDials[A_Index]
+                A_TrayMenu.Add(entry["naam"] . " (" . entry["nummer"] . ")", CallSpeedDialEntry.Bind(entry["nummer"]))
+            }
+            if activeSpeedDials.Length > TraySpeedDialMaxEntries
+                A_TrayMenu.Add("Alle snelkiesnummers...", ShowSpeedDialsFromTray)
+        }
     }
 
     A_TrayMenu.Add()

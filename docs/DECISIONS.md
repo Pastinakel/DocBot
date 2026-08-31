@@ -2623,3 +2623,24 @@ The retry-triggered `ShowNotification()` toasts ("Het JSON-bestand kon niet
 worden geladen") on each failed background attempt are expected —
 `ReportStorageError()` intentionally reports every retry independently, per
 D-063 — not a bug.
+
+**Validation note (2026-08-31, continued):** the same locked-profile test
+surfaced a second, more serious gap in the same decision: `BuildTrayMenu()`
+built its "Snelkiesnummers" quick-call section straight from
+`SpeedDialEntries` with no `StorageAllReady` check at all — unlike the
+"Belactie"/"Tekstvervanging" tray items right above it, which this decision
+does explicitly disable while degraded. `SpeedDialEntries` starts out on
+`DefaultSpeedDialEntries()` (the code defaults) until
+`InitializeSpeedDialStorage()` actually succeeds, so while degraded the
+tray menu showed the default speed-dial entries as clickable items, and
+clicking one called `CallSpeedDialEntry()` → `IPT_callNumber()` — placing a
+real call on possibly-stale, not-yet-confirmed data, with no write
+involved to make the risk visible the way `HotSaveButton` staying hidden
+did for the previous finding. Fixed by wrapping the whole section in
+`if StorageAllReady`, so it is omitted entirely while degraded — matching
+this decision's "hidden outright, not shown disabled" principle — and
+reappears once `StorageRetry_OnAllReady()` calls `BuildTrayMenu()` again
+after a real degraded-to-ready transition. This was missed in the original
+D-064 pass because the tray menu build only explicitly reasoned about the
+two items that write to `State`/`settings.ini`; the speed-dial section's
+own dependency on unloaded storage was not considered.
