@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-dev.4"
+global AppVersion := "2.4-onboarding-tips.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -156,6 +156,13 @@ global HelpOpenSection := 1
 ; hint op Tekstvervanging altijd naar de juiste, actuele sectie-index
 ; verwijst, ook als de volgorde van accordeonsecties ooit verandert.
 global HotstringHelpSectionIndex := 0
+; Zelfde principe als HotstringHelpSectionIndex hierboven, maar voor de
+; startup-onboardingtips (zie TipDefinitions verderop): gezet in
+; BuildMainGui() direct na de bijbehorende AddHelpAccordionSection()-aanroep,
+; zodat een tip-link altijd naar de juiste, actuele sectie-index verwijst.
+global TipPhoneHelpSectionIndex := 0
+global TipSmsHelpSectionIndex := 0
+global TipHotstringHelpSectionIndex := 0
 global HelpLinkControls := Map()
 global NavButtons := Map()
 global NavBars := Map()
@@ -216,6 +223,53 @@ global TextReplacementCheck := 0
 global OverviewPhoneActionsText := 0
 global OverviewLongHotstringActionsText := 0
 global OverviewSmsActionsText := 0
+
+; Startup-onboardingtips (docs/TODO.md): een blijvende gele hint-balk op
+; Overzicht die willekeurig één van de onderstaande tips toont, op de plek
+; van de vroegere vaste footertekst "Sluiten verbergt DocBot in het
+; systeemvak" (die nu zelf tip "TrayClose" is geworden). Zie
+; EvaluateStartupTip() en de bijbehorende opslagfuncties.
+global TipRepeatCapCount := 5
+global TipMinIntervalDays := 10
+global TipBannerSelected := false   ; deze sessie al geloot? (voorkomt herloten)
+global TipBannerActive := false     ; hoort de balk nu zichtbaar te zijn?
+global CurrentTipKey := ""
+global TipBannerSurface := 0
+global TipBannerAccent := 0
+global TipBannerLink := 0
+global TipBannerCloseButton := 0
+
+; TipDefinitions verwijst naar functienamen (Condition/HelpHandler) die pas
+; verderop in het bestand gedefinieerd worden. Dat is geen probleem: AHK v2
+; slaat functiedefinities over tijdens de auto-execute-uitvoering, maar de
+; functies zelf bestaan al als aanroepbare waarde ongeacht hun positie in het
+; bestand (zie de AHK v2-uitleg in CLAUDE.md).
+global TipDefinitions := [
+    Map(
+        "Key", "Phone",
+        "Condition", TipConditionPhone,
+        "Text", 'Tip: je hebt nog niet gebeld via DocBot. Koppel eerst je telefoon op Overzicht — bekijk de <a href="help">Help</a>-pagina voor uitleg.',
+        "HelpHandler", OpenPhoneTipHelp
+    ),
+    Map(
+        "Key", "Hotstrings",
+        "Condition", TipConditionHotstrings,
+        "Text", 'Tip: je hebt nog geen hotstrings aangemaakt. Bekijk de <a href="help">Help</a>-pagina om te zien hoe tekstvervanging werkt.',
+        "HelpHandler", OpenHotstringTipHelp
+    ),
+    Map(
+        "Key", "Sms",
+        "Condition", TipConditionSms,
+        "Text", 'Tip: je hebt nog geen sms verstuurd via DocBot. Bekijk de <a href="help">Help</a>-pagina voor uitleg over bellen en sms.',
+        "HelpHandler", OpenSmsTipHelp
+    ),
+    Map(
+        "Key", "TrayClose",
+        "Condition", TipConditionAlways,
+        "Text", "Tip: DocBot sluiten verbergt de app alleen in het systeemvak; hij blijft actief op de achtergrond.",
+        "HelpHandler", ""
+    )
+]
 
 ; Voor RefreshInstellingenValuesAfterReady(): dezelfde besturingselementen
 ; als de lokale variabelen in BuildMainGui(), zodat de Instellingen-pagina
@@ -498,9 +552,18 @@ BuildMainGui() {
 
     MarkDegradedGateEnd("overzicht")
 
-    overviewFooter := MainGui.AddText("x236 y672 w736 h18 Right Background" C["Window"], "Sluiten verbergt DocBot in het systeemvak")
-    overviewFooter.SetFont("s8 c" C["Muted"], "Segoe UI")
-    AddPageControl("overzicht", overviewFooter)
+    ; Startup-onboardingtip: gele hint-balk op de plek van de vroegere vaste
+    ; footertekst. Zichtbaarheid wordt niet via AddPageControl/de generieke
+    ; pagina-gating geregeld (die zou de balk bij elke terugkeer naar
+    ; Overzicht weer tonen), maar volledig los van Pages[] beheerd door
+    ; ApplyTipBannerVisibility() — zie EvaluateStartupTip().
+    TipBannerSurface := MainGui.AddText("x236 y653 w736 h38 BackgroundFDF0DE +Hidden", "")
+    TipBannerAccent := MainGui.AddText("x236 y653 w4 h38 BackgroundF08200 +Hidden", "")
+    TipBannerLink := MainGui.AddLink("x252 y664 w650 h20 BackgroundFDF0DE +Hidden", "")
+    TipBannerLink.SetFont("s10 c5C3600", "Segoe UI")
+    TipBannerCloseButton := MainGui.AddText("x934 y658 w28 h28 Center 0x200 BackgroundFDF0DE +Hidden", Chr(0xE711))
+    TipBannerCloseButton.SetFont("s10 c5C3600", "Segoe MDL2 Assets")
+    TipBannerCloseButton.OnEvent("Click", DismissTipBanner)
 
     ; -------------------------------------------------------------------------
     ; PAGINA: TELEFONIE
@@ -777,6 +840,7 @@ BuildMainGui() {
         ["Overzicht", "Verversen", "Geregistreerd nummer"],
         Map("Overzicht", "overzicht")
     )
+    TipPhoneHelpSectionIndex := HelpSections.Length
     AddHelpAccordionSection(
         "Hoe bel of sms ik vanuit een applicatie?",
         "Kies bij Belactie op de pagina Overzicht wat DocBot met een herkend nummer moet doen."
@@ -792,6 +856,7 @@ BuildMainGui() {
         ["Belactie", "Overzicht", "niets doen", "bellen na bevestiging", "direct bellen", "bellen en sms", "Interne nummers", "Instellingen", "SMS"],
         Map("Overzicht", "overzicht")
     )
+    TipSmsHelpSectionIndex := HelpSections.Length
     AddHelpAccordionSection(
         "Hoe bel ik via snelkiesnummers?",
         "Open Telefonie in DocBot, selecteer een actief snelkiesnummer en klik op Bellen."
@@ -812,6 +877,7 @@ BuildMainGui() {
         ["Overzicht", "Tekstvervanging", "Hotstrings"],
         Map("Overzicht", "overzicht", "Hotstrings", "tekstvervanging")
     )
+    TipHotstringHelpSectionIndex := HelpSections.Length
     AddHelpAccordionSection(
         "Wat mag ik wel en niet in een hotstring zetten?",
         "Hotstrings zijn bedoeld voor generieke, herbruikbare tekst: vaste zinnen, "
@@ -892,6 +958,11 @@ BuildMainGui() {
     RefreshHotstringList()
     RefreshSpeedDialList()
     ShowPage("overzicht")
+
+    ; Doet niets zolang StorageAllReady nog false is (degraded mode): dan
+    ; loot StorageRetry_OnAllReady() de tip later alsnog, ná echt geladen
+    ; tellers/Hotstrings. Zie EvaluateStartupTip().
+    EvaluateStartupTip()
 
     MainGui.OnEvent("Close", MainGui_Close)
     MainGui.OnEvent("Escape", MainGui_Escape)
@@ -1285,6 +1356,29 @@ OpenHotstringHelpSection(*) {
     global HelpOpenSection, HotstringHelpSectionIndex
 
     HelpOpenSection := HotstringHelpSectionIndex
+    ShowPage("help")
+}
+
+; Zelfde constructie als OpenHotstringHelpSection() hierboven, maar voor de
+; Help-links in de startup-onboardingtips (TipDefinitions).
+OpenPhoneTipHelp(*) {
+    global HelpOpenSection, TipPhoneHelpSectionIndex
+
+    HelpOpenSection := TipPhoneHelpSectionIndex
+    ShowPage("help")
+}
+
+OpenSmsTipHelp(*) {
+    global HelpOpenSection, TipSmsHelpSectionIndex
+
+    HelpOpenSection := TipSmsHelpSectionIndex
+    ShowPage("help")
+}
+
+OpenHotstringTipHelp(*) {
+    global HelpOpenSection, TipHotstringHelpSectionIndex
+
+    HelpOpenSection := TipHotstringHelpSectionIndex
     ShowPage("help")
 }
 
@@ -1866,6 +1960,157 @@ SetCueText(editCtrl, text) {
     SendMessage(0x1501, 0, StrPtr(text), editCtrl)
 }
 
+; =============================================================================
+; STARTUP-ONBOARDINGTIPS
+; =============================================================================
+; Zie docs/TODO.md ("Startup onboarding tips based on zero-usage counters").
+; Eén tip per sessie, willekeurig gekozen uit alle op dat moment geschikte
+; kandidaten uit TipDefinitions (globals-blok bovenaan), getoond in de gele
+; hint-balk op Overzicht (TipBannerSurface/-Accent/-Link/-CloseButton,
+; opgebouwd in BuildMainGui()). "Geschikt" = de conditie is waar, de tip is
+; nog geen TipRepeatCapCount keer getoond, en de laatste keer tonen (indien
+; van toepassing) is minstens TipMinIntervalDays dagen geleden.
+
+TipConditionPhone() {
+    return Telemetry_GetPhoneActions() = 0
+}
+
+TipConditionHotstrings() {
+    global Hotstrings
+    return Hotstrings.Length = 0
+}
+
+TipConditionSms() {
+    return Telemetry_GetSmsActions() = 0
+}
+
+TipConditionAlways() {
+    return true
+}
+
+; Spiegelt Telemetry_ReadCounter()/Telemetry_WriteCounter() (Telemetry.ahk),
+; maar leest/schrijft een eigen "[Tips]"-sectie in ConfigFile in plaats van
+; "[Usage]" in TelemetryConfigFile: dit is lokale UX-state, losstaand van
+; telemetrie-toestemming, zoals docs/TODO.md expliciet vraagt.
+Tips_ReadShownCount(key) {
+    global ConfigFile
+
+    try
+        return Max(0, Integer(IniRead(ConfigFile, "Tips", key "ShownCount", 0)))
+    catch
+        return 0
+}
+
+Tips_WriteShownCount(key, value) {
+    global ConfigFile
+    try IniWrite(value, ConfigFile, "Tips", key "ShownCount")
+}
+
+Tips_ReadLastShownAt(key) {
+    global ConfigFile
+
+    try
+        return IniRead(ConfigFile, "Tips", key "LastShownAt", "")
+    catch
+        return ""
+}
+
+Tips_WriteLastShownAt(key, value) {
+    global ConfigFile
+    try IniWrite(value, ConfigFile, "Tips", key "LastShownAt")
+}
+
+; Vult de balk met de tekst/Help-link van de gekozen tip. Alleen tellertips
+; hebben een HelpHandler (een <a href="help">-link in Text); de
+; systeemvak-tip (TrayClose) heeft platte tekst zonder link.
+UpdateTipBannerContent(tipDef) {
+    global TipBannerLink
+
+    TipBannerLink.Text := tipDef["Text"]
+    if tipDef["HelpHandler"] != ""
+        TipBannerLink.OnEvent("Click", tipDef["HelpHandler"])
+}
+
+; Wordt aangeroepen ná BuildMainGui() (snelle start) én vanuit
+; StorageRetry_OnAllReady() (degraded-mode-herstelpad, DocBot.ahk StorageRetry_*
+; hierboven): tellers/Hotstrings zijn pas betrouwbaar zodra StorageAllReady.
+; Loot precies één keer per sessie (TipBannerSelected-guard) — een latere
+; aanroep vanuit het herstelpad na een al-succesvolle snelle start doet dus
+; niets.
+EvaluateStartupTip() {
+    global StorageAllReady, TipBannerSelected, TipDefinitions
+    global TipRepeatCapCount, TipMinIntervalDays
+    global TipBannerActive, CurrentTipKey
+
+    if !StorageAllReady || TipBannerSelected
+        return
+    TipBannerSelected := true
+
+    cutoff := DateAdd(A_Now, -TipMinIntervalDays, "Days")
+    eligible := []
+    for tipDef in TipDefinitions {
+        if !tipDef["Condition"].Call()
+            continue
+        if Tips_ReadShownCount(tipDef["Key"]) >= TipRepeatCapCount
+            continue
+        lastShown := Tips_ReadLastShownAt(tipDef["Key"])
+        if lastShown != "" && lastShown >= cutoff
+            continue
+        eligible.Push(tipDef)
+    }
+    if !eligible.Length
+        return
+
+    chosen := eligible[Random(1, eligible.Length)]
+    CurrentTipKey := chosen["Key"]
+    UpdateTipBannerContent(chosen)
+    Tips_WriteShownCount(chosen["Key"], Tips_ReadShownCount(chosen["Key"]) + 1)
+    Tips_WriteLastShownAt(chosen["Key"], FormatTime(, "yyyyMMddHHmmss"))
+    TipBannerActive := true
+    ApplyTipBannerVisibility()
+}
+
+; Bij terugkeer naar Overzicht (ShowPage()): is de conditie van de nu
+; getoonde tip inmiddels vervallen (bijv. eerste hotstring net opgeslagen),
+; verberg de balk dan. Er wordt bewust geen nieuwe tip geloot zolang de
+; sessie loopt — één keuze per sessie, zie EvaluateStartupTip().
+ReevaluateTipBannerCondition() {
+    global TipBannerActive, CurrentTipKey, TipDefinitions
+
+    if !TipBannerActive
+        return
+    for tipDef in TipDefinitions {
+        if tipDef["Key"] = CurrentTipKey {
+            if !tipDef["Condition"].Call()
+                TipBannerActive := false
+            return
+        }
+    }
+}
+
+; Enige plek die de Hidden-status van de tip-balk zet: losstaand van de
+; generieke Pages[]-gating in ShowPage(), omdat de balk binnen een sessie
+; zichtbaar moet blijven totdat de voorwaarde vervalt of de gebruiker sluit —
+; niet gewoon "aan zodra Overzicht getoond wordt".
+ApplyTipBannerVisibility() {
+    global TipBannerActive, CurrentPage
+    global TipBannerSurface, TipBannerAccent, TipBannerLink, TipBannerCloseButton
+
+    wantVisible := TipBannerActive && CurrentPage = "overzicht"
+    for ctrl in [TipBannerSurface, TipBannerAccent, TipBannerLink, TipBannerCloseButton]
+        ctrl.Opt(wantVisible ? "-Hidden" : "+Hidden")
+}
+
+; Klikhandler van het sluitkruisje. ShownCount/LastShownAt zijn al
+; geschreven op het moment van tonen (EvaluateStartupTip()); vroegtijdig
+; sluiten verandert daar niets aan, dus telt gewoon mee in de bestaande
+; 5-keer/10-dagen-regels na een herstart.
+DismissTipBanner(*) {
+    global TipBannerActive
+    TipBannerActive := false
+    ApplyTipBannerVisibility()
+}
+
 ShowPage(pageKey, *) {
     global Pages, CurrentPage, NavButtons, NavBars, C, StorageAllReady
 
@@ -1903,10 +2148,16 @@ ShowPage(pageKey, *) {
 
     if pageKey = "tekstvervanging"
         RefreshHotstringList()
-    else if pageKey = "overzicht"
+    else if pageKey = "overzicht" {
         UpdateRegisterButtonState()
-    else if pageKey = "help"
+        ReevaluateTipBannerCondition()
+    } else if pageKey = "help"
         RefreshHelpAccordion()
+
+    ; De onboardingtip-balk staat buiten Pages[]/de gating hierboven (zie
+    ; ApplyTipBannerVisibility()): elke paginawissel moet 'm alsnog tonen of
+    ; verbergen op basis van de huidige pagina + TipBannerActive.
+    ApplyTipBannerVisibility()
 
     ; Herstel regions nadat cards/toggles via -Hidden zichtbaar zijn geworden.
     ; Daarna volgt een volledige redraw en de custom-draw-cyclus van buttons.
@@ -8033,6 +8284,7 @@ StorageRetry_OnAllReady() {
 
     RefreshOverzichtValuesAfterReady()
     RefreshInstellingenValuesAfterReady()
+    EvaluateStartupTip()
     ShowPage(CurrentPage)
     RefreshSidebarStatuses()
     BuildTrayMenu()
