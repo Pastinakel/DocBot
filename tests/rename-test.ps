@@ -1,0 +1,3 @@
+icacls "$env:USERPROFILE\Documents" /deny "$env:USERNAME:(WD,AD)"
+# ... start DocBot, controleer dat 'ie niet crasht en het opnieuw probeert ...
+icacls "$env:USERPROFILE\Documents" /remove:d "$env:USERNAME"
