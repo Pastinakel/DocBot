@@ -89,6 +89,11 @@ risicoanalyse uit.
   `README.md`. Voeg geen handmatige versieregels meer toe aan
   `BuildAboutText()`; het Over-scherm leest en vereenvoudigt deze sectie.
 - Houd de changelog aflopend: nieuwste release bovenaan en de oudste onderaan.
+- Houd ieder changelog-item beknopt: richt op maximaal ongeveer 120 woorden,
+  afhankelijk van hoe uitgebreid het item daadwerkelijk is. Beschrijf wat er
+  veranderde en waarom het relevant is voor de gebruiker; verwijs niet naar
+  implementatiedetails, bestandsnamen of interne discussie die daar niet
+  voor nodig zijn.
 - `README.md` wordt via `FileInstall` in gecompileerde builds opgenomen.
 
 ## Transparantie over telemetrie

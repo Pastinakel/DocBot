@@ -1706,6 +1706,42 @@ bump applies.
 
 ---
 
+## P3 — Change the sidebar slogan
+
+Filed by the project owner (2026-08-26). Change the app subtitle shown
+under "DocBot" in the main window's sidebar from "Telefonie voor de
+werkplek" to "Een handje extra voor je werk". Classified P3 (cosmetic,
+narrow-impact single-line UI text) unless the project owner wants it
+prioritized higher.
+
+### Scope
+
+- [ ] Update the literal string in `DocBot.ahk` (`appSub := MainGui.AddText(...)`
+  around line 338) from `"Telefonie voor de werkplek"` to `"Een handje
+  extra voor je werk"`.
+- [ ] Check the fixed-width text control it sits in (`w170`, `s9` font,
+  directly under the `appTitle`/`appSub` pair at `x28 y52`) on a real
+  Windows build: the new string is a few characters longer than the old
+  one, so confirm it neither clips nor wraps awkwardly against the nav
+  buttons starting at `y=110` — widen the control or adjust its position
+  only if it actually does.
+- [ ] This is the only in-repo occurrence of "Telefonie voor de werkplek"
+  (confirmed via a full-repo search) — no README, About-screen, or other
+  duplicate copy needs updating. Note this is a different string from the
+  GitHub repository's own "description" metadata field ("DocBot is een
+  AutoHotkey v2-hulpmiddel voor medewerkers met twee hoofdfuncties..."),
+  which lives in GitHub's repo settings, not in a tracked file — out of
+  scope here unless the project owner separately wants that changed too.
+- [ ] Consider whether the new slogan should also be reflected in the
+  README's own product description at the top, for consistency between
+  the app and its documentation — project-owner call, not assumed here.
+
+This changes `DocBot.ahk` behavior (visible UI text). Implement it on a
+dedicated feature/fix branch from the then-current `develop` and update
+the branch-specific `AppVersion` in the same commit.
+
+---
+
 ## Resolved issues / do not reintroduce
 
 These problems are important historical context but are not open TODOs unless they regress.
