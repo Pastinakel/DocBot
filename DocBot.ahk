@@ -260,7 +260,7 @@ global TipDefinitions := [
     Map(
         "Key", "Sms",
         "Condition", TipConditionSms,
-        "Text", 'Tip: SMS sturen zonder nummer in te voeren? DocBot kan dat. Bekijk <a href="help">hier</a> hoe.',
+        "Text", 'Tip: Een SMS sturen zonder zelf het nummer in te voeren? DocBot kan dat (en meer). Bekijk <a href="help">hier</a> hoe.',
         "HelpHandler", OpenSmsTipHelp
     ),
     Map(
