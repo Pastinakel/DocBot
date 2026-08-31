@@ -385,6 +385,14 @@ zijn gelukt. Bij een tijdelijk niet-beschikbare OneDrive-map probeert DocBot
 dit in totaal vijf keer tijdens de eerste minuten en daarna ieder uur opnieuw;
 de overige functies van DocBot blijven intussen beschikbaar.
 
+De drie cumulatieve gebruikstellers hieronder volgen dezelfde
+lees-en-bevestig-voordat-er-geschreven-wordt-aanpak: bij een tijdelijk
+niet-beschikbare opslag telt DocBot een actie tijdens die sessie gewoon
+mee, maar schrijft dat aantal pas naar `settings.ini` zodra de echte,
+eerder opgeslagen stand bevestigd is uitgelezen. Zo kan een sessie die met
+een nog niet bevestigde tellerstand start nooit de eerder opgebouwde
+telling overschrijven.
+
 Iedere heartbeat bevat:
 
 - een willekeurig, lokaal bewaard installatie-ID;
@@ -490,6 +498,21 @@ Changelog
 ---------
 
 ### 2.4 — In ontwikkeling
+- DocBot herkent nu actief of Documents/OneDrive bij het opstarten (bijvoorbeeld
+  via autostart, vóórdat OneDrive volledig gemount is) nog niet beschikbaar is,
+  in plaats van dat één mislukte poging voor de rest van de sessie stilzwijgend
+  op standaardwaarden blijft draaien. Instellingen, hotstrings, pakketkeuzes,
+  snelkiesnummers en sms-standaardteksten worden op de achtergrond automatisch
+  opnieuw geprobeerd totdat het lukt (`docs/DECISIONS.md` D-063). Zolang dat nog
+  niet is gelukt, toont DocBot dit duidelijk: een blijvende melding in plaats
+  van een vanzelf verdwijnende, en de bijbehorende functionaliteit (hotstrings,
+  pakketbeheer, snelkiesnummers, sms-instellingen, en wat er met een herkend
+  telefoonnummer gebeurt) is dan echt niet beschikbaar in plaats van
+  onopgemerkt onjuist. Telefonie-koppeling zelf blijft altijd gewoon werken
+  (`docs/DECISIONS.md` D-064). Ook het allereerste opstarten — wanneer de
+  gebruikersmap nog moet worden aangemaakt — wordt niet langer verward met
+  "opslag tijdelijk niet beschikbaar": DocBot test dit voortaan actief met een
+  schrijfpoging in plaats van dat blind aan te nemen.
 - Overzicht toont nu ook een derde gebruiksteller, "SMS-acties", naast
   "Belacties" en "Lange hotstrings" op de Gebruik-kaart. De teller telt
   alleen geslaagde sms-acties (de sms-pagina/-tab gevonden en het

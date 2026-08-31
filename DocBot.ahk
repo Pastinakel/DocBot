@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-dev.3"
+global AppVersion := "2.4-autostart-storage.7"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -217,6 +217,17 @@ global OverviewPhoneActionsText := 0
 global OverviewLongHotstringActionsText := 0
 global OverviewSmsActionsText := 0
 
+; Voor RefreshInstellingenValuesAfterReady(): dezelfde besturingselementen
+; als de lokale variabelen in BuildMainGui(), zodat de Instellingen-pagina
+; na degraded mode met de dan pas echt geladen waarden ververst kan worden
+; in plaats van de bouwtijd-standaardwaarden te blijven tonen.
+global InstellingenAutoSaveCheck := 0
+global InstellingenFilePathEdit := 0
+global InstellingenSmsActionDropDown := 0
+global InstellingenSmsDefaultTextEdit := 0
+global InstellingenSmsDefaultTextHint := 0
+global InstellingenPendingSmsDefaultTexts := 0
+
 global SpeedDialLV := 0
 global SpeedDialEnabledCheck := 0
 global SpeedDialNameEdit := 0
@@ -258,13 +269,56 @@ global PackageManagerStatusText := 0
 ; Bevat de op dit moment bij AutoHotkey geregistreerde dynamische hotstrings.
 global RuntimeHotstrings := Map()
 
-InitializeUserStorage()
+; Wordt in InitializeUserStorage() gezet vóór die functie de gebruikersmap
+; eventueel aanmaakt/kopieert, zodat later (o.a. LoadAppSettings()) kan
+; onderscheiden of een ontbrekend bestand een net gebootstrapte, lege map is
+; (normaal, geen fout) of een al bestaande map waar iets tijdelijk
+; onbereikbaar is (opslagfout, moet opnieuw geprobeerd worden).
+global UserDataDirIsPreexisting := false
+
+; Eén gedeelde achtergrondtimer voor alle opstartladers die op dezelfde
+; Documents/OneDrive-map leunen. Ze falen en herstellen doorgaans
+; gelijktijdig (dezelfde onderliggende oorzaak, bijv. OneDrive dat bij
+; autostart nog niet gemount is), dus draait er niet per lader een eigen
+; tijdklok. Elke lader houdt wél zijn eigen resultaat en foutmelding aan:
+; het slagen van de één mag het blijven mislukken van een ander nooit
+; maskeren. Cadans spiegelt de bestaande Telemetry_TryEnsureInstallationId()
+; (D-027/D-028): enkele snelle pogingen, daarna uursgewijs, zonder bovengrens.
+; "Gebruikersmap" staat altijd eerst: de overige vijf laders lezen/schrijven
+; allemaal binnen UserDataDir en kunnen pas slagen zodra die map er echt is.
+global StorageRetryLoaders := [
+    Map("Name", "Gebruikersmap", "Fn", InitializeUserStorage, "Ready", false),
+    Map("Name", "Instellingen", "Fn", LoadAppSettings, "Ready", false),
+    Map("Name", "Hotstrings", "Fn", InitializeHotstringStorage, "Ready", false),
+    Map("Name", "Pakketkeuzes", "Fn", InitializePackageSettings, "Ready", false),
+    Map("Name", "Snelkiesnummers", "Fn", InitializeSpeedDialStorage, "Ready", false),
+    Map("Name", "SMS-standaardteksten", "Fn", InitializeSmsDefaultTextStorage, "Ready", false)
+]
+global StorageRetryAttempts := 0
+global StorageRetryQuickMs := 60000
+global StorageRetryQuickCount := 5
+global StorageRetrySlowMs := 3600000
+
+; True zodra alle StorageRetryLoaders zijn geladen (alles-of-niets,
+; projecteigenaar-besluit 2026-08-28). Bepaalt of data-afhankelijke
+; kaarten/pagina's zichtbaar zijn; zie ShowPage(), MarkDegradedGateStart()/
+; MarkDegradedGateEnd() en ShowOnlyWhileDegraded() verderop.
+global StorageAllReady := false
+
+; Onthoudt, per pagina, vanaf welke index in Pages[pageKey] de eerstvolgende
+; MarkDegradedGateEnd() moet gelden. Zie MarkDegradedGateStart().
+global DegradedGateRangeStart := Map()
+
+; Twee losse synchrone kansen vóór de achtergrondtimer overneemt: eerst
+; alleen de gebruikersmap (moet er al staan vóórdat pakketten/logging iets
+; met UserDataDir kunnen), dan — na InitializeBundledPackages(), die geen
+; relatie met UserDataDir heeft en zo de bestaande logvolgorde intact
+; laat — de overige vijf laders vóór het eerst. StorageRetry_AttemptLoader()
+; slaat een al geslaagde lader over, dus de tweede aanroep herprobeert de
+; gebruikersmap alleen als die nét nog niet lukte.
+StorageRetry_RunInitialAttemptForUserDataDir()
 InitializeBundledPackages()
-LoadAppSettings()
-InitializeHotstringStorage()
-InitializePackageSettings()
-InitializeSpeedDialStorage()
-InitializeSmsDefaultTextStorage()
+StorageRetry_RunInitialAttempt()
 ReloadRuntimeHotstrings()
 Telemetry_Initialize(ConfigFile, AppVersion, GetTelemetryStatus)
 InitializeDiagnosticLogging()
@@ -322,6 +376,9 @@ BuildMainGui() {
     global SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText
     global SpeedDialLV, SpeedDialEnabledCheck, SpeedDialNameEdit, SpeedDialNumberEdit
     global HelpSections, HotstringHelpSectionIndex
+    global InstellingenAutoSaveCheck, InstellingenFilePathEdit, InstellingenSmsActionDropDown
+    global InstellingenSmsDefaultTextEdit, InstellingenSmsDefaultTextHint
+    global InstellingenPendingSmsDefaultTexts
 
     MainGui := Gui("-MaximizeBox", "DocBot")
     MainGui.BackColor := C["Window"]
@@ -387,6 +444,18 @@ BuildMainGui() {
     RegistrationNumberText := AddCardLabel("overzicht", 694, 136, 246, 34, State["IPT"]["UpdateTel"], "s21 bold c" C["Text"], "Right")
     RegistrationRefreshButton := AddFlatButton("overzicht", 740, 180, 200, 36, Chr(0xE72C) "  Verversen", RefreshRegistrationStatus, true)
 
+    ; Neemt tijdens degraded mode de plek in van de kaarten hieronder (die
+    ; dan verborgen zijn), zodat er geen bestaande y-posities hoeven te
+    ; verschuiven. De registratiekaart hierboven blijft altijd zichtbaar:
+    ; telefonie-koppeling hangt niet af van settings.ini/hotstrings/
+    ; pakketkeuzes/snelkiesnummers/sms-standaardteksten.
+    AddDegradedBanner(
+        "overzicht",
+        246,
+        "Instellingen worden geladen. Functionaliteit hieronder is tijdelijk beperkt. Telefonie-koppeling werkt gewoon door."
+    )
+    MarkDegradedGateStart("overzicht")
+
     AddCard("overzicht", 236, 246, 736, 142)
     AddCardLabel("overzicht", 260, 262, 180, 22, "Belactie", "s13 bold c" C["Text"])
     CallActionSelector := AddCallActionSelector(
@@ -427,6 +496,8 @@ BuildMainGui() {
     AddCardLabel("overzicht", 792, 562, 170, 18, "SMS-acties", "s9 c" C["Muted"])
     OverviewSmsActionsText := AddCardLabel("overzicht", 792, 582, 170, 34, Telemetry_GetSmsActions(), "s22 bold c" C["Text"])
 
+    MarkDegradedGateEnd("overzicht")
+
     overviewFooter := MainGui.AddText("x236 y672 w736 h18 Right Background" C["Window"], "Sluiten verbergt DocBot in het systeemvak")
     overviewFooter.SetFont("s8 c" C["Muted"], "Segoe UI")
     AddPageControl("overzicht", overviewFooter)
@@ -436,6 +507,9 @@ BuildMainGui() {
     ; -------------------------------------------------------------------------
 
     AddPageHeader("telefonie", "Telefonie", "Bel en beheer je snelkiesnummers.")
+
+    AddDegradedBanner("telefonie", 92, "Instellingen worden geladen. Snelkiesnummers zijn nog niet beschikbaar.")
+    MarkDegradedGateStart("telefonie")
 
     AddCard("telefonie", 236, 92, 736, 394)
     AddCardLabel("telefonie", 260, 114, 300, 24, "Snelkiesnummers", "s14 bold c" C["Text"])
@@ -470,6 +544,8 @@ BuildMainGui() {
     SpeedDialNumberEdit := AddRoundedEdit("telefonie", 700, 552, 120, 36, "")
     AddFlatButton("telefonie", 832, 552, 124, 36, Chr(0xE74E) "  Opslaan", SaveSpeedDialFromForm, true)
 
+    MarkDegradedGateEnd("telefonie")
+
     phoneFooter := MainGui.AddText("x236 y672 w736 h18 Right Background" C["Window"], "Sluiten verbergt DocBot in het systeemvak")
     phoneFooter.SetFont("s8 c" C["Muted"], "Segoe UI")
     AddPageControl("telefonie", phoneFooter)
@@ -479,6 +555,9 @@ BuildMainGui() {
     ; -------------------------------------------------------------------------
 
     AddPageHeader("tekstvervanging", "Tekstvervanging", "Beheer de hotstrings van DocBot.")
+
+    AddDegradedBanner("tekstvervanging", 92, "Instellingen worden geladen. Hotstrings zijn nog niet beschikbaar.")
+    MarkDegradedGateStart("tekstvervanging")
 
     AddCard("tekstvervanging", 236, 92, 736, 346)
     AddCardLabel("tekstvervanging", 260, 114, 300, 24, "Hotstrings", "s14 bold c" C["Text"])
@@ -560,6 +639,10 @@ BuildMainGui() {
     HotSaveButton := AddFlatButton("tekstvervanging", 808, 602, 148, 36, "💾  Opslaan", SaveHotstringFromForm, true)
     ApplyHotReplacementEditorState()
 
+    ; De privacyhint hieronder blijft bewust ongated: net als de footer op
+    ; andere pagina's is dit paginabrede, niet-data-afhankelijke chrome.
+    MarkDegradedGateEnd("tekstvervanging")
+
     ; y=663 centreert deze 22px-hoge regel verticaal in de 52px-ruimte
     ; tussen het einde van de kaart hierboven (y=648) en de vensterrand
     ; (700): 648 + (52-22)/2 = 663, met 15px marge boven en onder. Zelfde
@@ -582,14 +665,19 @@ BuildMainGui() {
 
     AddPageHeader("instellingen", "Instellingen", "Beheer de opslag, import en SMS-integratie.")
 
+    AddDegradedBanner("instellingen", 92, "Instellingen worden geladen. Deze pagina is nog niet beschikbaar.")
+    MarkDegradedGateStart("instellingen")
+
     AddCard("instellingen", 236, 92, 736, 194)
     AddCardLabel("instellingen", 260, 114, 250, 24, "Hotstringbestand", "s14 bold c" C["Text"])
 
     autoSaveCheck := MainGui.AddCheckbox("x260 y152 w340 h22 Background" C["Card"], "Hotstrings automatisch opslaan en laden")
     autoSaveCheck.Value := State["AutoSave"]
     AddPageControl("instellingen", autoSaveCheck)
+    InstellingenAutoSaveCheck := autoSaveCheck
 
     filePathEdit := AddRoundedEdit("instellingen", 260, 188, 520, 36, State["HotstringFile"])
+    InstellingenFilePathEdit := filePathEdit
     AddFlatButton("instellingen", 792, 188, 172, 36, "📁  Bladeren", BrowseHotstringFile.Bind(filePathEdit), false)
     AddFlatButton("instellingen", 260, 230, 220, 36, "↥  Oud .txt importeren", ImportLegacyHotstrings, false)
     AddFlatButton("instellingen", 692, 230, 132, 36, "📂  Laden", ManualLoadHotstrings.Bind(filePathEdit), false)
@@ -614,6 +702,7 @@ BuildMainGui() {
     if smsActionTitles.Length = 0
         smsActionDropDown.Enabled := false
     AddPageControl("instellingen", smsActionDropDown)
+    InstellingenSmsActionDropDown := smsActionDropDown
 
     AddCardLabel(
         "instellingen",
@@ -636,15 +725,18 @@ BuildMainGui() {
     )
     smsDefaultTextGroup := AddRoundedEditGroup("instellingen", 260, 494, 688, 100, "", true, 6)
     smsDefaultTextEdit := smsDefaultTextGroup["Edit"]
+    InstellingenSmsDefaultTextEdit := smsDefaultTextEdit
     ; Blijft leeg zolang de standaardtekst gewoon bruikbaar is; toont anders
     ; waarom het veld is uitgeschakeld (zie ApplySmsDefaultTextFieldState()).
     smsDefaultTextHint := AddCardLabel("instellingen", 260, 598, 688, 16, "", "s9 c" C["Muted"])
+    InstellingenSmsDefaultTextHint := smsDefaultTextHint
 
     ; Niet-opgeslagen tekst blijft per SMS-pagina in het geheugen staan
     ; zolang de Instellingen-pagina open is, ook als tussendoor van
     ; SMS-pagina wordt gewisseld. Pas op Opslaan wordt alles weggeschreven
     ; naar sms-default-texts.json, net als de rest van deze pagina.
     pendingSmsDefaultTexts := Map()
+    InstellingenPendingSmsDefaultTexts := pendingSmsDefaultTexts
     smsDefaultTextUiState := Map(
         "LastTitle", HasConfiguredSmsCallActions() ? ResolveSmsCallActionTitle(State["SmsCallActionTitle"]) : ""
     )
@@ -668,6 +760,8 @@ BuildMainGui() {
         true,
         C["Window"]
     )
+
+    MarkDegradedGateEnd("instellingen")
 
     ; -------------------------------------------------------------------------
     ; PAGINA: HELP
@@ -1708,20 +1802,86 @@ AddPageControl(pageKey, ctrl) {
     Pages[pageKey].Push(ctrl)
 }
 
+; Markeert het huidige einde van Pages[pageKey] als startpunt van een reeks
+; besturingselementen die tijdens degraded mode verborgen moeten blijven
+; (zie MarkDegradedGateEnd()). Werkt op een heel bereik in plaats van los
+; per control, zodat een pagina met tientallen besturingselementen in één
+; keer gedekt is en er nooit één per ongeluk vergeten wordt.
+MarkDegradedGateStart(pageKey) {
+    global Pages, DegradedGateRangeStart
+    DegradedGateRangeStart[pageKey] := Pages[pageKey].Length
+}
+
+; Markeert alle besturingselementen die sinds de laatste
+; MarkDegradedGateStart(pageKey) aan Pages[pageKey] zijn toegevoegd als
+; "verberg zolang niet alle opslag geladen is" (StorageAllReady=false).
+; ShowPage() respecteert dit, onafhankelijk van paginawissels.
+MarkDegradedGateEnd(pageKey) {
+    global Pages, DegradedGateRangeStart
+
+    startIndex := DegradedGateRangeStart.Has(pageKey) ? DegradedGateRangeStart[pageKey] : 0
+    loop Pages[pageKey].Length - startIndex {
+        ctrl := Pages[pageKey][startIndex + A_Index]
+        ctrl._degradedGate := "hide-while-degraded"
+    }
+}
+
+; Omgekeerd: ctrl is normaal verborgen en verschijnt uitsluitend zolang
+; StorageAllReady nog false is. Voor de degraded-mode-banner, zie
+; AddDegradedBanner().
+ShowOnlyWhileDegraded(ctrl) {
+    ctrl._degradedGate := "show-only-while-degraded"
+    return ctrl
+}
+
+; Blijvende (niet-vanzelf-verdwijnende) melding dat opslag nog niet
+; volledig is geladen — het tegenovergestelde van ShowNotification()/D-025,
+; die na een paar seconden vanzelf verdwijnt en dus niet geschikt is voor
+; een status die minuten kan duren. Neemt de ruimte in die de eerste, nu
+; verborgen kaart/inhoud van de pagina normaal gesproken inneemt, zodat er
+; geen bestaande x/y-posities hoeven te verschuiven. Geen geanimeerd
+; spinner-icoon: Segoe MDL2-glyphs in dezelfde tekstregel als gewone tekst
+; renderen niet correct zonder de custom-draw-aanpak van AddFlatButton(),
+; en een los animatietimertje voor uitsluitend dit venstertje weegt niet op
+; tegen het effect.
+AddDegradedBanner(pageKey, y, message) {
+    global MainGui
+
+    surface := MainGui.AddText("x236 y" y " w736 h38 BackgroundFDF0DE", "")
+    ShowOnlyWhileDegraded(surface)
+    AddPageControl(pageKey, surface)
+
+    accent := MainGui.AddText("x236 y" y " w4 h38 BackgroundF08200", "")
+    ShowOnlyWhileDegraded(accent)
+    AddPageControl(pageKey, accent)
+
+    body := MainGui.AddText("x252 y" (y + 11) " w704 h20 BackgroundFDF0DE", message)
+    body.SetFont("s10 c5C3600", "Segoe UI")
+    ShowOnlyWhileDegraded(body)
+    AddPageControl(pageKey, body)
+}
+
 SetCueText(editCtrl, text) {
     ; EM_SETCUEBANNER = 0x1501
     SendMessage(0x1501, 0, StrPtr(text), editCtrl)
 }
 
 ShowPage(pageKey, *) {
-    global Pages, CurrentPage, NavButtons, NavBars, C
+    global Pages, CurrentPage, NavButtons, NavBars, C, StorageAllReady
 
     CurrentPage := pageKey
 
     for key, controls in Pages {
-        visible := key = pageKey
-        for _, ctrl in controls
-            ctrl.Opt(visible ? "-Hidden" : "+Hidden")
+        pageVisible := key = pageKey
+        for _, ctrl in controls {
+            gate := HasProp(ctrl, "_degradedGate") ? ctrl._degradedGate : ""
+            show := pageVisible
+            if gate = "hide-while-degraded" && !StorageAllReady
+                show := false
+            else if gate = "show-only-while-degraded" && StorageAllReady
+                show := false
+            ctrl.Opt(show ? "-Hidden" : "+Hidden")
+        }
     }
 
     ApplyHotReplacementEditorState()
@@ -1942,7 +2102,20 @@ RefreshRegistrationTexts() {
 }
 
 RefreshSidebarStatuses() {
-    global State, SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText, C
+    global State, SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText, C, StorageAllReady
+
+    if !StorageAllReady {
+        ; Beide indicatoren lezen State-velden (CallAction/TextReplacement)
+        ; die pas betrouwbaar zijn zodra alle opslag is geladen. Telefonie-
+        ; koppeling zelf werkt intussen gewoon door (zie de registratiekaart
+        ; op de Overzicht-pagina); dit stipje gaat specifiek over of DocBot
+        ; al weet wát er met een herkend nummer moet gebeuren.
+        SidebarPhoneDot.SetFont("s8 cF08200", "Segoe UI")
+        SidebarPhoneText.Value := "Laden…"
+        SidebarTextDot.SetFont("s8 cF08200", "Segoe UI")
+        SidebarTextText.Value := "Laden…"
+        return
+    }
 
     if State["CallAction"] = 0 {
         SidebarPhoneDot.SetFont("s8 c" C["Danger"], "Segoe UI")
@@ -2914,6 +3087,7 @@ RunDiagnosticsMaintenance() {
     PruneExpiredDebugLogEntries()
     PruneAbandonedProblemReportDirs()
     PruneAbandonedExtendedLogFiles()
+    PruneAbandonedUserStorageProbeDirs()
 }
 
 ; Verwijdert individuele standaardlogregels ouder dan DebugLogRetentionDays,
@@ -3961,6 +4135,68 @@ PruneAbandonedProblemReportDirs() {
     DebugLog("i", "Probleemrapportmap opschonen", samenvatting)
 }
 
+; Vangnet voor een tijdelijke UserStorageProbe_*-map (zie InitializeUserStorage())
+; die overblijft als DocBot crasht/geforceerd stopt tussen het aanmaken en
+; het hernoemen naar UserDataDir of opruimen ervan. Zelfde patroon als
+; PruneAbandonedProblemReportDirs() hierboven, alleen in A_MyDocuments in
+; plaats van A_Temp. De volledige A_MyDocuments-pad wordt bewust niet
+; gelogd (kan de Windows-gebruikersnaam bevatten).
+PruneAbandonedUserStorageProbeDirs() {
+    static maxAgeDays := 7
+
+    cutoff := DateAdd(A_Now, -maxAgeDays, "Days")
+    gezien := 0
+    onherkend := 0
+    voorbeeldOnherkend := ""
+    verlopen := 0
+    verwijderd := 0
+    mislukt := 0
+    laatsteFout := ""
+
+    try {
+        Loop Files, A_MyDocuments "\DocBot_userdata_probe_*", "D" {
+            gezien += 1
+            if !RegExMatch(A_LoopFileName, "^DocBot_userdata_probe_(\d{8})_(\d{6})_\d+$", &m) {
+                onherkend += 1
+                if (voorbeeldOnherkend = "")
+                    voorbeeldOnherkend := A_LoopFileName
+                continue  ; onbekende mapnaam: niet aanraken
+            }
+
+            stamp := m[1] m[2]
+            if (stamp < cutoff) {
+                verlopen += 1
+                try {
+                    DirDelete(A_LoopFileFullPath, true)
+                    verwijderd += 1
+                } catch as dirError {
+                    mislukt += 1
+                    laatsteFout := dirError.Message
+                }
+            }
+        }
+    } catch as sweepError {
+        DebugLog(
+            "!",
+            "Tijdelijke gebruikersmap opschonen",
+            "Doorzoeken van Documents mislukt: " sweepError.Message
+        )
+        return
+    }
+
+    ; Altijd loggen, ook bij 0 gezien — zelfde reden als bij
+    ; PruneAbandonedProblemReportDirs() hierboven (D-044 addendum 3).
+    samenvatting := Format(
+        "{1} map(pen) gezien, {2} niet herkend op naampatroon, {3} verlopen (>7 dagen), {4} verwijderd, {5} mislukt.",
+        gezien, onherkend, verlopen, verwijderd, mislukt
+    )
+    if (onherkend > 0)
+        samenvatting .= " Voorbeeld onherkende naam: " SanitizeLogText(voorbeeldOnherkend)
+    if (mislukt > 0)
+        samenvatting .= " Laatste fout: " SanitizeLogText(laatsteFout)
+    DebugLog("i", "Tijdelijke gebruikersmap opschonen", samenvatting)
+}
+
 ; Vangnet voor het losse uitgebreide-logbestand van StartExtendedProblemLogging()
 ; (%LocalAppData%\DocBot\problem-report-<tijdstip>.log). DeleteProblemReportExtendedLog()
 ; ruimt dat bestand alleen op vanuit het lopende ProblemReportSession — na een
@@ -4049,7 +4285,7 @@ ResetProblemReportAfterCompletion() {
 }
 
 ClipBoardPoller() {
-    global State
+    global State, StorageAllReady
     static lastSeq := DllCall("GetClipboardSequenceNumber")  ; voorkomt dat de klembordinhoud bij opstarten al wordt opgepakt
 
     seq := DllCall("GetClipboardSequenceNumber")
@@ -4059,17 +4295,34 @@ ClipBoardPoller() {
     lastSeq := seq
 
     externalTel := NormalizePhoneNumberExternal(A_ClipBoard)
+    internalTel := externalTel = "" ? NormalizePhoneNumberInternal(A_ClipBoard) : ""
+
+    if externalTel = "" && internalTel = ""
+        return
+
+    if !StorageAllReady {
+        ; CallAction en de andere instellingen die de belactie-flow
+        ; hieronder gebruikt zijn nog niet betrouwbaar geladen. Niet
+        ; stilzwijgend niets doen (dat lijkt alsof DocBot het nummer niet
+        ; heeft gezien) en niet handelen op een mogelijk onjuiste
+        ; standaardwaarde: laat het via een korte melding weten. Zie ook de
+        ; banner op de Overzicht-pagina.
+        ShowNotification(
+            "Telefoonnummer herkend, maar instellingen laden nog. Probeer het over een moment opnieuw.",
+            5000,
+            "warning"
+        )
+        return
+    }
+
     if externalTel != "" {
         SetClipBoardNumber(externalTel)
         HandleClipboardNumberDetected()
         return
     }
 
-    internalTel := NormalizePhoneNumberInternal(A_ClipBoard)
-    if internalTel != "" {
-        SetClipBoardNumber(internalTel)
-        HandleInternalClipboardNumberDetected()
-    }
+    SetClipBoardNumber(internalTel)
+    HandleInternalClipboardNumberDetected()
 }
 
 ; Centrale set/clear van het klembordnummer in de IPT-status, met een
@@ -5722,11 +5975,16 @@ SetHotReplacementEditorExpanded(expanded) {
     ApplyHotReplacementEditorState()
 }
 ApplyHotReplacementEditorState() {
-    global CurrentPage, HotReplacementExpanded, HotReplacementSingleGroup, HotReplacementMultiGroup
+    global CurrentPage, StorageAllReady, HotReplacementExpanded, HotReplacementSingleGroup, HotReplacementMultiGroup
     global HotReplacementExpandButton, HotReplacementCollapseButton, HotEditorCompactCard, HotEditorExpandedCard, HotSaveButton
     if !IsObject(HotReplacementSingleGroup)
         return
-    visible := CurrentPage = "tekstvervanging"
+    ; StorageAllReady moet hier ook gelden: dit overschrijft anders de
+    ; hide-while-degraded-gate die ShowPage() vlak hiervoor al toepaste op
+    ; dezelfde besturingselementen (zie MarkDegradedGateStart/End rond de
+    ; Hotstrings-editorkaart) en toont het formulier weer terwijl opslag nog
+    ; niet klaar is — in strijd met docs/DECISIONS.md D-064.
+    visible := CurrentPage = "tekstvervanging" && StorageAllReady
     SetControlGroupVisible(HotReplacementSingleGroup, visible && !HotReplacementExpanded)
     SetControlGroupVisible(HotReplacementMultiGroup, visible && HotReplacementExpanded)
     HotEditorCompactCard.Opt(visible && !HotReplacementExpanded ? "-Hidden" : "+Hidden")
@@ -6927,11 +7185,10 @@ InitializePackageSettings() {
     global DefaultPackageSettingsFile, PackageSettings
 
     if FileExist(DefaultPackageSettingsFile)
-        LoadPackageSettingsFromJson(DefaultPackageSettingsFile)
-    else {
-        PackageSettings := DefaultPackageSettings()
-        SavePackageSettingsToJson(DefaultPackageSettingsFile)
-    }
+        return LoadPackageSettingsFromJson(DefaultPackageSettingsFile)
+
+    PackageSettings := DefaultPackageSettings()
+    return SavePackageSettingsToJson(DefaultPackageSettingsFile)
 }
 
 LoadPackageSettingsFromJson(path) {
@@ -7446,19 +7703,17 @@ InitializeHotstringStorage() {
     global State
 
     if !State["AutoSave"]
-        return
+        return true
 
     path := Trim(State["HotstringFile"])
     if path = ""
-        return
+        return true
 
-    if FileExist(path) {
-        LoadHotstringsFromJson(path, false)
-        return
-    }
+    if FileExist(path)
+        return LoadHotstringsFromJson(path, false)
 
     ; Bij de eerste start wordt het standaardmodel direct aangemaakt.
-    SaveHotstringsToJson(path, false)
+    return SaveHotstringsToJson(path, false)
 }
 
 LoadHotstringsFromJson(path, showMessage := false) {
@@ -7662,6 +7917,203 @@ RefreshHotstringListIfReady() {
         RefreshHotstringList()
 }
 
+RefreshSpeedDialListIfReady() {
+    global SpeedDialLV
+
+    if IsObject(SpeedDialLV)
+        RefreshSpeedDialList()
+}
+
+; =============================================================================
+; OPSLAG - GEDEELDE RETRY BIJ TIJDELIJK NIET-BESCHIKBARE OPSLAG
+; =============================================================================
+; Zie de globals StorageRetryLoaders/StorageRetryAttempts hierboven voor de
+; achtergrond. StorageRetry_RunInitialAttempt() vervangt de vroegere directe
+; aanroepen van de vijf laders in het auto-execute-gedeelte: eerste, snelle
+; poging blijft synchroon (faalt vandaag al in ruim onder een seconde, dus
+; vertraagt dit MainGui.Show() niet), maar elke hérpoging loopt via
+; SetTimer op de achtergrond, ná het tonen van het venster.
+
+; Eén poging voor precies deze lader; werkt zowel voor de synchrone eerste
+; kans(en) als voor elke latere tick. Slaat een al geslaagde lader over
+; (idempotent: veilig om StorageRetry_RunInitialAttempt() twee keer aan te
+; roepen). Geeft de staat vóór deze poging terug, zodat de aanroeper kan
+; zien of dit een verse overgang naar "klaar" is.
+StorageRetry_AttemptLoader(loader) {
+    wasReady := loader["Ready"]
+    if wasReady
+        return wasReady
+
+    try {
+        loader["Ready"] := !!loader["Fn"].Call()
+    } catch as error {
+        loader["Ready"] := false
+        DebugLog(
+            "✕",
+            "Opslagfout",
+            loader["Name"] " gaf een onverwachte fout: " error.Message
+        )
+    }
+
+    return wasReady
+}
+
+StorageRetry_RunInitialAttemptForUserDataDir() {
+    global StorageRetryLoaders
+    StorageRetry_AttemptLoader(StorageRetryLoaders[1])
+}
+
+StorageRetry_RunInitialAttempt() {
+    global StorageRetryLoaders
+
+    for loader in StorageRetryLoaders
+        StorageRetry_AttemptLoader(loader)
+
+    StorageRetry_ScheduleIfNeeded()
+}
+
+StorageRetry_Tick(*) {
+    global StorageRetryLoaders
+
+    for loader in StorageRetryLoaders {
+        wasReady := StorageRetry_AttemptLoader(loader)
+        if loader["Ready"] && !wasReady
+            StorageRetry_OnLoaderReady(loader["Name"])
+    }
+
+    StorageRetry_ScheduleIfNeeded()
+}
+
+StorageRetry_AllLoadersReady() {
+    global StorageRetryLoaders
+
+    for loader in StorageRetryLoaders {
+        if !loader["Ready"]
+            return false
+    }
+    return true
+}
+
+StorageRetry_ScheduleIfNeeded() {
+    global StorageRetryLoaders, StorageRetryAttempts, StorageAllReady
+    global StorageRetryQuickMs, StorageRetryQuickCount, StorageRetrySlowMs
+
+    if !StorageRetry_AllLoadersReady() {
+        StorageRetryAttempts += 1
+        delay := StorageRetryAttempts < StorageRetryQuickCount
+            ? StorageRetryQuickMs
+            : StorageRetrySlowMs
+        SetTimer StorageRetry_Tick, -delay
+        return
+    }
+
+    ; Alle laders zijn geladen: geen verdere pogingen meer nodig.
+    SetTimer StorageRetry_Tick, 0
+
+    if !StorageAllReady {
+        StorageAllReady := true
+        StorageRetry_OnAllReady()
+    }
+}
+
+; Wordt precies één keer aangeroepen, de eerste keer dat alle laders klaar
+; zijn. Vóór BuildMainGui() (de gewone, snelle start zonder degraded mode)
+; bestaat MainGui nog niet: dan is er niets te verversen, want de eenmalige
+; ShowPage("overzicht") aan het eind van BuildMainGui() past de juiste
+; zichtbaarheid vanzelf toe met de dan al correcte StorageAllReady-waarde.
+; Ná een echte achtergrond-hersteld (degraded mode was actief) ververst dit
+; zowel de zichtbaarheid (banner weg, kaarten/pagina's terug) als de
+; getoonde waarden die tijdens BuildMainGui() nog met standaardwaarden zijn
+; opgebouwd.
+StorageRetry_OnAllReady() {
+    global MainGui, CurrentPage
+
+    if !IsObject(MainGui)
+        return
+
+    RefreshOverzichtValuesAfterReady()
+    RefreshInstellingenValuesAfterReady()
+    ShowPage(CurrentPage)
+    RefreshSidebarStatuses()
+    BuildTrayMenu()
+}
+
+RefreshOverzichtValuesAfterReady() {
+    global CallActionSelector, TextReplacementCheck, State
+    global OverviewPhoneActionsText, OverviewLongHotstringActionsText, OverviewSmsActionsText
+
+    if IsObject(CallActionSelector)
+        CallActionSelector.Value := State["CallAction"]
+    if IsObject(TextReplacementCheck)
+        TextReplacementCheck.Value := State["TextReplacement"]
+    if IsObject(OverviewPhoneActionsText)
+        OverviewPhoneActionsText.Value := Telemetry_GetPhoneActions()
+    if IsObject(OverviewLongHotstringActionsText)
+        OverviewLongHotstringActionsText.Value := Telemetry_GetLongHotstringActions()
+    if IsObject(OverviewSmsActionsText)
+        OverviewSmsActionsText.Value := Telemetry_GetSmsActions()
+}
+
+; De Instellingen-velden zijn, anders dan CallActionSelector/
+; TextReplacementCheck hierboven, geen losse klasse met een settable
+; .Value die zichzelf herschildert — dit herhaalt daarom hetzelfde stukje
+; opbouwlogica uit BuildMainGui() (SMS-paginakeuze + bijbehorend
+; standaardtekstveld) met de dan pas echt geladen State/SmsDefaultTexts.
+RefreshInstellingenValuesAfterReady() {
+    global InstellingenAutoSaveCheck, InstellingenFilePathEdit, InstellingenSmsActionDropDown
+    global InstellingenSmsDefaultTextEdit, InstellingenSmsDefaultTextHint
+    global InstellingenPendingSmsDefaultTexts, State
+
+    if !IsObject(InstellingenAutoSaveCheck)
+        return
+
+    InstellingenAutoSaveCheck.Value := State["AutoSave"]
+    InstellingenFilePathEdit.Value := State["HotstringFile"]
+
+    smsActionTitles := GetSmsCallActionTitles()
+    if smsActionTitles.Length {
+        selectedIndex := FindSmsCallActionIndexByTitle(State["SmsCallActionTitle"])
+        if selectedIndex = 0
+            selectedIndex := 1
+        InstellingenSmsActionDropDown.Choose(selectedIndex)
+    }
+
+    ApplySmsDefaultTextFieldState(
+        InstellingenSmsActionDropDown,
+        InstellingenSmsDefaultTextEdit,
+        InstellingenSmsDefaultTextHint,
+        InstellingenPendingSmsDefaultTexts
+    )
+}
+
+StorageRetry_OnLoaderReady(name) {
+    switch name {
+        case "Gebruikersmap":
+            ; Geen eigen verversing nodig: de overige laders in dezelfde
+            ; tick (zie StorageRetry_Tick()) krijgen nu pas een kans om te
+            ; slagen en verversen dan zelf wat nodig is.
+        case "Instellingen":
+            ; Bekende beperking: als Hotstrings vóór Instellingen al (met
+            ; toen nog de code-standaardwaarden van State) is geladen, en de
+            ; gebruiker een niet-standaard State["HotstringFile"] heeft
+            ; ingesteld, wordt dat afwijkende pad pas na een volgende
+            ; herstart gebruikt. Zeldzaam — de meeste installaties gebruiken
+            ; het standaardpad — en niet erger dan het huidige gedrag zonder
+            ; retry, dus bewust niet in deze stap opgelost.
+            RefreshSidebarStatuses()
+        case "Hotstrings", "Pakketkeuzes":
+            ; Pakketstatus beïnvloedt welke hotstrings actief/Overruled/
+            ; Conflict zijn; ververs daarom bij beide dezelfde twee dingen.
+            ReloadRuntimeHotstrings()
+            RefreshHotstringListIfReady()
+        case "Snelkiesnummers":
+            RefreshSpeedDialListIfReady()
+        case "SMS-standaardteksten":
+            ; Geen aparte lijstweergave: de Instellingen-pagina leest
+            ; SmsDefaultTexts pas op het moment dat die pagina wordt geopend.
+    }
+}
+
 ; =============================================================================
 ; SNELKIESNUMMERS - OPSLAG
 ; =============================================================================
@@ -7721,10 +8173,8 @@ BuildSpeedDialDocument() {
 InitializeSpeedDialStorage() {
     global DefaultSpeedDialFile, UserDataDir
 
-    if FileExist(DefaultSpeedDialFile) {
-        LoadSpeedDialFromJson(DefaultSpeedDialFile, false)
-        return
-    }
+    if FileExist(DefaultSpeedDialFile)
+        return LoadSpeedDialFromJson(DefaultSpeedDialFile, false)
 
     ; Oudere versies gebruikten verschillende bestandsnamen en soms de
     ; programmamap. Neem de eerste gevonden versie veilig over; het laden
@@ -7738,14 +8188,12 @@ InitializeSpeedDialStorage() {
         if !FileExist(legacyPath)
             continue
         try FileCopy(legacyPath, DefaultSpeedDialFile, false)
-        if FileExist(DefaultSpeedDialFile) {
-            LoadSpeedDialFromJson(DefaultSpeedDialFile, false)
-            return
-        }
+        if FileExist(DefaultSpeedDialFile)
+            return LoadSpeedDialFromJson(DefaultSpeedDialFile, false)
     }
 
     ; Bij de eerste start wordt een lege lijst direct aangemaakt.
-    SaveSpeedDialToJson(DefaultSpeedDialFile, false)
+    return SaveSpeedDialToJson(DefaultSpeedDialFile, false)
 }
 
 LoadSpeedDialFromJson(path, showMessage := false) {
@@ -7949,13 +8397,11 @@ BuildSmsDefaultTextDocument() {
 InitializeSmsDefaultTextStorage() {
     global DefaultSmsDefaultTextFile
 
-    if FileExist(DefaultSmsDefaultTextFile) {
-        LoadSmsDefaultTextsFromJson(DefaultSmsDefaultTextFile, false)
-        return
-    }
+    if FileExist(DefaultSmsDefaultTextFile)
+        return LoadSmsDefaultTextsFromJson(DefaultSmsDefaultTextFile, false)
 
     ; Bij de eerste start wordt een lege lijst direct aangemaakt.
-    SaveSmsDefaultTextsToJson(DefaultSmsDefaultTextFile, false)
+    return SaveSmsDefaultTextsToJson(DefaultSmsDefaultTextFile, false)
 }
 
 LoadSmsDefaultTextsFromJson(path, showMessage := false) {
@@ -8365,40 +8811,37 @@ GetUserDataSeedDirectory() {
     return ""
 }
 
+; Beslist niet langer in één keer, op basis van alleen DirExist(UserDataDir),
+; of dit een eerste start is: die passieve check ziet er identiek uit
+; zowel wanneer de gebruiker DocBot echt nog nooit heeft gedraaid, als
+; wanneer OneDrive bij autostart de map nog niet laat zien. Bestaat de map
+; al, dan is er sowieso geen twijfel — ga direct verder. Bestaat de map nog
+; niet, dan beslist UserStorageProbe_TryBootstrap() dat via een echte
+; schrijftest (zie hieronder) in plaats van een gok; lukt die schrijftest
+; niet, dan geeft deze functie false terug en herprobeert de gedeelde
+; StorageRetry-achtergrondtimer het later opnieuw — DocBot start voortaan
+; altijd gewoon door (geen MsgBox()/ExitApp() meer op deze plek).
 InitializeUserStorage() {
-    global UserDataDir, ConfigFile, DefaultHotstringFile
+    global UserDataDir, UserDataDirIsPreexisting
 
-    copiedFromDir := ""
+    UserDataDirIsPreexisting := DirExist(UserDataDir) ? true : false
 
-    try {
-        if !DirExist(UserDataDir) {
-            seedDir := GetUserDataSeedDirectory()
-
-            ; Test start eenmalig vanuit main. Dev start bij voorkeur vanuit
-            ; test en valt terug op main als er nog geen testprofiel bestaat.
-            if seedDir != "" && DirExist(seedDir) {
-                DirCopy(seedDir, UserDataDir, false)
-                copiedFromDir := seedDir
-            } else {
-                DirCreate(UserDataDir)
-            }
-        }
-
-        if copiedFromDir != ""
-            RebaseCopiedHotstringPath(copiedFromDir)
-    } catch as error {
-        MsgBox(
-            "De gebruikersmap kon niet worden voorbereid.`n`n"
-            UserDataDir "`n`n" error.Message,
-            "DocBot",
-            "Icon!"
-        )
-        ExitApp()
+    if UserDataDirIsPreexisting {
+        MigrateLegacyUserData()
+        return true
     }
 
-    ; Eenmalige, voorzichtige migratie vanaf oudere versies die hun bestanden
-    ; naast het script bewaarden. Bestaande bestanden in de gebruikersmap
-    ; worden nooit overschreven.
+    return UserStorageProbe_TryBootstrap()
+}
+
+; Eenmalige, voorzichtige migratie vanaf oudere versies die hun bestanden
+; naast het script bewaarden. Bestaande bestanden in de gebruikersmap
+; worden nooit overschreven. Losgetrokken van InitializeUserStorage() zodat
+; zowel het bestaande-map-pad hierboven als beide paden van
+; UserStorageProbe_* hieronder 'm kunnen aanroepen.
+MigrateLegacyUserData() {
+    global ConfigFile, DefaultHotstringFile
+
     legacyConfig := A_ScriptDir "\DocBot.ini"
     legacyHotstrings := A_ScriptDir "\hotstrings.json"
 
@@ -8430,6 +8873,93 @@ InitializeUserStorage() {
             }
         }
     }
+}
+
+; Maakt een uniek genoemde tijdelijke map aan onder A_MyDocuments — een
+; echte schrijftest, sterker dan nogmaals DirExist() pollen: een nog niet
+; gemounte OneDrive hoort een echte schrijfpoging te laten mislukken, niet
+; alleen leeg te ogen. Lukt dat schrijven niet, dan is "opslag nog niet
+; beschikbaar" bewezen (geen "eerste start"-conclusie) en volgt een nieuwe
+; poging via de gedeelde StorageRetry-timer. De naam is herkenbaar voor
+; PruneAbandonedUserStorageProbeDirs() (zie diagnostiek-sectie), voor het
+; geval DocBot crasht tussen aanmaken en hernoemen/opruimen.
+UserStorageProbe_TryBootstrap() {
+    ; AutoHotkey kent geen ingebouwde A_PID-variabele (in v1 noch v2); het
+    ; huidige proces-ID moet via DllCall worden opgevraagd.
+    probeDir := A_MyDocuments "\DocBot_userdata_probe_"
+        FormatTime(A_Now, "yyyyMMdd_HHmmss") "_" DllCall("GetCurrentProcessId")
+
+    try {
+        DirCreate(probeDir)
+    } catch as error {
+        DebugLog(
+            "✕",
+            "Opslagfout",
+            "Gebruikersmap kon nog niet worden voorbereid (opslag "
+            "waarschijnlijk nog niet beschikbaar): " error.Message
+        )
+        return false
+    }
+
+    return UserStorageProbe_ResolveAfterCreate(probeDir)
+}
+
+; De probe-map is aantoonbaar schrijfbaar. Nu pas de echte beslissing nemen.
+UserStorageProbe_ResolveAfterCreate(probeDir) {
+    global UserDataDir, UserDataDirIsPreexisting
+
+    ; Zelfde soort race als bij het telemetrie-installatie-ID
+    ; (Telemetry_TryEnsureInstallationId): een tweede DocBot-instantie
+    ; (dubbele autostart, of een handmatige start terwijl de eerste nog aan
+    ; het proberen is) kan de echte map inmiddels al hebben aangemaakt, of
+    ; die kan tijdens het aanmaken van de probe alsnog zijn verschenen
+    ; (pure OneDrive-vertraging, geen eerste start). Vlak vóór gebruik nog
+    ; eens controleren en de bestaande waarde laten winnen, in plaats van de
+    ; eigen probe-map erover heen te claimen.
+    if DirExist(UserDataDir) {
+        try DirDelete(probeDir, true)
+        UserDataDirIsPreexisting := true
+        MigrateLegacyUserData()
+        return true
+    }
+
+    ; De probe-map is écht schrijfbaar gebleken en UserDataDir bestaat nog
+    ; steeds niet: hoge zekerheid dat dit een eerste start is. Hernoem de
+    ; probe-map naar de echte plek in plaats van 'm weg te gooien en apart
+    ; een nieuwe aan te maken.
+    seedDir := GetUserDataSeedDirectory()
+    copiedFromDir := ""
+
+    try {
+        if seedDir != "" && DirExist(seedDir) {
+            ; Eerst leegmaken en opnieuw vullen via DirCopy (die de
+            ; bestemming zelf aanmaakt) in plaats van in de al aangemaakte
+            ; lege probe-map te kopiëren: zo blijft dit pad identiek aan het
+            ; niet-probe-gedrag hierboven.
+            DirDelete(probeDir, true)
+            DirCopy(seedDir, probeDir, false)
+            copiedFromDir := seedDir
+        }
+
+        DirMove(probeDir, UserDataDir)
+    } catch as error {
+        DebugLog(
+            "✕",
+            "Opslagfout",
+            "Gebruikersmap kon niet worden voltooid vanuit de tijdelijke "
+            "map: " error.Message
+        )
+        try DirDelete(probeDir, true)
+        return false
+    }
+
+    UserDataDirIsPreexisting := false
+
+    if copiedFromDir != ""
+        RebaseCopiedHotstringPath(copiedFromDir)
+
+    MigrateLegacyUserData()
+    return true
 }
 
 
@@ -8482,10 +9012,25 @@ RebaseCopiedHotstringPath(sourceDir) {
 }
 
 LoadAppSettings() {
-    global State, ConfigFile
+    global State, ConfigFile, UserDataDirIsPreexisting
 
-    if !FileExist(ConfigFile)
-        return
+    if !FileExist(ConfigFile) {
+        ; Op een net gebootstrapte, nieuwe profielmap is een ontbrekend
+        ; settings.ini gewoon een eerste start: de code-standaardwaarden in
+        ; State blijven dan correct staan, zonder foutmelding of retry.
+        ; Bestond de profielmap al, dan is een ontbrekend settings.ini
+        ; verdacht (bijv. OneDrive dat de placeholder nog niet toont) en
+        ; moet dit, net als de andere laders, opnieuw geprobeerd worden in
+        ; plaats van stilzwijgend op standaardwaarden te blijven draaien.
+        if !UserDataDirIsPreexisting
+            return true
+        ReportStorageError(
+            "settings.ini kon niet worden gevonden, terwijl de gebruikersmap "
+            "al bestaat.`n`n" ConfigFile,
+            false
+        )
+        return false
+    }
 
     try {
         State["AutoSave"] := ParseBooleanSetting(
@@ -8533,6 +9078,14 @@ LoadAppSettings() {
                 State["TextReplacement"]
             )
         )
+        return true
+    } catch as error {
+        ReportStorageError(
+            "settings.ini kon niet worden geladen.`n`n" ConfigFile "`n`n"
+            error.Message,
+            false
+        )
+        return false
     }
 }
 
@@ -8657,7 +9210,7 @@ HandleAppExit(*) {
 
 BuildTrayMenu() {
     global State, IsDevMode, SpeedDialEntries, TraySpeedDialMaxEntries
-    global ProblemReportSession
+    global ProblemReportSession, StorageAllReady
 
     A_TrayMenu.Delete()
 
@@ -8698,27 +9251,47 @@ BuildTrayMenu() {
     if State["TextReplacement"]
         A_TrayMenu.Check("Tekstvervanging")
 
+    if !StorageAllReady {
+        ; Beide items schrijven rechtstreeks naar State/settings.ini
+        ; (SetTrayCallAction()/ToggleTraySetting()), buiten het hoofdvenster
+        ; om. Zolang niet alle opslag geladen is, zou een wijziging hier de
+        ; dan pas net echt geladen waarde meteen weer overschrijven met een
+        ; keuze gebaseerd op een nog niet bevestigde standaardwaarde.
+        A_TrayMenu.Disable("Belactie")
+        A_TrayMenu.Disable("Tekstvervanging")
+    }
+
     ; Alleen als submenu-alternatief: platte lijst direct in het hoofdmenu,
     ; met een disabled sectiekopje erboven (zelfde patroon als het
     ; geregistreerd-nummer-label bovenaan). Streep + blok worden samen
     ; overgeslagen zonder entries.
-    activeSpeedDials := []
-    for _, entry in SpeedDialEntries {
-        if entry["actief"]
-            activeSpeedDials.Push(entry)
-    }
-
-    if activeSpeedDials.Length > 0 {
-        A_TrayMenu.Add()
-        A_TrayMenu.Add("Snelkiesnummers", (*) => 0)
-        A_TrayMenu.Disable("Snelkiesnummers")
-
-        Loop Min(activeSpeedDials.Length, TraySpeedDialMaxEntries) {
-            entry := activeSpeedDials[A_Index]
-            A_TrayMenu.Add(entry["naam"] . " (" . entry["nummer"] . ")", CallSpeedDialEntry.Bind(entry["nummer"]))
+    ;
+    ; Zolang StorageAllReady nog false is, staat SpeedDialEntries nog op de
+    ; code-standaardwaarden (DefaultSpeedDialEntries()) in plaats van de
+    ; echte speeddial.json — en CallSpeedDialEntry() belt meteen echt via
+    ; IPT_callNumber(). Dit blok blijft daarom net als "Belactie"/
+    ; "Tekstvervanging" hierboven volledig weg tijdens degraded mode, in
+    ; plaats van (mogelijk verouderde) nummers klikbaar te tonen — zie
+    ; docs/DECISIONS.md D-064.
+    if StorageAllReady {
+        activeSpeedDials := []
+        for _, entry in SpeedDialEntries {
+            if entry["actief"]
+                activeSpeedDials.Push(entry)
         }
-        if activeSpeedDials.Length > TraySpeedDialMaxEntries
-            A_TrayMenu.Add("Alle snelkiesnummers...", ShowSpeedDialsFromTray)
+
+        if activeSpeedDials.Length > 0 {
+            A_TrayMenu.Add()
+            A_TrayMenu.Add("Snelkiesnummers", (*) => 0)
+            A_TrayMenu.Disable("Snelkiesnummers")
+
+            Loop Min(activeSpeedDials.Length, TraySpeedDialMaxEntries) {
+                entry := activeSpeedDials[A_Index]
+                A_TrayMenu.Add(entry["naam"] . " (" . entry["nummer"] . ")", CallSpeedDialEntry.Bind(entry["nummer"]))
+            }
+            if activeSpeedDials.Length > TraySpeedDialMaxEntries
+                A_TrayMenu.Add("Alle snelkiesnummers...", ShowSpeedDialsFromTray)
+        }
     }
 
     A_TrayMenu.Add()

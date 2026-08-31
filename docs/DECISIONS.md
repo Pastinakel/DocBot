@@ -2346,3 +2346,301 @@ whole-file header re-scan was added to `InitializeDiagnosticLogging()`.
   the commit history on `claude/standaardlog-format-validation-hez3ak`),
   and a manually-appended unrecognized-format line was confirmed pruned
   from a live `debug.log` on the next maintenance pass.
+
+---
+
+## D-063 — Generalize the telemetry installation-ID retry pattern to the other startup storage loaders; replace the first-run heuristic with a write-probe
+
+**Status:** Accepted (implementation not yet functionally validated on
+Windows — see D-037)
+
+Filed from a real user standard log (2026-08-28, `docs/TODO.md` P0
+"Autostart race"): DocBot started via autostart while Documents/OneDrive
+was not yet fully available. `settings.ini`, `hotstrings.json`,
+`package-settings.json`, `speeddial.json`, and `sms-default-texts.json`
+each attempted to load exactly once at startup and, on a transient
+access-denied error, permanently ran the rest of that session on
+code-default/empty data — with no retry until the next full restart. Only
+`Telemetry_TryEnsureInstallationId()` (D-027/D-028) already had a
+background retry for this class of problem.
+
+**Decision**
+
+1. Generalize D-027/D-028's retry shape (a fast synchronous first attempt,
+   then a background `SetTimer` retry — quick a few times, then hourly,
+   no upper bound) to `LoadAppSettings()`, `InitializeHotstringStorage()`,
+   `InitializePackageSettings()`, `InitializeSpeedDialStorage()`, and
+   `InitializeSmsDefaultTextStorage()`. All five now return `true`/`false`
+   and are driven by one shared timer (`StorageRetry_Tick()`/
+   `StorageRetry_ScheduleIfNeeded()`) instead of five independent ones,
+   since they sit on the same Documents/OneDrive-backed folder and the
+   originating log showed them failing and recovering together — but each
+   loader keeps its own success/failure and its own `Opslagfout` message
+   fully independent, so one loader's continued failure is never masked by
+   its siblings succeeding.
+2. `InitializeUserStorage()` no longer treats `!DirExist(UserDataDir)` as
+   an immediate "first run" verdict, and no longer hard-exits
+   (`MsgBox()` + `ExitApp()`) when preparing the directory fails for any
+   reason. `DirExist(UserDataDir) = false` is genuinely ambiguous between
+   "the user has never run DocBot" and "OneDrive has not mounted the
+   folder yet" — nothing in a single passive check can tell those apart.
+   Instead, `UserStorageProbe_TryBootstrap()` creates a uniquely-named
+   temporary folder under `A_MyDocuments` as a real write test (stronger
+   than polling `DirExist()` again: a not-yet-mounted OneDrive should fail
+   an actual write, not just look empty). Once that succeeds,
+   `UserStorageProbe_ResolveAfterCreate()` re-checks `UserDataDir`: if it
+   appeared in the meantime, this was pure OneDrive lag and the probe
+   folder is discarded; if it is still absent, the probe folder itself is
+   renamed into place as `UserDataDir` (via `DirMove`, after copying from a
+   seed profile first if one applies) rather than creating a second folder.
+   `InitializeUserStorage()` is the first entry in the same shared
+   `StorageRetryLoaders` array, so a failed probe retries on the same
+   background cadence — DocBot now always starts regardless of the outcome.
+3. Multi-instance race handling on the probe's claim step mirrors
+   `Telemetry_TryEnsureInstallationId()`'s existing pattern: re-check
+   `UserDataDir` immediately before renaming and let an existing value win,
+   rather than assuming this instance is the only one racing to bootstrap.
+4. An orphaned probe folder (DocBot crashes between creation and
+   rename/delete) is swept by `PruneAbandonedUserStorageProbeDirs()`, wired
+   into the existing daily `RunDiagnosticsMaintenance()` timer — same
+   pattern as `PruneAbandonedProblemReportDirs()` for problem-report
+   directories, just in `A_MyDocuments` instead of `A_Temp`.
+
+**Options considered for the first-run ambiguity**
+
+1. Keep the passive `DirExist()` check but add a bounded retry loop before
+   deciding (re-poll a few times before concluding "first run").
+2. Actively probe writability with a real `DirCreate()`/temp-folder attempt
+   (chosen).
+3. Use `DirExist(A_MyDocuments)` (the Documents root itself, which should
+   exist regardless of whether DocBot has ever run) as a cheap first gate
+   before falling back to option 1 or 2.
+
+**Reasoning**
+
+- Option 2 over option 1: a write attempt is strictly more informative
+  than re-polling existence — it directly tests the thing that actually
+  matters (can DocBot write here now), rather than inferring it from
+  absence, and it doubles as the real bootstrap once it succeeds instead
+  of being a separate check that then repeats the work.
+- Option 3 was considered and explicitly dropped (not merely deferred): it
+  was a speed optimization only — skipping the bounded-retry wait for a
+  high-confidence first run — never part of the actual safety net, since
+  the write-probe (option 2) is already correct regardless of whether this
+  organization's Documents folder is itself OneDrive-redirected (Known
+  Folder Move) or a plain local folder. Adding it would have introduced a
+  dependency on confirming that organizational detail for a benefit
+  bounded to a few minutes on an already-rare, one-time first run, with the
+  GUI already usable throughout via degraded mode (D-064). Revisit only if
+  first-run bootstrap latency becomes a real complaint.
+- Does not reintroduce the blocking startup gate rejected in D-026: the
+  first, single, fast attempt for all six loaders stays exactly where it
+  is today (fails fast, well under a second) — only the *retries* run on a
+  background timer, after `MainGui.Show()`. `InitializeUserStorage()`
+  removing its `MsgBox()`/`ExitApp()` hard-fail is a direct application of
+  D-026's principle to the one remaining code path that still blocked
+  startup entirely on a storage failure.
+- `LoadAppSettings()`'s silent early return (`if !FileExist(ConfigFile):
+  return`, no log line) is fixed using the same signal: `InitializeUserStorage()`
+  now records `UserDataDirIsPreexisting` (was the profile folder already
+  there when this run started, captured before any bootstrap mutates it).
+  A missing `settings.ini` in a freshly-bootstrapped folder is still a
+  normal, silent first run (no log, no retry — code defaults are correct);
+  a missing `settings.ini` in an already-existing profile is now logged
+  and retried like the other four loaders, rather than the two cases being
+  indistinguishable in the standard log.
+- The installation-ID counters (`PhoneActions`/`LongHotstringActions`/
+  `SmsActions`, read via `Telemetry_ReadCounter()`) had the same category
+  of bug one level deeper: a failed read silently defaulted to `0`, and a
+  `Telemetry_RecordXAction()` call in that same session would then persist
+  the artificially-low count over the real cumulative value. Fixed the
+  same way — `Telemetry_TryLoadCounters()` on the shared retry cadence,
+  `TelemetryCountersConfirmed` gating writes until the real base is
+  confirmed, with any actions recorded before confirmation added to that
+  base once it loads rather than lost.
+
+**Consequences**
+
+- A directory-prep failure (including on a genuine first run under the
+  same OneDrive-not-ready race) no longer prevents DocBot from starting at
+  all; it degrades gracefully and keeps retrying in the background,
+  consistent with every other storage failure mode in the application.
+- Known limitation, accepted rather than solved in this change: if
+  `LoadAppSettings()` fails on the first attempt and later succeeds via
+  retry, `InitializeHotstringStorage()` may already have loaded from the
+  code-default `State["HotstringFile"]` path rather than a user's
+  non-default configured path; that only self-corrects on the next full
+  restart. Rare in practice (most installations use the default path) and
+  not worse than today's total absence of retry.
+- See D-064 for how the user-visible side of this (a persistent banner,
+  hidden functionality) was designed on top of this retry mechanism.
+
+**Validation note (2026-08-28):** an interpreted Windows debug run of
+`UserStorageProbe_TryBootstrap()` immediately caught, via `#Warn`'s
+"variable appears to never be assigned a value" diagnostic, that `A_PID`
+is not a real AutoHotkey built-in variable (in v1 or v2) — the probe
+folder's uniqueness suffix was silently evaluating to empty instead of the
+current process ID. Fixed with `DllCall("GetCurrentProcessId")`, the
+standard AHK idiom for this. Left as a concrete example, in this project's
+own record, of exactly the kind of mistake D-037 exists to catch — source
+review alone did not.
+
+---
+
+## D-064 — Degraded mode: hide unready content behind a persistent banner, all-or-nothing across the five storage loaders
+
+**Status:** Accepted (implementation not yet functionally validated on
+Windows — see D-037)
+
+Companion to D-063: retrying storage loaders in the background closes the
+"runs forever on stale defaults" gap, but retries can still take minutes,
+and during that window DocBot was still silently presenting
+default/incomplete data as if it were real. The project owner required
+that this be visible to the user, and that the affected functionality be
+genuinely unavailable rather than quietly wrong, without blocking startup
+itself.
+
+**Decision**
+
+- A single combined readiness state, `StorageAllReady` (true once every
+  entry in `StorageRetryLoaders` — the user-data folder plus all five
+  loaders from D-063 — has succeeded), gates visibility. Chosen
+  all-or-nothing rather than per-loader/per-feature gating (project-owner
+  decision): simpler to build and to explain to the user, at the accepted
+  cost of sometimes leaving a feature hidden whose own data actually
+  already loaded.
+- Content is hidden outright while `StorageAllReady` is false, not shown
+  disabled/grayed. On the Overzicht page, only the banner and the
+  telephony registration card remain — Belactie/Tekstvervanging/Gebruik
+  are hidden entirely. On Telefonie/Hotstrings/Instellingen, the entire
+  page's normal content is hidden, including every control that could
+  write partially-loaded state (save buttons included) — nothing
+  partially-loaded is left reachable, not even in a visibly-inert state.
+  Telephony registration/linking/event-polling and the Help/Over pages are
+  unaffected, since they do not depend on any of the five loaders.
+- A new persistent, non-auto-dismissing banner (`AddDegradedBanner()`)
+  replaces `ShowNotification()`/D-025's transient toast for this specific
+  status: D-025's notification is designed to disappear after a few
+  seconds and is the wrong shape for a state that can last minutes.
+- `ShowPage()` gained a per-control `_degradedGate` property
+  (`hide-while-degraded` / `show-only-while-degraded`), because its
+  existing page-visibility logic unconditionally re-shows every control on
+  the page being navigated to — without this, navigating away from and
+  back to a degraded page would undo the hiding. `MarkDegradedGateStart()`/
+  `MarkDegradedGateEnd()` gate a whole range of a page's already-built
+  controls in `Pages[pageKey]` at once, rather than wrapping each
+  individual `AddCard`/`AddCardLabel`/`AddFlatButton` call site.
+- The sidebar's "Telefonie:" and "Tekst vervangen:" status dots show a
+  neutral "Laden…" state while degraded, not the normal green/red
+  Actief/Inactief — both are driven by `State` fields
+  (`CallAction`/`TextReplacement`) that are not yet reliable, and
+  `RefreshSidebarStatuses()` was computing a possibly-wrong default-value-
+  driven color without this. Telephony registration itself stays correct
+  in the Overzicht card; the sidebar dot is a distinct signal from
+  registration status.
+- The tray menu's "Belactie" submenu and "Tekstvervanging" item are
+  disabled while degraded — both write directly to `State`/`settings.ini`
+  outside the main window (`SetTrayCallAction()`, `ToggleTraySetting()`),
+  and a toggle made there on a not-yet-loaded default would otherwise be
+  silently overwritten the moment the real value loads.
+- A recognized clipboard phone number during degraded mode shows a
+  one-off `ShowNotification()` toast instead of silently falling through
+  to the call/SMS-action handlers (both switch on the not-yet-reliable
+  `State["CallAction"]`): an unexplained no-op would look like DocBot
+  missed the number.
+- `StorageRetry_OnAllReady()` fires once, the first time `StorageAllReady`
+  becomes true; if `MainGui` already exists (a real degraded-to-ready
+  transition, as opposed to the common startup path where every loader
+  already succeeded before `BuildMainGui()` ran) it refreshes controls that
+  were built with stale/default values — `RefreshOverzichtValuesAfterReady()`
+  and `RefreshInstellingenValuesAfterReady()` — and re-applies `ShowPage()`
+  gating, sidebar status, and the tray menu.
+
+**Reasoning**
+
+- Matches a mockup the project owner reviewed and revised in this same
+  filing session (hide, not dim; both sidebar dots, not just one;
+  all-or-nothing, not per-feature) rather than an earlier draft that
+  showed disabled/grayed controls.
+- The banner is a plain colored bar, not the mockup's animated spinner:
+  a Segoe MDL2 icon glyph mixed into the same `AddText` string as regular
+  text does not render as an icon without `AddFlatButton()`'s custom-draw
+  machinery, and a dedicated animation timer for one static status bar
+  was judged not worth the added complexity.
+- Range-based gating (`MarkDegradedGateStart`/`End`) over tagging each
+  control individually: fewer edit sites on pages with dozens of controls,
+  and no risk of missing one and leaving a stray visible control during
+  degraded mode.
+
+**Consequences**
+
+- `RefreshInstellingenValuesAfterReady()` required promoting several
+  previously-local `BuildMainGui()` variables
+  (`InstellingenAutoSaveCheck`/`FilePathEdit`/`SmsActionDropDown`/
+  `SmsDefaultTextEdit`/`SmsDefaultTextHint`/`PendingSmsDefaultTexts`) to
+  globals, since — unlike `CallActionSelector`/`TextReplacementCheck` —
+  they have no settable-`.Value`-with-self-repaint wrapper class and
+  needed to be reachable from outside `BuildMainGui()`.
+- This is the largest and riskiest change in the whole autostart-race
+  effort and has not yet been functionally validated on Windows (D-037):
+  page navigation while degraded, the transition from degraded to ready
+  while a gated page is the current one, and the Instellingen SMS-field
+  refresh all need real validation before this ships.
+
+**Validation note (2026-08-28):** an interpreted Windows run immediately
+threw "Invalid option" on `AddDegradedBanner()`'s three `AddText()` calls.
+Cause: `"Background FDF0DE"`/`"Background F08200"` had a literal space
+between the `Background` option keyword and the hex color, which AHK v2
+parses as two separate unrecognized tokens — every other `Background`
+usage in this codebase reaches the same string via concatenation
+(`"Background" C["Window"]`), which produces no space. Fixed to
+`"BackgroundFDF0DE"`/`"BackgroundF08200"`. A second concrete example of
+what D-037 validation is for.
+
+**Validation note (2026-08-31):** exactly the "page navigation while
+degraded" gap flagged above as unvalidated turned out to hide a real bug.
+The user held exclusive read locks on all five `DocBot-test`/`DocBot-dev`
+profile files (via a PowerShell script opening them with `FileShare
+'None'`) across two background retry ticks, then navigated to Hotstrings
+while still degraded. The banner and hotstring list were correctly hidden,
+but the "Hotstring bewerken" form (edit field + expand button) stayed
+visible and interactive. Cause: `ApplyHotReplacementEditorState()` — called
+unconditionally at the end of `ShowPage()`, right after the
+`_degradedGate` loop that had just hidden the same controls — recomputed
+its own `visible` flag from `CurrentPage = "tekstvervanging"` alone, with
+no `StorageAllReady` check, and unhid `HotEditorCompactCard`/
+`HotEditorExpandedCard`, `HotReplacementSingleGroup`/`MultiGroup`, and the
+expand/collapse buttons regardless of degraded state. `HotSaveButton` is
+untouched by that function, so it stayed correctly hidden — the write path
+itself was never reachable, but the input field visibly contradicted the
+banner above it. Fixed by adding `StorageAllReady` to the `visible`
+condition. Confirmed no other function follows this same
+"recompute visibility from `CurrentPage` after `ShowPage()`'s gate loop
+already ran" pattern (`ApplySmsDefaultTextFieldState()`, the only other
+per-field visibility helper, only touches `.Enabled`/`.Value`/`.Text`, never
+`.Opt("-Hidden"/"+Hidden")`, so it cannot fight the gate the same way).
+The retry-triggered `ShowNotification()` toasts ("Het JSON-bestand kon niet
+worden geladen") on each failed background attempt are expected —
+`ReportStorageError()` intentionally reports every retry independently, per
+D-063 — not a bug.
+
+**Validation note (2026-08-31, continued):** the same locked-profile test
+surfaced a second, more serious gap in the same decision: `BuildTrayMenu()`
+built its "Snelkiesnummers" quick-call section straight from
+`SpeedDialEntries` with no `StorageAllReady` check at all — unlike the
+"Belactie"/"Tekstvervanging" tray items right above it, which this decision
+does explicitly disable while degraded. `SpeedDialEntries` starts out on
+`DefaultSpeedDialEntries()` (the code defaults) until
+`InitializeSpeedDialStorage()` actually succeeds, so while degraded the
+tray menu showed the default speed-dial entries as clickable items, and
+clicking one called `CallSpeedDialEntry()` → `IPT_callNumber()` — placing a
+real call on possibly-stale, not-yet-confirmed data, with no write
+involved to make the risk visible the way `HotSaveButton` staying hidden
+did for the previous finding. Fixed by wrapping the whole section in
+`if StorageAllReady`, so it is omitted entirely while degraded — matching
+this decision's "hidden outright, not shown disabled" principle — and
+reappears once `StorageRetry_OnAllReady()` calls `BuildTrayMenu()` again
+after a real degraded-to-ready transition. This was missed in the original
+D-064 pass because the tray menu build only explicitly reasoned about the
+two items that write to `State`/`settings.ini`; the speed-dial section's
+own dependency on unloaded storage was not considered.

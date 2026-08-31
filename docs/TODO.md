@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-26. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-28. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -10,6 +10,425 @@ _Last updated: 2026-08-26. This file is a handover backlog, not a promise that e
 - **P3** — low-priority polish; correct as filed, but narrow-impact or
   cosmetic enough that it can sit indefinitely without hurting the
   project. Pick up opportunistically, not on a schedule.
+
+---
+
+## P0 — Autostart race: user-data storage not yet available at DocBot startup
+
+Filed 2026-08-28 from a user-supplied standard log
+(`docs/uploads/0dbac3d9-standaardlog.txt`, redacted). DocBot was started via
+autostart at Windows logon; within the same ~0.1s window right after the
+bundled packages finished loading, four separate `Opslagfout` entries were
+logged in immediate succession:
+
+1. `Het JSON-bestand kon niet worden geladen.` — personal hotstrings
+   (`InitializeHotstringStorage()` / `LoadHotstringsFromJson()`).
+2. `De pakketkeuzes konden niet worden geladen. Standaard worden geen
+   pakketten geactiveerd.` — package selections
+   (`InitializePackageSettings()` / `LoadPackageSettingsFromJson()`).
+3. `Het JSON-bestand kon niet worden geladen.` — speed dial
+   (`InitializeSpeedDialStorage()`).
+4. `Het JSON-bestand kon niet worden geladen.` — SMS default texts
+   (`InitializeSmsDefaultTextStorage()`).
+
+All four report the same underlying Windows error, "Het systeem kan geen
+toegang verkrijgen tot het bestand" (access denied) — consistent with the
+Documents/OneDrive-backed user-data folder not being fully available yet at
+the moment autostart fires. One minute later, `Telemetry_TryEnsureInstallationId()`
+also failed to persist a new installation ID (`✕ Telemetrie — Installatie-ID
+kon niet worden opgeslagen`), retried again a minute after that (per its
+documented quick-retry cadence, D-027/D-028), and DocBot ran for roughly
+nine minutes with no packages active. A manual restart ~9 minutes later
+loaded every store cleanly on the first attempt, confirming this is a
+startup-timing race against storage availability, not a persistent storage
+problem.
+
+### Root cause
+
+`Telemetry_TryEnsureInstallationId()` is the *only* startup loader with a
+retry path (quick retries every `TelemetryInstallationIdQuickRetryMs`, then
+hourly — D-027/D-028). Every other startup loader called from the
+auto-execute section (`LoadAppSettings()`, `InitializeHotstringStorage()`,
+`InitializePackageSettings()`, `InitializeSpeedDialStorage()`,
+`InitializeSmsDefaultTextStorage()`) attempts exactly once, and on failure
+falls back to in-memory defaults/empty state for the rest of that running
+session — with no retry and no path back to the real stored data until the
+next full restart:
+
+- `LoadAppSettings()` (`settings.ini`) is the most silent case: it starts
+  with `if !FileExist(ConfigFile): return`, so if the same transient
+  access-denied condition makes `ConfigFile` appear not to exist yet, the
+  function returns with **no log line at all** — `State["AutoSave"]`,
+  `State["CallAction"]`, `State["SmsCallActionTitle"]` and
+  `State["TextReplacement"]` silently keep their code defaults for the
+  session, indistinguishable in the log from a genuine first run.
+- `Telemetry_ReadCounter()` (used for `PhoneActions`, `LongHotstringActions`,
+  `SmsActions`) reads once via `IniRead` wrapped in a bare `try`/`catch` that
+  returns `0` on any failure. If this same race zeroes the in-memory
+  counters for a session, a later `Telemetry_WriteCounter()` call during
+  that same run would persist the artificially-low count over the real
+  cumulative value — turning a transient read failure into a permanent loss
+  of usage history, not merely a delayed one.
+- The four JSON loaders above each log a single `Opslagfout` and then run
+  the rest of the session on defaults/empty data (no packages active,
+  personal hotstrings/speed dial/SMS default texts unavailable) with no
+  further attempt to reload once storage becomes available again.
+
+### Open question: telling "not yet available" apart from a genuine first run
+
+`InitializeUserStorage()` treats `!DirExist(UserDataDir)` as "first run" and
+immediately bootstraps (copies from a seed profile, or creates a fresh
+directory) — a single, synchronous, one-shot check that runs before any of
+the loaders above. This is a different, harder ambiguity than the four
+loader failures: a JSON loader failing with "kon niet worden geladen" (not
+"bestaat niet") already proves the file exists but is temporarily
+unreadable — that case is unambiguous and safe to retry as proposed below.
+But `DirExist(UserDataDir) = false` looks identical whether (a) the user has
+genuinely never run DocBot, or (b) OneDrive has not mounted far enough yet
+for even the folder structure/placeholders to be visible. Nothing in a
+single snapshot can tell these apart.
+
+Proposed resolution: do not try to classify intent from one passive
+measurement. Instead, actively probe writability, and let the probe double
+as the real bootstrap once it proves safe (suggested by the project owner):
+
+1. If the file can't be read: check whether it exists. If not, check
+   whether the folder exists. If neither exists, attempt to create a
+   uniquely-named temporary folder under `A_MyDocuments` (a real
+   `DirCreate`, not just a `DirExist` poll) — a write attempt is a strictly
+   stronger signal than re-polling `DirExist`, since a not-yet-mounted
+   OneDrive should fail an actual write, not just look empty.
+2. Once that temporary folder can be created, re-check whether `UserDataDir`
+   and the settings file are readable *now*:
+   - Yes → the real profile surfaced while the probe was running (pure
+     OneDrive-lag case); delete the temporary folder and proceed on the
+     real data. No bootstrap, no risk of treating an existing user as new.
+   - No → the temporary folder's successful creation just empirically
+     proved this location is writable and `UserDataDir` genuinely does not
+     exist — a high-confidence first run. Rename the temporary folder into
+     place as `UserDataDir` (reusing it rather than creating a second
+     folder) and bootstrap settings there as today.
+3. Retry the whole probe on the same bounded cadence as the other loaders
+   if the `DirCreate` itself fails — that failure is the "storage backend
+   not ready" signal and should log as such (distinct from a first-run
+   message).
+
+Two existing patterns in the codebase apply directly here and should be
+reused rather than re-invented:
+
+- **Multi-instance race on the rename step.** If autostart fires twice, or
+  a user launches DocBot manually while an autostart instance is still
+  probing, two instances could each create their own temporary folder and
+  both attempt to claim `UserDataDir`. `Telemetry_TryEnsureInstallationId()`
+  already solves the equivalent race for the installation ID by re-reading
+  immediately before use and letting an existing value win. Apply the same
+  rule here: immediately before renaming, re-check whether `UserDataDir`
+  now exists; if it does, discard the own temporary folder and use the
+  existing one instead of renaming over it.
+- **Cleanup of an orphaned probe folder.** If DocBot exits (crash, forced
+  kill, Windows restart) between creating the temporary folder and
+  renaming/deleting it, a stray folder is left in the user's Documents.
+  `PruneAbandonedProblemReportDirs()` (P1 "Remove temporary problem-report
+  artifacts") already sweeps a recognizable naming pattern older than seven
+  days on the existing daily cleanup timer — give the probe folder a
+  similarly recognizable name and fold it into that same sweep rather than
+  adding a new cleanup mechanism.
+
+**This must run asynchronously, after the GUI is already shown — not in the
+current synchronous auto-execute sequence.** `InitializeUserStorage()` is
+called before `BuildMainGui()`/`MainGui.Show()` today; if the probe/retry
+loop (or the earlier plain bounded-retry idea) stays there as written, a
+multi-minute retry window would delay the main window from appearing at
+all, which is exactly the blocking startup gate D-026 already rejected —
+only now scoped to one decision instead of everything. The probe must move
+to the same asynchronous, timer-driven shape the telemetry installation ID
+already uses: the GUI shows immediately on whatever data is available
+(exactly as it does today), and the probe/rename logic runs on the
+background retry timer afterward, refreshing the relevant in-memory
+state/GUI once it resolves either way.
+
+**Considered and dropped: a `DirExist(A_MyDocuments)` first gate.** An
+earlier draft of this proposal added a cheap pre-check on the Documents
+root itself, to let a high-confidence first run (existing OneDrive user,
+first DocBot launch) bootstrap immediately instead of waiting out the full
+retry window. Dropped (project-owner decision, 2026-08-28): it was a speed
+optimization only, never part of the actual safety net — the write-probe
+above is already correct and safe on its own regardless of whether this
+organization's Documents folder is itself OneDrive-redirected (Known
+Folder Move) or a plain local folder, so nothing about correctness depends
+on knowing that. The only cost of dropping it is that a genuine first run
+waits out the same bounded retry window (a few minutes, at most once per
+user, with the GUI already usable in degraded mode throughout) instead of
+bootstrapping promptly — not worth adding a dependency on confirming this
+organization's OneDrive/Documents configuration for. If a real complaint
+about first-run bootstrap latency ever surfaces, revisit this as a
+targeted follow-up rather than building it in now.
+
+This changes first-run bootstrap timing, not just retry-on-known-existing-
+data behavior, so it needs explicit project-owner sign-off separately from
+the rest of this proposal before implementation.
+
+### Degraded mode: block functionality visibly, not startup
+
+Project owner requirement (2026-08-28): silently running on defaults, as
+today, is not acceptable even once the retry mechanism above exists —
+retries can still take minutes. The user must be able to see that settings
+have not loaded yet, and most functionality must be genuinely unavailable
+during that window, not just quietly wrong. Telephony registration/linking
+is the one exception: it does not depend on any of the five stores above
+(it already succeeds independently today, per the log's `AllocNumber.xml`/
+`GetEvent.xml` exchanges completing while every other loader failed) and
+must keep working normally throughout.
+
+**Chosen granularity: all-or-nothing** (project-owner decision, not
+per-feature). A single readiness state covers the first-run probe above
+plus all five stores (`settings.ini`, hotstrings, package settings, speed
+dial, SMS default texts); functionality stays blocked until every one of
+them has succeeded, even if, say, only the SMS default texts are still
+retrying. This is simpler to build and to explain to the user than gating
+each feature independently, at the cost of sometimes blocking a feature
+whose own data actually already loaded fine.
+
+**What "largely blocked" means concretely**, while that combined readiness
+state is not yet true — finalized 2026-08-28 against a mockup (see below):
+data-dependent content is **hidden outright, not dimmed/disabled**. An
+earlier draft of this proposal showed disabled/grayed controls so their
+presence stayed visible; the project owner rejected that in favor of
+hiding, including every control that could trigger a write (save buttons
+included) — nothing partially-loaded should be reachable at all, not even
+in a visibly-inert state.
+
+- **Overzicht page:** the banner plus the registration card (top of the
+  page) are the only things shown. Belactie, Tekstvervanging, and Gebruik
+  — the three lower cards — are hidden entirely, not shown disabled.
+- **Telefonie, Hotstrings, and Instellingen pages:** each shows only the
+  banner plus a short centered message; the page's entire normal content
+  (speed-dial list/editor, hotstring list/editor, storage/import/SMS
+  settings) is hidden, **including every save button** — there is nothing
+  left on these pages that could write partially-loaded state.
+- The clipboard-number → call/SMS-action flow: suspended. This is the part
+  that depends on `CallAction`/`SmsCallActionTitle`/`TextReplacement` from
+  `settings.ini`, so acting on a detected number without knowing the real
+  setting would risk doing the wrong thing, not just nothing. Not silent,
+  though (project-owner decision, 2026-08-28): show a one-off
+  `ShowNotification()` toast when a number is recognized during degraded
+  mode (e.g. "Nummer herkend, maar instellingen laden nog") — otherwise the
+  suspension looks like DocBot failed to notice the number at all, which is
+  worse than an explained no-op.
+- The tray menu's "Tekstvervanging" checkbox item (`ToggleTraySetting.Bind
+  ("TextReplacement")`) reads/writes `State["TextReplacement"]` directly,
+  bypassing the main window entirely: disable it too during degraded mode
+  (project-owner decision, 2026-08-28), otherwise a toggle made there on the
+  not-yet-loaded in-memory default would itself get overwritten the moment
+  the real value loads, silently discarding what the user just set. Check
+  the tray menu for any other item reading/writing degraded-mode-affected
+  `State` the same direct way and apply the same rule.
+- Telephony registration, the link-code flow, and the long-poll event loop:
+  **unaffected, run exactly as today** — this is what stays on the
+  Overzicht page's registration card.
+- Help/Over and other static, non-data-dependent pages: **unaffected, not
+  touched by degraded mode at all** (project-owner decision, 2026-08-28) —
+  no mockup needed for them since nothing changes.
+- **Sidebar status indicators (bottom-left) — both "Telefonie:" and "Tekst
+  vervangen:" show a neutral, pulsing "Laden…" state**, not the normal
+  green/red Actief/Inactief. This corrects an earlier draft that left
+  "Telefonie:" green/"Actief" on the reasoning that registration is
+  unaffected — but `RefreshSidebarStatuses()` drives that particular
+  indicator from `CallAction`, not from registration status: it reports
+  whether DocBot currently knows what to do with a recognized phone number,
+  and until `settings.ini` has loaded, it genuinely does not know that yet.
+  Registration itself stays visible and correct in the Overzicht card
+  above; the sidebar dot is a different signal and must reflect its own
+  real uncertainty rather than borrowing telephony's "it still works" fact.
+
+**Making it visible, not silent:** the existing transient notification GUI
+(`ShowNotification()`, D-025) is built to auto-dismiss after a few seconds
+and is the wrong shape for a state that can last minutes. This needs a
+persistent indicator — a banner/status area in the main window that stays
+present for as long as degraded mode lasts and clears automatically the
+moment the combined readiness state becomes true (refreshing the
+now-unblocked page at the same time, consistent with how the shared retry
+timer already refreshes each loader's own state on success).
+
+**Mockup:** [DocBot Degraded Mode](https://claude.ai/code/artifact/defdebdf-87bd-4d38-8a2d-587eb8bbd896)
+shows the finalized design — the persistent warning-colored banner
+(spinner, non-dismissing), the Overzicht page with only the registration
+card left standing, the Telefonie/Hotstrings/Instellingen pages reduced to
+banner-plus-message, and both sidebar status dots on the neutral "Laden…"
+state, against a "Normaal" comparison artboard. Colors, sidebar, and card
+geometry are lifted directly from `DocBot.ahk`'s `C := Map(...)` palette
+and `BuildMainGui()` layout; exact pixel positions were compressed slightly
+to fit the banner into the fixed 700px-tall window and should be
+re-verified during implementation, not copied as final coordinates.
+
+The GUI shell itself must still appear immediately either way — this is
+about which content that shell shows, not about delaying `MainGui.Show()`
+(see the synchronous-vs-background-timer point above, which still applies
+in full).
+
+### Proposal (needs project-owner sign-off before implementation)
+
+- Do **not** reintroduce a blocking/global startup writeability gate — that
+  approach was deliberately rejected (D-026) because it makes unrelated
+  functionality unavailable whenever Documents/OneDrive is briefly slow.
+  This applies to the retry mechanism itself, not only to the original
+  gate: `InitializeUserStorage()`, `LoadAppSettings()`, and the four JSON
+  loaders all currently run synchronously *before*
+  `BuildMainGui()`/`MainGui.Show()`. The **first, single, fast attempt**
+  can stay exactly where it is (it fails fast today, in well under a
+  second, so it does not delay the GUI) — but every *retry*, on any of
+  these loaders or on the first-run probe below, must be moved to run on a
+  background timer *after* the GUI is already shown, the same shape
+  `Telemetry_TryEnsureInstallationId()` already uses. Leaving a multi-minute
+  retry loop in the current synchronous position would delay the main
+  window itself, which is the same blocking gate D-026 rejected, only
+  scoped to fewer call sites.
+- Generalize the existing telemetry installation-ID pattern (D-027/D-028),
+  but split *scheduling* from *error handling*: since all five loaders sit
+  on the same Documents/OneDrive-backed folder and the log shows them
+  failing and recovering together, use **one shared retry timer** (the same
+  quick/slow cadence already used for the installation ID) instead of five
+  independent timers duplicating the same schedule and logging the same
+  moment five times over. On each tick, the shared timer re-runs every
+  loader that has not yet succeeded and, per loader, refreshes only that
+  loader's in-memory state and any already-built GUI list/controls on
+  success — mirroring how `Telemetry_TryEnsureInstallationId()` calls
+  `Telemetry_Start()` once it succeeds.
+  Keep each loader's *own* success/failure and its own `Opslagfout` message
+  fully independent, though: coupling the retry trigger to a shared timer
+  must not couple the diagnosis. A loader that keeps failing for an
+  unrelated reason (a locked file, a corrupt document, antivirus scanning)
+  once its siblings have already recovered must still fail visibly and
+  distinctly on the next shared tick, not be silently carried along by
+  whichever loader succeeds first — do not collapse the five distinct
+  `Opslagfout` messages into one.
+- Close the silent gap in `LoadAppSettings()` specifically: log a baseline
+  `Opslagfout` (or equivalent) when `ConfigFile` does not resolve, rather
+  than returning with no diagnostic trace, so "not yet available" is
+  distinguishable from "first run" in the standard log.
+- Fold the `PhoneActions`/`LongHotstringActions`/`SmsActions` counter reads
+  into the same retry/confirmation discipline already used for the
+  installation ID, so a transient read failure can no longer cause
+  `Telemetry_WriteCounter()` to overwrite a real cumulative count with a
+  session that started from a false `0`.
+- This is a startup-timing race that only reproduces through the real
+  autostart trigger on a managed Windows workstation, not an interactively-
+  launched interpreted or compiled run (`docs/DECISIONS.md` D-037) — but
+  that validation is the **last** step, against the finished fix, not a
+  precondition for starting work. Waiting for the race to spontaneously
+  recur again on its own is not a reliable way to test it: the original log
+  is sufficient evidence the bug is real, and there is no way to force an
+  as-yet-unfixed build to hit the race on demand. Once there is a build to
+  test, deliberately simulate the delayed-storage condition instead of
+  waiting for a natural recurrence — e.g. briefly deny/delay access to the
+  profile folder (or the specific JSON files) at the exact moment autostart
+  fires — so the retry/probe/degraded-mode behavior can be exercised and
+  confirmed on demand rather than hoped for.
+- Record the generalized retry approach in `docs/DECISIONS.md` (mirroring
+  D-027/D-028) and update `docs/PROJECT_CONTEXT.md` §4.7 once implemented.
+
+### Implementation status (2026-08-28)
+
+Implemented on `claude/docbot-autostart-telemetry-s8bhu8`
+(`AppVersion 2.4-autostart-storage.1` through `.4`), in four steps/commits
+mirroring the scope below. Recorded as `docs/DECISIONS.md` D-063 (shared
+retry + write-probe) and D-064 (degraded-mode UI). **Not yet functionally
+validated on Windows (D-037)** — the last scope item below is still open
+and is the remaining blocker before this can be merged.
+
+### Scope
+
+- [x] Design and implement the shared-timer/per-loader-diagnosis retry
+  approach described above for `LoadAppSettings()`, hotstrings, package
+  settings/selections, speed dial, and SMS default texts.
+- [x] Fix the silent no-log early return in `LoadAppSettings()`.
+- [x] Get explicit project-owner sign-off on, then implement, the
+  write-probe approach for `InitializeUserStorage()` described above
+  (create a temporary folder under `A_MyDocuments`, re-check for a real
+  profile, then either discard the probe or rename it into place), so a
+  not-yet-mounted OneDrive is no longer indistinguishable from a genuine
+  first run.
+- [x] Reuse the existing "re-check immediately before use, let an existing
+  value win" pattern from `Telemetry_TryEnsureInstallationId()` for the
+  probe's rename step, to handle two DocBot instances racing to claim
+  `UserDataDir`.
+- [x] Reuse the existing `PruneAbandonedProblemReportDirs()`-style sweep
+  (P1 "Remove temporary problem-report artifacts") to clean up an orphaned
+  probe folder left behind by a crash between creation and rename/delete;
+  give the probe folder a similarly recognizable name rather than adding a
+  second cleanup mechanism.
+- [x] Ensure every retry loop (loaders and the first-run probe alike) is
+  wired to run on a background timer after `MainGui.Show()`, not left in
+  the current synchronous position before it.
+- [x] Address the counter-zeroing/overwrite risk in
+  `Telemetry_ReadCounter()`/`Telemetry_WriteCounter()`.
+- [x] Introduce a single combined readiness flag covering the first-run
+  probe and all five stores, and gate hotstring expansion, the
+  clipboard-number call/SMS-action flow, package manager, speed dial, and
+  SMS default-text settings on it (all-or-nothing, per project-owner
+  decision) — while leaving telephony registration/linking/event-polling
+  and the Help/Over pages unaffected.
+- [x] Implement the finalized "hide, don't dim" behavior per the mockup:
+  on Overzicht, render only the banner and the registration card while the
+  readiness flag is false (Belactie/Tekstvervanging/Gebruik not shown at
+  all); on Telefonie/Hotstrings/Instellingen, render only the banner plus a
+  short message (no list, no editor, no save button of any kind).
+- [x] Drive **both** sidebar status dots from the combined readiness flag,
+  not only their own setting — `RefreshSidebarStatuses()` sets
+  "Telefonie:" from `CallAction` and "Tekst vervangen:" from
+  `State["TextReplacement"]` the same way, so both currently risk showing
+  a stale/default green-or-red state while degraded rather than "Laden…".
+  Registration itself stays correctly visible in the Overzicht card
+  regardless — only these two sidebar dots need the neutral state.
+- [x] Show a one-off `ShowNotification()` toast when a clipboard phone
+  number is recognized while degraded mode is active, rather than
+  suspending the call/SMS-action flow silently.
+- [x] Disable the tray menu's "Tekstvervanging" checkbox item during
+  degraded mode (and audit the rest of the tray menu for any other item
+  that reads/writes `State` the same direct way), so a toggle made there
+  on a not-yet-loaded default can't be silently overwritten once the real
+  value loads. The audit found a second item needing the same gate: the
+  "Belactie" submenu (`SetTrayCallAction()`) writes `State["CallAction"]`
+  and calls `SaveAppSettings()` exactly like `ToggleTraySetting()` does —
+  both are now disabled while degraded.
+- [x] Design and implement a persistent (not auto-dismissing) in-GUI
+  banner for degraded mode, distinct from the existing transient
+  `ShowNotification()` toast, that clears automatically once the combined
+  readiness flag becomes true and the now-unblocked page refreshes. Match
+  the mockup's banner style (warning-colored, left accent bar, spinner)
+  as a starting point, re-verified on Windows. Implemented as a plain
+  warning-colored bar with a left accent, without the mockup's animated
+  spinner: a Segoe MDL2 icon glyph mixed into the same `AddText` string as
+  regular text does not render as an icon without `AddFlatButton()`'s
+  custom-draw machinery, and a dedicated animation timer for one static
+  status bar wasn't judged worth the added complexity.
+- [x] Update `docs/DECISIONS.md` and `docs/PROJECT_CONTEXT.md` §4.7.
+  Also updated `docs/ARCHITECTURE.md` §5/§7.4/§13/§14.1 (not originally
+  listed here, but the auto-execute sequence and user-data architecture
+  sections were now stale) and README's Telemetrie section (the installed
+  counters' read-confirm-before-write behavior changed, even though the
+  payload fields themselves did not — see `docs/DECISIONS.md` D-063).
+- [x] Update the README changelog; assess whether the telemetry
+  documentation needs changes (the payload/fields themselves should not
+  change, only when/how reliably the counters are read). Assessed: fields
+  unchanged, reliability behavior changed and is now documented (see above).
+- [ ] **Last step, against the finished build:** validate on the managed
+  Windows autostart path (not an interactive launch) that the retry/probe/
+  degraded-mode behavior actually engages and recovers correctly. Don't
+  wait for the original race to spontaneously recur — deliberately simulate
+  delayed storage (e.g. briefly deny/delay access to the profile folder or
+  the specific JSON files at the moment autostart fires) so this can be
+  exercised and re-tested on demand, and capture a standard log showing the
+  fixed behavior for the record. Also specifically exercise: page
+  navigation while degraded, the degraded-to-ready transition while a
+  gated page is the current one, and the Instellingen SMS-field refresh —
+  the parts of `docs/DECISIONS.md` D-064 flagged as the highest-risk and
+  least-proven-by-source-review-alone.
+
+This changes `DocBot.ahk`/`Telemetry.ahk` behavior. Implement on a dedicated
+feature/fix branch from the then-current `develop`, update the
+branch-specific `AppVersion` in every commit that changes `DocBot.ahk`, and
+validate on the managed Windows workplace before merging.
 
 ---
 

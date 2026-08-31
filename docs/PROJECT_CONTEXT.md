@@ -168,7 +168,9 @@ Debug logging lives under LocalAppData, not the Documents profile.
 
 ### 4.7 OneDrive / storage behavior
 
-A real production issue occurred because one user's Documents/OneDrive location was not reliably writable at startup. The first attempted fix added a broad startup writeability gate. That proved too aggressive and was later removed.
+A real production issue occurred because one user's Documents/OneDrive location was not reliably writable at startup. The first attempted fix added a broad startup writeability gate. That proved too aggressive and was later removed (`docs/DECISIONS.md` D-026).
+
+A second, related production issue occurred (2026-08-28): DocBot started via autostart before OneDrive had fully mounted. Because only the telemetry installation ID had a retry strategy at the time, every other startup loader (settings, hotstrings, package settings, speed dial, SMS default texts) permanently ran the rest of that session on defaults after one failed attempt, and `InitializeUserStorage()` could hard-exit the app entirely if preparing a not-yet-existing profile folder failed under the same race. Fixed by generalizing the installation-ID retry pattern to all of these (`docs/DECISIONS.md` D-063) and making the previously-silent failure visible instead of silently wrong (`docs/DECISIONS.md` D-064) — see `docs/ARCHITECTURE.md` §7.4 for the mechanism.
 
 Current intended behavior:
 
@@ -179,7 +181,21 @@ Current intended behavior:
   launch itself and showed the user an intrusive security dialog on every
   startup, for a best-effort optimization that was never load-bearing;
 - each actual write path keeps focused error handling;
-- telemetry installation-ID creation has its own retry strategy when persistence is temporarily unavailable.
+- every startup storage loader (user-data folder, settings, hotstrings,
+  package settings, speed dial, SMS default texts) shares one background
+  retry timer, mirroring telemetry installation-ID creation's existing
+  retry strategy — not five-plus independent ones, but each loader's own
+  diagnosis stays independent (`docs/DECISIONS.md` D-063);
+- whether a not-yet-existing profile folder means a genuine first run or
+  OneDrive just isn't mounted yet is resolved with a real write-probe
+  (create a temporary folder, see if it can be written), never assumed
+  from a single existence check, and a failure here no longer prevents
+  DocBot from starting (`docs/DECISIONS.md` D-063);
+- while any of these loaders has not yet succeeded, the affected
+  functionality is visibly and genuinely unavailable (a persistent banner,
+  hidden — not disabled — content, a neutral sidebar status), not silently
+  running on defaults; telephony registration/linking is the one exception
+  and keeps working throughout (`docs/DECISIONS.md` D-064).
 
 ### 4.8 Telemetry and privacy
 
@@ -194,7 +210,13 @@ If enabled, the current payload includes:
 - started/last-seen timestamps;
 - phone-linked and hotstrings-enabled status;
 - cumulative phone-action count;
-- cumulative long/multiline-hotstring count.
+- cumulative long/multiline-hotstring count;
+- cumulative SMS-action count.
+
+The three cumulative counters share the same read-confirm-before-write
+retry discipline as the installation ID (`docs/DECISIONS.md` D-063): a
+failed read no longer silently defaults to `0` and risks a later write
+overwriting the real cumulative value.
 
 It deliberately does **not** include computer name, called telephone numbers, hotstring triggers, replacement text, package content, or clipboard content.
 
