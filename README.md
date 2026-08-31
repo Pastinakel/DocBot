@@ -498,37 +498,30 @@ Changelog
 ---------
 
 ### 2.4 — In ontwikkeling
-- Overzicht toont bij het opstarten soms een gele tip die wijst op een nog
-  ongebruikte functie: telefonie koppelen, hotstrings aanmaken of
-  standaardteksten (sms) invoeren, plus een tip over het sluiten van DocBot
-  naar het systeemvak (die laatste vervangt de vaste tekst die eerder altijd
-  onderaan Overzicht stond; de identieke tekst op Telefonie is simpelweg
-  verwijderd). Per opstartsessie wordt willekeurig hooguit één tip getoond,
-  en alleen als de bijbehorende teller nog op 0 staat (of, voor de
-  systeemvak-tip, altijd) én de tip niet te recent al getoond is: de eerste
-  5 keer met minstens 10 dagen ertussen, daarna nog steeds af en toe, met
-  minstens 6 maanden ertussen in plaats van definitief te stoppen. De tip
-  blijft zichtbaar tot de teller verandert of de gebruiker op het kruisje
-  klikt.
+- Overzicht toont soms bij het opstarten een gele tip die wijst op een nog
+  ongebruikte functie: telefonie koppelen, hotstrings aanmaken, sms-
+  standaardteksten instellen, of het sluiten van DocBot naar het systeemvak
+  (deze laatste vervangt de vaste tekst die eerder onderaan Overzicht en op
+  Telefonie stond). Er verschijnt hooguit één tip per opstartsessie, steeds
+  minder vaak naarmate hij al vaker is getoond, en hij blijft zichtbaar tot de
+  gebruiker hem sluit of de bijbehorende functie voortaan gebruikt.
 - De privacyhint op Tekstvervanging ("Zet geen patiëntgegevens in
   hotstrings...") heeft dezelfde gele stijl gekregen als de nieuwe
   onboardingtips, maar blijft — anders dan die tips — altijd zichtbaar en
   heeft geen sluitkruisje: het is een blijvende regel, geen aan/uit-tip.
-- DocBot herkent nu actief of Documents/OneDrive bij het opstarten (bijvoorbeeld
-  via autostart, vóórdat OneDrive volledig gemount is) nog niet beschikbaar is,
-  in plaats van dat één mislukte poging voor de rest van de sessie stilzwijgend
-  op standaardwaarden blijft draaien. Instellingen, hotstrings, pakketkeuzes,
+- DocBot herkent nu actief wanneer Documents/OneDrive bij het opstarten
+  (bijvoorbeeld via autostart, vóórdat OneDrive volledig gemount is) nog niet
+  beschikbaar is, in plaats van daarna de hele sessie stilzwijgend op
+  standaardwaarden te draaien. Instellingen, hotstrings, pakketkeuzes,
   snelkiesnummers en sms-standaardteksten worden op de achtergrond automatisch
-  opnieuw geprobeerd totdat het lukt (`docs/DECISIONS.md` D-063). Zolang dat nog
-  niet is gelukt, toont DocBot dit duidelijk: een blijvende melding in plaats
-  van een vanzelf verdwijnende, en de bijbehorende functionaliteit (hotstrings,
-  pakketbeheer, snelkiesnummers, sms-instellingen, en wat er met een herkend
-  telefoonnummer gebeurt) is dan echt niet beschikbaar in plaats van
-  onopgemerkt onjuist. Telefonie-koppeling zelf blijft altijd gewoon werken
-  (`docs/DECISIONS.md` D-064). Ook het allereerste opstarten — wanneer de
-  gebruikersmap nog moet worden aangemaakt — wordt niet langer verward met
-  "opslag tijdelijk niet beschikbaar": DocBot test dit voortaan actief met een
-  schrijfpoging in plaats van dat blind aan te nemen.
+  opnieuw geprobeerd totdat het lukt. Zolang dat nog niet is gelukt, toont
+  DocBot een blijvende melding en is de bijbehorende functionaliteit
+  (hotstrings, pakketbeheer, snelkiesnummers, sms-instellingen en de
+  afhandeling van een herkend telefoonnummer) echt niet beschikbaar in plaats
+  van onopgemerkt onjuist — telefonie-koppeling zelf blijft altijd werken. Ook
+  het allereerste opstarten wordt niet langer verward met tijdelijk
+  onbeschikbare opslag: DocBot test dit voortaan actief met een schrijfpoging
+  (`docs/DECISIONS.md` D-063/D-064).
 - Overzicht toont nu ook een derde gebruiksteller, "SMS-acties", naast
   "Belacties" en "Lange hotstrings" op de Gebruik-kaart. De teller telt
   alleen geslaagde sms-acties (de sms-pagina/-tab gevonden en het
