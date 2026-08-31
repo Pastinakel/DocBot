@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-autostart-storage.4"
+global AppVersion := "2.4-autostart-storage.5"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -1847,15 +1847,15 @@ ShowOnlyWhileDegraded(ctrl) {
 AddDegradedBanner(pageKey, y, message) {
     global MainGui
 
-    surface := MainGui.AddText("x236 y" y " w736 h38 Background FDF0DE", "")
+    surface := MainGui.AddText("x236 y" y " w736 h38 BackgroundFDF0DE", "")
     ShowOnlyWhileDegraded(surface)
     AddPageControl(pageKey, surface)
 
-    accent := MainGui.AddText("x236 y" y " w4 h38 Background F08200", "")
+    accent := MainGui.AddText("x236 y" y " w4 h38 BackgroundF08200", "")
     ShowOnlyWhileDegraded(accent)
     AddPageControl(pageKey, accent)
 
-    body := MainGui.AddText("x252 y" (y + 11) " w704 h20 Background FDF0DE", message)
+    body := MainGui.AddText("x252 y" (y + 11) " w704 h20 BackgroundFDF0DE", message)
     body.SetFont("s10 c5C3600", "Segoe UI")
     ShowOnlyWhileDegraded(body)
     AddPageControl(pageKey, body)
@@ -8879,8 +8879,10 @@ MigrateLegacyUserData() {
 ; PruneAbandonedUserStorageProbeDirs() (zie diagnostiek-sectie), voor het
 ; geval DocBot crasht tussen aanmaken en hernoemen/opruimen.
 UserStorageProbe_TryBootstrap() {
+    ; AutoHotkey kent geen ingebouwde A_PID-variabele (in v1 noch v2); het
+    ; huidige proces-ID moet via DllCall worden opgevraagd.
     probeDir := A_MyDocuments "\DocBot_userdata_probe_"
-        FormatTime(A_Now, "yyyyMMdd_HHmmss") "_" A_PID
+        FormatTime(A_Now, "yyyyMMdd_HHmmss") "_" DllCall("GetCurrentProcessId")
 
     try {
         DirCreate(probeDir)

@@ -2475,6 +2475,16 @@ background retry for this class of problem.
 - See D-064 for how the user-visible side of this (a persistent banner,
   hidden functionality) was designed on top of this retry mechanism.
 
+**Validation note (2026-08-28):** an interpreted Windows debug run of
+`UserStorageProbe_TryBootstrap()` immediately caught, via `#Warn`'s
+"variable appears to never be assigned a value" diagnostic, that `A_PID`
+is not a real AutoHotkey built-in variable (in v1 or v2) — the probe
+folder's uniqueness suffix was silently evaluating to empty instead of the
+current process ID. Fixed with `DllCall("GetCurrentProcessId")`, the
+standard AHK idiom for this. Left as a concrete example, in this project's
+own record, of exactly the kind of mistake D-037 exists to catch — source
+review alone did not.
+
 ---
 
 ## D-064 — Degraded mode: hide unready content behind a persistent banner, all-or-nothing across the five storage loaders
@@ -2576,3 +2586,13 @@ itself.
   page navigation while degraded, the transition from degraded to ready
   while a gated page is the current one, and the Instellingen SMS-field
   refresh all need real validation before this ships.
+
+**Validation note (2026-08-28):** an interpreted Windows run immediately
+threw "Invalid option" on `AddDegradedBanner()`'s three `AddText()` calls.
+Cause: `"Background FDF0DE"`/`"Background F08200"` had a literal space
+between the `Background` option keyword and the hex color, which AHK v2
+parses as two separate unrecognized tokens — every other `Background`
+usage in this codebase reaches the same string via concatenation
+(`"Background" C["Window"]`), which produces no space. Fixed to
+`"BackgroundFDF0DE"`/`"BackgroundF08200"`. A second concrete example of
+what D-037 validation is for.
