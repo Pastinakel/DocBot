@@ -505,10 +505,11 @@ Changelog
   onderaan Overzicht stond; de identieke tekst op Telefonie is simpelweg
   verwijderd). Per opstartsessie wordt willekeurig hooguit één tip getoond,
   en alleen als de bijbehorende teller nog op 0 staat (of, voor de
-  systeemvak-tip, altijd) én de tip niet in de afgelopen 10 dagen al
-  getoond is. De tip blijft zichtbaar tot de teller verandert of de
-  gebruiker op het kruisje klikt, en verschijnt in totaal maximaal 5 keer
-  per tip.
+  systeemvak-tip, altijd) én de tip niet te recent al getoond is: de eerste
+  5 keer met minstens 10 dagen ertussen, daarna nog steeds af en toe, met
+  minstens 6 maanden ertussen in plaats van definitief te stoppen. De tip
+  blijft zichtbaar tot de teller verandert of de gebruiker op het kruisje
+  klikt.
 - De privacyhint op Tekstvervanging ("Zet geen patiëntgegevens in
   hotstrings...") heeft dezelfde gele stijl gekregen als de nieuwe
   onboardingtips, maar blijft — anders dan die tips — altijd zichtbaar en

@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-onboarding-tips.5"
+global AppVersion := "2.4-onboarding-tips.6"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -231,6 +231,10 @@ global OverviewSmsActionsText := 0
 ; EvaluateStartupTip() en de bijbehorende opslagfuncties.
 global TipRepeatCapCount := 5
 global TipMinIntervalDays := 10
+; Ná TipRepeatCapCount keer tonen stopt een tip niet definitief: hij blijft
+; daarna nog steeds geschikt, maar met dit veel ruimere interval (in plaats
+; van TipMinIntervalDays) tussen twee keer tonen.
+global TipLongTermIntervalMonths := 6
 global TipBannerSelected := false   ; deze sessie al geloot? (voorkomt herloten)
 global TipBannerActive := false     ; hoort de balk nu zichtbaar te zijn?
 global CurrentTipKey := ""
@@ -1971,9 +1975,11 @@ SetCueText(editCtrl, text) {
 ; Eén tip per sessie, willekeurig gekozen uit alle op dat moment geschikte
 ; kandidaten uit TipDefinitions (globals-blok bovenaan), getoond in de gele
 ; hint-balk op Overzicht (TipBannerSurface/-Accent/-Link/-CloseButton,
-; opgebouwd in BuildMainGui()). "Geschikt" = de conditie is waar, de tip is
-; nog geen TipRepeatCapCount keer getoond, en de laatste keer tonen (indien
-; van toepassing) is minstens TipMinIntervalDays dagen geleden.
+; opgebouwd in BuildMainGui()). "Geschikt" = de conditie is waar, én de
+; laatste keer tonen (indien van toepassing) is lang genoeg geleden: minstens
+; TipMinIntervalDays dagen zolang de tip nog geen TipRepeatCapCount keer is
+; getoond, daarna minstens TipLongTermIntervalMonths maanden — een tip stopt
+; dus niet definitief na de cap, maar gaat over op een veel lagere frequentie.
 
 TipConditionPhone() {
     return Telemetry_GetPhoneActions() = 0
@@ -2051,20 +2057,25 @@ UpdateTipBannerContent(tipDef) {
 ; niets.
 EvaluateStartupTip() {
     global StorageAllReady, TipBannerSelected, TipDefinitions
-    global TipRepeatCapCount, TipMinIntervalDays
+    global TipRepeatCapCount, TipMinIntervalDays, TipLongTermIntervalMonths
     global TipBannerActive, CurrentTipKey
 
     if !StorageAllReady || TipBannerSelected
         return
     TipBannerSelected := true
 
-    cutoff := DateAdd(A_Now, -TipMinIntervalDays, "Days")
+    ; Twee mogelijke minimumtussenpozen: het korte interval zolang een tip
+    ; nog geen TipRepeatCapCount keer is getoond, en het veel langere
+    ; interval erna — een tip stopt dus nooit definitief, hij gaat na de cap
+    ; alleen over op een veel lagere frequentie.
+    shortCutoff := DateAdd(A_Now, -TipMinIntervalDays, "Days")
+    longCutoff := DateAdd(A_Now, -TipLongTermIntervalMonths, "Months")
     eligible := []
     for tipDef in TipDefinitions {
         if !tipDef["Condition"].Call()
             continue
-        if Tips_ReadShownCount(tipDef["Key"]) >= TipRepeatCapCount
-            continue
+        shownCount := Tips_ReadShownCount(tipDef["Key"])
+        cutoff := (shownCount >= TipRepeatCapCount) ? longCutoff : shortCutoff
         lastShown := Tips_ReadLastShownAt(tipDef["Key"])
         if lastShown != "" && lastShown >= cutoff
             continue
@@ -2116,7 +2127,8 @@ ApplyTipBannerVisibility() {
 ; Klikhandler van het sluitkruisje. ShownCount/LastShownAt zijn al
 ; geschreven op het moment van tonen (EvaluateStartupTip()); vroegtijdig
 ; sluiten verandert daar niets aan, dus telt gewoon mee in de bestaande
-; 5-keer/10-dagen-regels na een herstart.
+; interval-regels (kort tot de cap, daarna het lange interval) na een
+; herstart.
 DismissTipBanner(*) {
     global TipBannerActive
     TipBannerActive := false
