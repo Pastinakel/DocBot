@@ -499,64 +499,49 @@ Changelog
 
 ### 2.4 — In ontwikkeling
 - Overzicht toont soms bij het opstarten een gele tip die wijst op een nog
-  ongebruikte functie: telefonie koppelen, hotstrings aanmaken, sms-
-  standaardteksten instellen, of het sluiten van DocBot naar het systeemvak
-  (deze laatste vervangt de vaste tekst die eerder onderaan Overzicht en op
-  Telefonie stond). Er verschijnt hooguit één tip per opstartsessie, steeds
-  minder vaak naarmate hij al vaker is getoond, en hij blijft zichtbaar tot de
-  gebruiker hem sluit of de bijbehorende functie voortaan gebruikt.
+  ongebruikte functie, zoals telefonie koppelen of hotstrings aanmaken, of
+  over het sluiten van DocBot naar het systeemvak. Hooguit één tip per
+  opstartsessie, steeds minder vaak naarmate hij al is getoond, tot de
+  gebruiker de functie gebruikt of de tip zelf sluit.
 - De privacyhint op Tekstvervanging ("Zet geen patiëntgegevens in
   hotstrings...") heeft dezelfde gele stijl gekregen als de nieuwe
   onboardingtips, maar blijft — anders dan die tips — altijd zichtbaar en
   heeft geen sluitkruisje: het is een blijvende regel, geen aan/uit-tip.
 - DocBot herkent nu actief wanneer Documents/OneDrive bij het opstarten
-  (bijvoorbeeld via autostart, vóórdat OneDrive volledig gemount is) nog niet
-  beschikbaar is, in plaats van daarna de hele sessie stilzwijgend op
-  standaardwaarden te draaien. Instellingen, hotstrings, pakketkeuzes,
-  snelkiesnummers en sms-standaardteksten worden op de achtergrond automatisch
-  opnieuw geprobeerd totdat het lukt. Zolang dat nog niet is gelukt, toont
-  DocBot een blijvende melding en is de bijbehorende functionaliteit
-  (hotstrings, pakketbeheer, snelkiesnummers, sms-instellingen en de
-  afhandeling van een herkend telefoonnummer) echt niet beschikbaar in plaats
-  van onopgemerkt onjuist — telefonie-koppeling zelf blijft altijd werken. Ook
-  het allereerste opstarten wordt niet langer verward met tijdelijk
-  onbeschikbare opslag: DocBot test dit voortaan actief met een schrijfpoging
-  (`docs/DECISIONS.md` D-063/D-064).
-- Overzicht toont nu ook een derde gebruiksteller, "SMS-acties", naast
-  "Belacties" en "Lange hotstrings" op de Gebruik-kaart. De teller telt
-  alleen geslaagde sms-acties (de sms-pagina/-tab gevonden en het
-  telefoonnummerveld gevuld), niet elke keer dat de sms-optie wordt
-  aangeboden. De teller wordt ook meegestuurd in de telemetrie-heartbeat als
-  `smsActions`, naast de bestaande `phoneActions`/`hotstringActions` — zie
-  de sectie Telemetrie hierboven.
+  (bijvoorbeeld via autostart) nog niet beschikbaar is, in plaats van de
+  sessie stil op standaardwaarden te laten draaien. Instellingen,
+  hotstrings, pakketten, snelkiesnummers en sms-teksten worden op de
+  achtergrond automatisch herprobeerd tot het lukt. Zolang dat niet is
+  gelukt toont DocBot een blijvende melding en is die functionaliteit
+  echt niet beschikbaar in plaats van onopgemerkt onjuist; telefonie-
+  koppeling blijft altijd werken (`docs/DECISIONS.md` D-063/D-064).
+- Overzicht toont nu een derde gebruiksteller, "SMS-acties", naast
+  "Belacties" en "Lange hotstrings". Geteld wordt alleen een geslaagde
+  sms-actie (telefoonnummer daadwerkelijk ingevuld), niet elke aangeboden
+  sms-optie. De teller wordt ook meegestuurd in de telemetrie-heartbeat,
+  net als de bestaande twee tellers — zie Telemetrie hierboven.
 - Een gebundeld pakket hoeft geen `itemCount`-veld meer te bevatten dat
-  precies overeenkomt met het aantal items. Dit optionele
-  manifestveld moest tot nu toe handmatig in sync worden gehouden en kon een
-  verder geldig pakket laten weigeren zodra dat vergeten werd; `items.Length`
-  was al de enige echte bron van waarheid. De consistentiecontrole is uit
-  `LoadBundledPackageFile()` verwijderd en het veld is uit alle meegeleverde
-  `packages/*.json`-bestanden gehaald.
+  precies overeenkomt met het aantal items. Dit moest tot nu toe handmatig
+  in sync worden gehouden en kon een verder geldig pakket laten weigeren
+  zodra dat vergeten werd — het daadwerkelijke aantal items was al de
+  enige echte bron van waarheid.
 - `packages/anest.json` bevatte enkele meerregelige `replacement`-teksten met
   letterlijke regeleinden binnen een JSON-tekenreeks — geldig genoeg voor de
   lenient parser die DocBot gebruikt, maar geen geldige JSON volgens de spec
   en onleesbaar voor strikte JSON-tools. Die regeleinden zijn vervangen door
   `\n`-escapes; de daadwerkelijke vervangingstekst (en daarmee het
   DocBot-gedrag) is ongewijzigd.
-- De opschoning van het standaardlog (`PruneExpiredDebugLogFile()`) herkent
-  voortaan uitputtend welk formaat een regel heeft: het huidige formaat, het
-  bekende oude formaat van vóór commit `5f72613`, of geen van beide. Een
-  regel die bij geen enkel bekend formaat past, vervalt voortaan
-  onvoorwaardelijk in plaats van voor altijd te worden bewaard — dit sluit
-  het scenario waarbij een oudere of teruggezette build ooit niet-geschoonde
-  inhoud onder een al geldig ogende "v2"-kopregel zou kunnen wegschrijven
-  zonder dat een latere opstart dat opmerkt (`docs/DECISIONS.md` D-062).
-- `DocBot.exe --selftest` schrijft `%TEMP%\docbot-selftest-results.txt`
-  niet langer met een UTF-8 BOM. Die BOM veroorzaakte geen echte testfout
-  (de 32/32-telling was altijd al correct), maar zorgde er wel voor dat de
-  eerste regel van het bestand er in een console zonder UTF-8-codepage
-  onleesbaar/verminkt uitzag zodra dat bestand met `type` werd getoond —
-  onder meer nu `Build-EPD_Machine.bat` dat automatisch na het compileren
-  doet.
+- De opschoning van het standaardlog herkent nu uitputtend welk formaat
+  een regel heeft: het huidige formaat, een bekend ouder formaat, of geen
+  van beide. Een regel met een onbekend formaat vervalt voortaan
+  onvoorwaardelijk in plaats van voor altijd bewaard te blijven, zodat
+  niet-geschoonde inhoud niet ongemerkt kan blijven staan
+  (`docs/DECISIONS.md` D-062).
+- `DocBot.exe --selftest` schrijft de testresultaten niet langer met een
+  UTF-8 BOM. Dit veroorzaakte geen echte testfout, maar liet de eerste
+  regel er in een console zonder UTF-8-codepage onleesbaar uitzien
+  wanneer die werd getoond, zoals `Build-EPD_Machine.bat` nu automatisch
+  doet na het compileren.
 - `DocBot.exe --selftest` dekt nu ook de telefoonnummernormalisatie
   (`NormalizePhoneNumber` en de interne/externe varianten,
   `NormalizeSmsPhoneNumber`): 4-cijferige interne nummers, externe
