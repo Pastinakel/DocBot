@@ -2351,8 +2351,9 @@ whole-file header re-scan was added to `InitializeDiagnosticLogging()`.
 
 ## D-063 — Generalize the telemetry installation-ID retry pattern to the other startup storage loaders; replace the first-run heuristic with a write-probe
 
-**Status:** Accepted (implementation not yet functionally validated on
-Windows — see D-037)
+**Status:** Accepted, implemented, and functionally validated on Windows
+(see the validation notes below; merged into `develop` via PR #63,
+2026-08-31)
 
 Filed from a real user standard log (2026-08-28, `docs/TODO.md` P0
 "Autostart race"): DocBot started via autostart while Documents/OneDrive
@@ -2489,8 +2490,12 @@ review alone did not.
 
 ## D-064 — Degraded mode: hide unready content behind a persistent banner, all-or-nothing across the five storage loaders
 
-**Status:** Accepted (implementation not yet functionally validated on
-Windows — see D-037)
+**Status:** Accepted, implemented, and functionally validated on Windows
+(see the validation notes below; merged into `develop` via PR #63,
+2026-08-31). The validation surfaced two real gaps not caught by source
+review alone — the Hotstrings editor form and the tray speed-dial list
+both stayed reachable during degraded mode — both fixed before merge; see
+the validation notes.
 
 Companion to D-063: retrying storage loaders in the background closes the
 "runs forever on stale defaults" gap, but retries can still take minutes,

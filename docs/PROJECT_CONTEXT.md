@@ -64,6 +64,12 @@ Repository state checked on 2026-08-25:
   merged since.
 - `feature/extended-logging` is no longer the branch to test or integrate;
   its work shipped as part of 2.2.
+- The autostart-race storage retry/degraded-mode work
+  (`docs/DECISIONS.md` D-063/D-064) merged into `develop` via PR #63
+  (2026-08-31, `claude/docbot-autostart-telemetry-s8bhu8`), functionally
+  validated on Windows in the same pass — see `docs/TODO.md`'s P0
+  "Autostart race" section for what was tested and the two regressions it
+  caught and fixed. Not yet in a stable release; still on `develop` only.
 - See `docs/TODO.md` for the current backlog; the "P0 — Release plan:
   finalize stable DocBot 2.3" section is now a completed record, not an
   open plan.

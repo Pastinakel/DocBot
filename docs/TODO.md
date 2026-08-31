@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-28. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-08-31. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -13,7 +13,7 @@ _Last updated: 2026-08-28. This file is a handover backlog, not a promise that e
 
 ---
 
-## P0 — Autostart race: user-data storage not yet available at DocBot startup
+## P0 — Autostart race: user-data storage not yet available at DocBot startup (implemented and merged into `develop`; not yet in a stable release)
 
 Filed 2026-08-28 from a user-supplied standard log
 (`docs/uploads/0dbac3d9-standaardlog.txt`, redacted). DocBot was started via
@@ -327,14 +327,16 @@ in full).
 - Record the generalized retry approach in `docs/DECISIONS.md` (mirroring
   D-027/D-028) and update `docs/PROJECT_CONTEXT.md` §4.7 once implemented.
 
-### Implementation status (2026-08-28)
+### Implementation status (2026-08-31)
 
 Implemented on `claude/docbot-autostart-telemetry-s8bhu8`
-(`AppVersion 2.4-autostart-storage.1` through `.4`), in four steps/commits
-mirroring the scope below. Recorded as `docs/DECISIONS.md` D-063 (shared
-retry + write-probe) and D-064 (degraded-mode UI). **Not yet functionally
-validated on Windows (D-037)** — the last scope item below is still open
-and is the remaining blocker before this can be merged.
+(`AppVersion 2.4-autostart-storage.1` through `.7`) and merged into
+`develop` via PR #63 (2026-08-31; the PR was initially opened against
+`main` by mistake and retargeted to `develop` before merging, matching the
+normal branch workflow). Recorded as `docs/DECISIONS.md` D-063 (shared
+retry + write-probe) and D-064 (degraded-mode UI), both now marked
+functionally validated on Windows. The `.5`/`.6`/`.7` commits are fixes
+from that validation pass, not new scope — see the last scope item below.
 
 ### Scope
 
@@ -412,18 +414,48 @@ and is the remaining blocker before this can be merged.
   documentation needs changes (the payload/fields themselves should not
   change, only when/how reliably the counters are read). Assessed: fields
   unchanged, reliability behavior changed and is now documented (see above).
-- [ ] **Last step, against the finished build:** validate on the managed
-  Windows autostart path (not an interactive launch) that the retry/probe/
-  degraded-mode behavior actually engages and recovers correctly. Don't
-  wait for the original race to spontaneously recur — deliberately simulate
-  delayed storage (e.g. briefly deny/delay access to the profile folder or
-  the specific JSON files at the moment autostart fires) so this can be
-  exercised and re-tested on demand, and capture a standard log showing the
-  fixed behavior for the record. Also specifically exercise: page
-  navigation while degraded, the degraded-to-ready transition while a
-  gated page is the current one, and the Instellingen SMS-field refresh —
-  the parts of `docs/DECISIONS.md` D-064 flagged as the highest-risk and
-  least-proven-by-source-review-alone.
+- [x] **Last step, against the finished build:** validated on Windows
+  (2026-08-31) by deliberately simulating delayed/denied storage on demand,
+  exactly as proposed above, rather than waiting for the original autostart
+  race to recur naturally:
+  - `FileShare 'None'` exclusive read locks (via a short PowerShell script)
+    held across two background retry ticks on all five already-existing
+    `DocBot-test`/`DocBot-dev` profile files, confirming the retry cadence
+    (first background attempt at ~60s, then every ~60s through the fourth,
+    then hourly) and the expected non-blocking `ShowNotification()` toast
+    per failed retry (`ReportStorageError()`, D-063) — not a MsgBox, and
+    each retry reported independently as designed.
+  - `icacls ... /deny "user:(WD,AD)"` on `Documents` itself (no profile
+    folder yet), confirming `UserStorageProbe_TryBootstrap()`'s write-probe
+    retries without crashing or hard-exiting, and recovers cleanly once the
+    deny is lifted (`icacls ... /remove:d`).
+  - Page navigation to Hotstrings while degraded, and the degraded-to-ready
+    recovery transition, were both explicitly exercised this way and
+    **found two real regressions**, not caught by source review alone:
+    `ApplyHotReplacementEditorState()` re-showed the Hotstrings editor form
+    (input field + expand button) after `ShowPage()`'s degraded-gate loop
+    had already hidden it, because it recomputed visibility from
+    `CurrentPage` alone with no `StorageAllReady` check — the save button
+    itself stayed correctly hidden, so no partially-loaded state could
+    actually be written, but the visible field contradicted the banner.
+    Separately, `BuildTrayMenu()`'s "Snelkiesnummers" quick-call section
+    was never gated on `StorageAllReady` at all, so the tray menu showed
+    the code-default speed-dial numbers as clickable during degraded mode
+    and a click placed a real call (`CallSpeedDialEntry()` →
+    `IPT_callNumber()`) on unconfirmed data — more consequential than the
+    first finding since it reaches a real side effect, not just a visible
+    inconsistency. Both fixed and documented as validation notes on D-064
+    before merging (`AppVersion 2.4-autostart-storage.6`/`.7`).
+  - **Residual gap, not blocking:** the Instellingen SMS-default-text-field
+    refresh path (`RefreshInstellingenValuesAfterReady()` /
+    `ApplySmsDefaultTextFieldState()`) was not separately exercised in this
+    round, and no `debug.log` excerpt from this validation pass was
+    captured/attached for the record. Neither reopens this item — the core
+    race, retry cadence, degraded-mode gating, and recovery are now
+    confirmed working end-to-end with two real regressions caught and
+    fixed — but pick up the SMS-field path opportunistically if it is ever
+    touched again, and prefer capturing a `debug.log` excerpt the next time
+    this condition is deliberately reproduced.
 
 This changes `DocBot.ahk`/`Telemetry.ahk` behavior. Implement on a dedicated
 feature/fix branch from the then-current `develop`, update the
