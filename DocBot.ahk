@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-autostart-storage.5"
+global AppVersion := "2.4-autostart-storage.6"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -5975,11 +5975,16 @@ SetHotReplacementEditorExpanded(expanded) {
     ApplyHotReplacementEditorState()
 }
 ApplyHotReplacementEditorState() {
-    global CurrentPage, HotReplacementExpanded, HotReplacementSingleGroup, HotReplacementMultiGroup
+    global CurrentPage, StorageAllReady, HotReplacementExpanded, HotReplacementSingleGroup, HotReplacementMultiGroup
     global HotReplacementExpandButton, HotReplacementCollapseButton, HotEditorCompactCard, HotEditorExpandedCard, HotSaveButton
     if !IsObject(HotReplacementSingleGroup)
         return
-    visible := CurrentPage = "tekstvervanging"
+    ; StorageAllReady moet hier ook gelden: dit overschrijft anders de
+    ; hide-while-degraded-gate die ShowPage() vlak hiervoor al toepaste op
+    ; dezelfde besturingselementen (zie MarkDegradedGateStart/End rond de
+    ; Hotstrings-editorkaart) en toont het formulier weer terwijl opslag nog
+    ; niet klaar is — in strijd met docs/DECISIONS.md D-064.
+    visible := CurrentPage = "tekstvervanging" && StorageAllReady
     SetControlGroupVisible(HotReplacementSingleGroup, visible && !HotReplacementExpanded)
     SetControlGroupVisible(HotReplacementMultiGroup, visible && HotReplacementExpanded)
     HotEditorCompactCard.Opt(visible && !HotReplacementExpanded ? "-Hidden" : "+Hidden")

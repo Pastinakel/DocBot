@@ -2596,3 +2596,30 @@ usage in this codebase reaches the same string via concatenation
 (`"Background" C["Window"]`), which produces no space. Fixed to
 `"BackgroundFDF0DE"`/`"BackgroundF08200"`. A second concrete example of
 what D-037 validation is for.
+
+**Validation note (2026-08-31):** exactly the "page navigation while
+degraded" gap flagged above as unvalidated turned out to hide a real bug.
+The user held exclusive read locks on all five `DocBot-test`/`DocBot-dev`
+profile files (via a PowerShell script opening them with `FileShare
+'None'`) across two background retry ticks, then navigated to Hotstrings
+while still degraded. The banner and hotstring list were correctly hidden,
+but the "Hotstring bewerken" form (edit field + expand button) stayed
+visible and interactive. Cause: `ApplyHotReplacementEditorState()` — called
+unconditionally at the end of `ShowPage()`, right after the
+`_degradedGate` loop that had just hidden the same controls — recomputed
+its own `visible` flag from `CurrentPage = "tekstvervanging"` alone, with
+no `StorageAllReady` check, and unhid `HotEditorCompactCard`/
+`HotEditorExpandedCard`, `HotReplacementSingleGroup`/`MultiGroup`, and the
+expand/collapse buttons regardless of degraded state. `HotSaveButton` is
+untouched by that function, so it stayed correctly hidden — the write path
+itself was never reachable, but the input field visibly contradicted the
+banner above it. Fixed by adding `StorageAllReady` to the `visible`
+condition. Confirmed no other function follows this same
+"recompute visibility from `CurrentPage` after `ShowPage()`'s gate loop
+already ran" pattern (`ApplySmsDefaultTextFieldState()`, the only other
+per-field visibility helper, only touches `.Enabled`/`.Value`/`.Text`, never
+`.Opt("-Hidden"/"+Hidden")`, so it cannot fight the gate the same way).
+The retry-triggered `ShowNotification()` toasts ("Het JSON-bestand kon niet
+worden geladen") on each failed background attempt are expected —
+`ReportStorageError()` intentionally reports every retry independently, per
+D-063 — not a bug.
