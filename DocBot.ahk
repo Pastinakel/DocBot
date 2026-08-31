@@ -248,19 +248,19 @@ global TipDefinitions := [
     Map(
         "Key", "Phone",
         "Condition", TipConditionPhone,
-        "Text", 'Tip: DocBot kan automatisch voor je bellen. Bekijk <a href="help">hier</a> hoe dat werkt.',
+        "Text", 'Tip: Bellen zonder nummer in te toetsen? DocBot doet dat voor je. Bekijk <a href="help">hier</a> hoe dat werkt.',
         "HelpHandler", OpenPhoneTipHelp
     ),
     Map(
         "Key", "Hotstrings",
         "Condition", TipConditionHotstrings,
-        "Text", 'Tip: DocBot kan standaardteksten voor je invoeren. Bekijk <a href="help">hier</a> hoe.',
+        "Text", 'Tip: DocBot kan standaardteksten voor je invoeren door Hotstrings te gebruiken. Bekijk <a href="help">hier</a> hoe.',
         "HelpHandler", OpenHotstringTipHelp
     ),
     Map(
         "Key", "Sms",
         "Condition", TipConditionSms,
-        "Text", 'Tip: DocBot kan sms sturen voor je automatiseren. Bekijk <a href="help">hier</a> hoe.',
+        "Text", 'Tip: SMS sturen zonder nummer in te voeren? DocBot kan dat. Bekijk <a href="help">hier</a> hoe.',
         "HelpHandler", OpenSmsTipHelp
     ),
     Map(
@@ -849,7 +849,7 @@ BuildMainGui() {
         "Hoe bel of sms ik vanuit een applicatie?",
         "Kies bij Belactie op de pagina Overzicht wat DocBot met een herkend nummer moet doen."
         "`r`n`r`nKopieer in de gebruikte applicatie het gewenste telefoonnummer. "
-        "DocBot herkent het nummer en voert de gekozen belactie uit."
+        "DocBot herkent het nummer en voert de gekozen belactie uit. Bij SMS kan DocBot ook een standaardtekst voor je klaarzetten."
         "`r`n`r`nIn HiX klik je linksboven op het pijltje naast het telefoonnummer van de patiënt "
         "en vervolgens op het getoonde telefoonnummer."
         "`r`n`r`nJe kunt kiezen voor niets doen, bellen na bevestiging, direct bellen of bij externe nummers kiezen tussen bellen en sms. "
