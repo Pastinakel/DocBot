@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-onboarding-tips.1"
+global AppVersion := "2.4-onboarding-tips.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -430,6 +430,8 @@ BuildMainGui() {
     global SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText
     global SpeedDialLV, SpeedDialEnabledCheck, SpeedDialNameEdit, SpeedDialNumberEdit
     global HelpSections, HotstringHelpSectionIndex
+    global TipPhoneHelpSectionIndex, TipSmsHelpSectionIndex, TipHotstringHelpSectionIndex
+    global TipBannerSurface, TipBannerAccent, TipBannerLink, TipBannerCloseButton
     global InstellingenAutoSaveCheck, InstellingenFilePathEdit, InstellingenSmsActionDropDown
     global InstellingenSmsDefaultTextEdit, InstellingenSmsDefaultTextHint
     global InstellingenPendingSmsDefaultTexts
