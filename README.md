@@ -498,6 +498,10 @@ Changelog
 ---------
 
 ### 2.4 — In ontwikkeling
+- De sidebar toont niet langer de titel "DocBot" en de ondertitel
+  "Telefonie voor de werkplek", maar het DocBot-logo, geschaald naar de
+  beschikbare ruimte zonder dat de menuknoppen eronder verschuiven. Laag op
+  het logo staat, in transparante letters, de slogan "een handje extra :)".
 - Overzicht toont soms bij het opstarten een gele tip die wijst op een nog
   ongebruikte functie, zoals telefonie koppelen of hotstrings aanmaken, of
   over het sluiten van DocBot naar het systeemvak. Hooguit één tip per
