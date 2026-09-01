@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.2"
+global AppVersion := "2.4-sidebar-logo.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -1808,10 +1808,23 @@ CreateToggleBitmap(isOn, primaryColor, offColor, surfaceColor) {
 ; binnen (width, height), met daaroverheen laag uitgelijnd en zo transparant
 ; mogelijk de slogan. surfaceColor is de sidebarkleur eromheen, zodat de
 ; bitmap naadloos aansluit op de rest van het paneel (zie CreateCardBitmap).
+; Elke Gdip*-aanroep hier geeft een statuscode terug in plaats van een
+; AHK-uitzondering te gooien bij een probleem; zonder controle tekent een
+; mislukte stap gewoon niets, stil, zonder spoor in debug.log. Deze helper
+; logt en gooit alsnog bij een niet-Ok status, zodat CreateSidebarBrandBitmap()
+; ofwel volledig lukt, ofwel duidelijk faalt (en BuildMainGui() terugvalt op
+; titel/subtitle) met de exacte GDI+-statuscode in debug.log.
+GdipCheck(status, stap) {
+    if status != 0 {
+        DebugLog("✕", "Sidebar-logo", stap " gaf status " status ".")
+        throw Error(stap " gaf GDI+-status " status ".")
+    }
+}
+
 CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, sloganText) {
     pBitmap := UiCreateBitmap(width, height, &graphics)
-    DllCall("gdiplus\GdipGraphicsClear", "ptr", graphics, "uint", UiArgb(surfaceColor))
-    DllCall("gdiplus\GdipSetInterpolationMode", "ptr", graphics, "int", 7) ; HighQualityBicubic
+    GdipCheck(DllCall("gdiplus\GdipGraphicsClear", "ptr", graphics, "uint", UiArgb(surfaceColor)), "GdipGraphicsClear")
+    GdipCheck(DllCall("gdiplus\GdipSetInterpolationMode", "ptr", graphics, "int", 7), "GdipSetInterpolationMode") ; HighQualityBicubic
 
     pImage := 0
     loadStatus := DllCall("gdiplus\GdipCreateBitmapFromFile", "str", imagePath, "ptr*", &pImage)
@@ -1819,39 +1832,43 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, slog
         DebugLog("✕", "Sidebar-logo", "GdipCreateBitmapFromFile gaf status " loadStatus " voor " imagePath " (logo blijft weg, slogan wordt wel getekend).")
     } else {
         imgW := 0, imgH := 0
-        DllCall("gdiplus\GdipGetImageWidth", "ptr", pImage, "uint*", &imgW)
-        DllCall("gdiplus\GdipGetImageHeight", "ptr", pImage, "uint*", &imgH)
+        GdipCheck(DllCall("gdiplus\GdipGetImageWidth", "ptr", pImage, "uint*", &imgW), "GdipGetImageWidth")
+        GdipCheck(DllCall("gdiplus\GdipGetImageHeight", "ptr", pImage, "uint*", &imgH), "GdipGetImageHeight")
+        DebugLog("i", "Sidebar-logo", "Afbeelding geladen: " imgW "x" imgH " uit " imagePath ".")
 
         if imgW > 0 && imgH > 0 {
             inset := 8
             scale := Min((width - inset * 2) / imgW, (height - inset * 2) / imgH)
             drawW := imgW * scale
             drawH := imgH * scale
-            DllCall(
-                "gdiplus\GdipDrawImageRect",
-                "ptr", graphics,
-                "ptr", pImage,
-                "float", (width - drawW) / 2,
-                "float", (height - drawH) / 2,
-                "float", drawW,
-                "float", drawH
+            GdipCheck(
+                DllCall(
+                    "gdiplus\GdipDrawImageRect",
+                    "ptr", graphics,
+                    "ptr", pImage,
+                    "float", (width - drawW) / 2,
+                    "float", (height - drawH) / 2,
+                    "float", drawW,
+                    "float", drawH
+                ),
+                "GdipDrawImageRect"
             )
         }
         DllCall("gdiplus\GdipDisposeImage", "ptr", pImage)
     }
 
     fontFamily := 0
-    DllCall("gdiplus\GdipCreateFontFamilyFromName", "str", "Segoe UI", "ptr", 0, "ptr*", &fontFamily)
+    GdipCheck(DllCall("gdiplus\GdipCreateFontFamilyFromName", "str", "Segoe UI", "ptr", 0, "ptr*", &fontFamily), "GdipCreateFontFamilyFromName")
     font := 0
-    DllCall("gdiplus\GdipCreateFont", "ptr", fontFamily, "float", 9, "int", 2, "int", 2, "ptr*", &font) ; Italic, UnitPixel
+    GdipCheck(DllCall("gdiplus\GdipCreateFont", "ptr", fontFamily, "float", 9, "int", 2, "int", 2, "ptr*", &font), "GdipCreateFont") ; Italic, UnitPixel
 
     format := 0
-    DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "int", 0, "ptr*", &format)
-    DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", format, "int", 1) ; Center
-    DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", format, "int", 0x1000) ; NoWrap
+    GdipCheck(DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "int", 0, "ptr*", &format), "GdipCreateStringFormat")
+    GdipCheck(DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", format, "int", 1), "GdipSetStringFormatAlign") ; Center
+    GdipCheck(DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", format, "int", 0x1000), "GdipSetStringFormatFlags") ; NoWrap
 
     brush := 0
-    DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(textColor, 70), "ptr*", &brush)
+    GdipCheck(DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(textColor, 70), "ptr*", &brush), "GdipCreateSolidFill")
 
     layoutRect := Buffer(16, 0)
     NumPut("float", 0, layoutRect, 0)
@@ -1859,16 +1876,20 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, slog
     NumPut("float", width, layoutRect, 8)
     NumPut("float", 20, layoutRect, 12)
 
-    DllCall(
-        "gdiplus\GdipDrawString",
-        "ptr", graphics,
-        "str", sloganText,
-        "int", -1,
-        "ptr", font,
-        "ptr", layoutRect,
-        "ptr", format,
-        "ptr", brush
+    GdipCheck(
+        DllCall(
+            "gdiplus\GdipDrawString",
+            "ptr", graphics,
+            "str", sloganText,
+            "int", -1,
+            "ptr", font,
+            "ptr", layoutRect,
+            "ptr", format,
+            "ptr", brush
+        ),
+        "GdipDrawString"
     )
+    DebugLog("i", "Sidebar-logo", "Slogan getekend.")
 
     DllCall("gdiplus\GdipDeleteBrush", "ptr", brush)
     DllCall("gdiplus\GdipDeleteStringFormat", "ptr", format)
