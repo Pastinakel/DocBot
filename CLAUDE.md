@@ -231,10 +231,10 @@ Dezelfde structuur geldt voor latere releases: `main` bevat altijd de laatst
 uitgebrachte stabiele versie; `develop` gebruikt de volgende beoogde release
 met `-dev.N`; iedere feature- of fixbranch gebruikt een korte
 branchspecifieke prerelease-naam met een eigen lokale teller; een releasebranch
-gebruikt `-rc.N`; bij de stabiele release vervalt de prerelease-suffix.
+gebruikt `-rc`; bij de stabiele release vervalt de prerelease-suffix.
 
 Maak een releasecandidate vanaf een actuele `develop` op een branch zoals
-`release/2.4-rc.1`. Voeg daar uitsluitend bugfixes, documentatie en
+`release/2.4-rc`. Voeg daar uitsluitend bugfixes, documentatie en
 releasevoorbereidingen aan toe. Nieuwe functionaliteit wacht op de volgende
 ontwikkelcyclus. Iedere commit op de releasebranch die `DocBot.ahk` wijzigt,
 verhoogt `rc.N` met één.
