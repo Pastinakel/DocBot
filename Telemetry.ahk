@@ -158,6 +158,15 @@ Telemetry_TryLoadCounters(*) {
         Telemetry_WriteCounter("LongHotstringActions", TelemetryLongHotstringActions)
     if TelemetrySmsActions != smsValue
         Telemetry_WriteCounter("SmsActions", TelemetrySmsActions)
+
+    ; Confirmation can land after StorageRetry_OnAllReady()'s one-time
+    ; Overzicht refresh already ran with the pre-confirmation (0) values —
+    ; this is on its own independent retry cadence, not gated by
+    ; StorageAllReady. Without this, the Gebruik card would stay stuck on 0
+    ; until the next recorded action or a restart. Guarded like every other
+    ; DocBot.ahk call from this file (see Telemetry_LogError()): harmless if
+    ; the GUI isn't built yet.
+    try RefreshUsageStatistics()
 }
 
 Telemetry_TryEnsureInstallationId(*) {
@@ -325,6 +334,27 @@ Telemetry_GetSmsActions() {
 
 Telemetry_ReadCounter(name, &value) {
     global TelemetryConfigFile
+
+    ; A missing file is a genuine "not created yet" case (e.g. a real first
+    ; run) — same convention as LoadAppSettings() — not a read failure.
+    if !FileExist(TelemetryConfigFile) {
+        value := 0
+        return true
+    }
+
+    ; IniRead() with an explicit default never throws for a file it can't
+    ; actually read (e.g. still locked right as degraded mode is clearing):
+    ; it silently returns that default instead, so a transient access
+    ; failure was indistinguishable from a genuinely-zero counter and got
+    ; reported as success — defeating Telemetry_TryLoadCounters()'s retry
+    ; and permanently confirming a false 0 for the rest of the session.
+    ; Probe with a real read first, which does throw on that condition.
+    try
+        FileRead(TelemetryConfigFile, "UTF-8")
+    catch {
+        value := 0
+        return false
+    }
 
     try {
         value := Max(0, Integer(IniRead(TelemetryConfigFile, "Usage", name, 0)))
