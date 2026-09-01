@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.7"
+global AppVersion := "2.4-sidebar-logo.8"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -295,6 +295,7 @@ global SidebarPhoneDot := 0
 global SidebarPhoneText := 0
 global SidebarTextDot := 0
 global SidebarTextText := 0
+global BrandPicture := 0 ; TIJDELIJK, voor diagnose van de sidebar-logo-rendering
 
 global SpeedDialLV := 0
 
@@ -396,6 +397,30 @@ if StartupWindowState = "minimized"
 else if StartupWindowState = "background"
     showOptions .= " NA"
 MainGui.Show(showOptions)
+
+; TIJDELIJKE DIAGNOSE (sidebar-logo-rendering): vergelijk het brand-
+; Picture-control met een bekend werkend sidebar-control (SidebarPhoneText,
+; niet paginagebonden, dus met dezelfde zichtbaarheidstiming) nu het
+; topvenster daadwerkelijk getoond is. Hiervoor moest IsWindowVisible() vóór
+; deze aanroep altijd wel 0 opleveren, ongeacht een echt probleem.
+if BrandPicture {
+    brandRect := Buffer(16, 0)
+    DllCall("GetWindowRect", "ptr", BrandPicture.Hwnd, "ptr", brandRect)
+    refRect := Buffer(16, 0)
+    if SidebarPhoneText
+        DllCall("GetWindowRect", "ptr", SidebarPhoneText.Hwnd, "ptr", refRect)
+    DebugLog(
+        "i",
+        "Sidebar-logo",
+        "DIAGNOSE ná Show(): Brand Visible=" DllCall("IsWindowVisible", "ptr", BrandPicture.Hwnd, "int")
+            " rect=" NumGet(brandRect, 0, "int") "," NumGet(brandRect, 4, "int")
+            "," NumGet(brandRect, 8, "int") "," NumGet(brandRect, 12, "int")
+            " | SidebarPhoneText Visible=" (SidebarPhoneText ? DllCall("IsWindowVisible", "ptr", SidebarPhoneText.Hwnd, "int") : "geen control")
+            " rect=" NumGet(refRect, 0, "int") "," NumGet(refRect, 4, "int")
+            "," NumGet(refRect, 8, "int") "," NumGet(refRect, 12, "int")
+    )
+}
+
 ApplyRoundedControls()
 RedrawFlatButtons()
 RefreshSidebarStatuses()
@@ -432,6 +457,7 @@ BuildMainGui() {
     global HotReplacementExpandButton, HotReplacementCollapseButton
     global HotEditorCompactCard, HotEditorExpandedCard, HotSaveButton
     global SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText
+    global BrandPicture
     global SpeedDialLV, SpeedDialEnabledCheck, SpeedDialNameEdit, SpeedDialNumberEdit
     global HelpSections, HotstringHelpSectionIndex
     global TipPhoneHelpSectionIndex, TipSmsHelpSectionIndex, TipHotstringHelpSectionIndex
@@ -463,17 +489,13 @@ BuildMainGui() {
             C["Text"],
             "een handje extra :)"
         )
-        brandPicture := MainGui.AddPicture("x0 y0 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
-        isRealWindow := DllCall("IsWindow", "ptr", brandPicture.Hwnd, "int")
-        DebugLog(
-            "i",
-            "Sidebar-logo",
-            "DIAGNOSE: Picture-control toegevoegd, Hwnd=" brandPicture.Hwnd
-                ", IsWindow=" isRealWindow
-                ", Visible=" DllCall("IsWindowVisible", "ptr", brandPicture.Hwnd, "int") "."
-        )
-        DllCall("InvalidateRect", "ptr", brandPicture.Hwnd, "ptr", 0, "int", true)
-        DllCall("UpdateWindow", "ptr", brandPicture.Hwnd)
+        BrandPicture := MainGui.AddPicture("x0 y0 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
+        ; IsWindowVisible() hier (vóór MainGui.Show()) zou altijd 0 opleveren
+        ; ongeacht of dit control werkelijk een probleem heeft: het controleert
+        ; de hele ouderketen, en het topvenster is nog niet getoond. De
+        ; echte zichtbaarheidscontrole gebeurt daarom pas ná MainGui.Show(),
+        ; zie de DIAGNOSE-regel direct na die aanroep verderop in dit bestand.
+        DebugLog("i", "Sidebar-logo", "DIAGNOSE: Picture-control toegevoegd, Hwnd=" BrandPicture.Hwnd ".")
     } catch as brandError {
         DebugLog("✕", "Sidebar-logo", "Kon logo/slogan niet tekenen (" brandError.Message "); terugval op titel/subtitle.")
         appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
