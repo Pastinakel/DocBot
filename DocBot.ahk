@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.4"
+global AppVersion := "2.4-sidebar-logo.5"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -452,7 +452,7 @@ BuildMainGui() {
     ; Logo met slogan i.p.v. de vroegere titel/subtitle-tekst. De hoogte
     ; blijft binnen de ruimte boven de "Overzicht"-knop (y110), zodat de
     ; navigatieknoppen niet naar onderen verschuiven. Bij een probleem met
-    ; het GDI+-tekenpad (bijvoorbeeld een DocBot.png die de PNG-decoder van
+    ; het GDI+-tekenpad (bijvoorbeeld een logo-PNG die de PNG-decoder van
     ; GDI+ niet aan de praat krijgt) valt de sidebar terug op de vroegere
     ; titel/subtitle-tekst in plaats van stil leeg te blijven.
     try {
@@ -1804,7 +1804,7 @@ CreateToggleBitmap(isOn, primaryColor, offColor, surfaceColor) {
     return UiFinishBitmap(pBitmap, graphics)
 }
 
-; Tekent het logo (bijvoorbeeld DocBot.png), passend geschaald en gecentreerd
+; Tekent het logo (images\DocBot-slim.png), passend geschaald en gecentreerd
 ; binnen (width, height), met daaroverheen laag uitgelijnd en zo transparant
 ; mogelijk de slogan. surfaceColor is de sidebarkleur eromheen, zodat de
 ; bitmap naadloos aansluit op de rest van het paneel (zie CreateCardBitmap).
@@ -1916,15 +1916,15 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, slog
     return UiFinishBitmap(pBitmap, graphics)
 }
 
-; Ongecompileerd wordt DocBot.png rechtstreeks naast het script gelezen.
-; Gecompileerd bestaat die map niet met losse bestanden, dus moet het
-; bestand letterlijk genoemd worden zodat Ahk2Exe het als resource opneemt
-; (zelfde patroon als LoadReadmeChangelog() voor README.md).
+; Ongecompileerd wordt images\DocBot-slim.png rechtstreeks naast het script
+; gelezen. Gecompileerd bestaat die map niet met losse bestanden, dus moet
+; het bestand letterlijk genoemd worden zodat Ahk2Exe het als resource
+; opneemt (zelfde patroon als LoadReadmeChangelog() voor README.md).
 GetSidebarBrandImagePath() {
-    imagePath := A_ScriptDir "\DocBot.png"
+    imagePath := A_ScriptDir "\images\DocBot-slim.png"
     if A_IsCompiled {
         imagePath := A_Temp "\DocBot-brand.png"
-        FileInstall "DocBot.png", imagePath, true
+        FileInstall "images\DocBot-slim.png", imagePath, true
     }
     return imagePath
 }
