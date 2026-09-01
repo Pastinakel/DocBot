@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.12"
+global AppVersion := "2.4-sidebar-logo.13"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -295,7 +295,6 @@ global SidebarPhoneDot := 0
 global SidebarPhoneText := 0
 global SidebarTextDot := 0
 global SidebarTextText := 0
-global BrandPicture := 0 ; TIJDELIJK, voor diagnose van de sidebar-logo-rendering
 
 global SpeedDialLV := 0
 
@@ -397,30 +396,6 @@ if StartupWindowState = "minimized"
 else if StartupWindowState = "background"
     showOptions .= " NA"
 MainGui.Show(showOptions)
-
-; TIJDELIJKE DIAGNOSE (sidebar-logo-rendering): vergelijk het brand-
-; Picture-control met een bekend werkend sidebar-control (SidebarPhoneText,
-; niet paginagebonden, dus met dezelfde zichtbaarheidstiming) nu het
-; topvenster daadwerkelijk getoond is. Hiervoor moest IsWindowVisible() vóór
-; deze aanroep altijd wel 0 opleveren, ongeacht een echt probleem.
-if BrandPicture {
-    brandRect := Buffer(16, 0)
-    DllCall("GetWindowRect", "ptr", BrandPicture.Hwnd, "ptr", brandRect)
-    refRect := Buffer(16, 0)
-    if SidebarPhoneText
-        DllCall("GetWindowRect", "ptr", SidebarPhoneText.Hwnd, "ptr", refRect)
-    DebugLog(
-        "i",
-        "Sidebar-logo",
-        "DIAGNOSE ná Show(): Brand Visible=" DllCall("IsWindowVisible", "ptr", BrandPicture.Hwnd, "int")
-            " rect=" NumGet(brandRect, 0, "int") "," NumGet(brandRect, 4, "int")
-            "," NumGet(brandRect, 8, "int") "," NumGet(brandRect, 12, "int")
-            " | SidebarPhoneText Visible=" (SidebarPhoneText ? DllCall("IsWindowVisible", "ptr", SidebarPhoneText.Hwnd, "int") : "geen control")
-            " rect=" NumGet(refRect, 0, "int") "," NumGet(refRect, 4, "int")
-            "," NumGet(refRect, 8, "int") "," NumGet(refRect, 12, "int")
-    )
-}
-
 ApplyRoundedControls()
 RedrawFlatButtons()
 RefreshSidebarStatuses()
@@ -457,7 +432,6 @@ BuildMainGui() {
     global HotReplacementExpandButton, HotReplacementCollapseButton
     global HotEditorCompactCard, HotEditorExpandedCard, HotSaveButton
     global SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText
-    global BrandPicture
     global SpeedDialLV, SpeedDialEnabledCheck, SpeedDialNameEdit, SpeedDialNumberEdit
     global HelpSections, HotstringHelpSectionIndex
     global TipPhoneHelpSectionIndex, TipSmsHelpSectionIndex, TipHotstringHelpSectionIndex
@@ -482,18 +456,25 @@ BuildMainGui() {
     ; GDI+ niet aan de praat krijgt) valt de sidebar terug op de vroegere
     ; titel/subtitle-tekst in plaats van stil leeg te blijven.
     try {
-        ; TIJDELIJKE DIAGNOSE (D-sidebar-logo-render, ronde 4): de vorige
-        ; twee tests (-Hidden-toggle, daarna 20px verschoven) gebruikten
-        ; allebei per ongeluk alweer de échte inhoud (images\DocBot-slim.png
-        ; + sloganstekst via CreateSidebarBrandBitmap()) — dus geen van
-        ; beide sloot de PNG zelf als factor daadwerkelijk uit. Terug naar
-        ; een schone, geïsoleerde test: alleen een effen kleur, via de
-        ; losstaande CreateSolidFillTestBitmap(), verder niets. Positie
-        ; (20,20) en de -Hidden-toggle blijven staan, dat waren al geen
-        ; verklaring maar zijn goedkoop om aan te houden.
-        brandBitmap := CreateSolidFillTestBitmap(210, 104, "FF0000")
-        BrandPicture := MainGui.AddPicture("x20 y20 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
-        BrandPicture.Opt("-Hidden")
+        brandBitmap := CreateSidebarBrandBitmap(
+            210, 104,
+            GetSidebarBrandImagePath(),
+            C["Sidebar"],
+            C["Text"],
+            "een handje extra :)"
+        )
+        ; Geen WS_CLIPSIBLINGS (0x4000000) hier, in tegenstelling tot
+        ; AddCard(): dat control leeft in het contentvlak waar niets anders
+        ; die ruimte vult, dus de vlag is daar een no-op. Dit control ligt
+        ; wél bovenop een overlappende sibling — de sidebar-achtergrond
+        ; hierboven, x0 y0 w210 h700 — en WS_CLIPSIBLINGS sluit precies dat
+        ; overlappende gebied uit van het eigen tekenoppervlak. Bij exact
+        ; dezelfde positie/grootte als die achtergrond betekende dat: 100%
+        ; geklipt, dus onzichtbaar (bevestigd door het 20px-verschoven-testje
+        ; hiervoor, dat wél een 20px reepje liet zien — precies het stukje
+        ; dat níét overlapte). Dit control moet júist over die achtergrond
+        ; heen tekenen, dus de vlag blijft weg.
+        MainGui.AddPicture("x0 y0 w210 h104", "HBITMAP:*" brandBitmap)
     } catch as brandError {
         DebugLog("✕", "Sidebar-logo", "Kon logo/slogan niet tekenen (" brandError.Message "); terugval op titel/subtitle.")
         appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
@@ -1849,17 +1830,6 @@ GdipCheck(status, stap) {
         DebugLog("✕", "Sidebar-logo", stap " gaf status " status ".")
         throw Error(stap " gaf GDI+-status " status ".")
     }
-}
-
-; TIJDELIJK (D-sidebar-logo-render, ronde 4): losstaand van
-; CreateSidebarBrandBitmap() (die blijft ongemoeid) om één ding te testen —
-; toont het HBITMAP/Picture-mechanisme ÜBERHAUPT iets, los van of
-; images\DocBot-slim.png laadt of van de sloganstekst. Alleen een effen
-; kleur, verder niets.
-CreateSolidFillTestBitmap(width, height, color) {
-    pBitmap := UiCreateBitmap(width, height, &graphics)
-    GdipCheck(DllCall("gdiplus\GdipGraphicsClear", "ptr", graphics, "uint", UiArgb(color)), "GdipGraphicsClear (testvlak)")
-    return UiFinishBitmap(pBitmap, graphics)
 }
 
 CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, sloganText) {
