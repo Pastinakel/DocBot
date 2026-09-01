@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.9"
+global AppVersion := "2.4-sidebar-logo.10"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -482,20 +482,25 @@ BuildMainGui() {
     ; GDI+ niet aan de praat krijgt) valt de sidebar terug op de vroegere
     ; titel/subtitle-tekst in plaats van stil leeg te blijven.
     try {
-        ; TIJDELIJKE DIAGNOSE (D-sidebar-logo-render, ronde 2): het vorige
-        ; Picture/HBITMAP-control tekent aantoonbaar succesvol (elke
-        ; GDI+-status Ok, geldige HBITMAP), staat op de juiste positie/
-        ; grootte (rect klopt exact t.o.v. SidebarPhoneText) en Windows
-        ; meldt Visible=1 — maar er is niets te zien, ook niet na resize.
-        ; Om GDI+/HBITMAP volledig uit te sluiten: dit is nu een doodgewoon
-        ; AddText-control met een effen achtergrondkleur en zichtbare tekst,
-        ; zonder GDI+, zonder HBITMAP — identiek aan hoe appTitle/appSub en
-        ; de navigatieknoppen al hun achtergrond tekenen. Verschijnt dit
-        ; ook niet, dan ligt het probleem niet bij Picture/HBITMAP maar bij
-        ; deze positie/dit control zelf.
-        BrandPicture := MainGui.AddText("x0 y0 w210 h104 BackgroundFF0000", "TESTVLAK")
-        BrandPicture.SetFont("s16 bold cFFFFFF", "Segoe UI")
-        DebugLog("i", "Sidebar-logo", "DIAGNOSE: gewoon AddText-testvlak toegevoegd, Hwnd=" BrandPicture.Hwnd ".")
+        brandBitmap := CreateSidebarBrandBitmap(
+            210, 104,
+            GetSidebarBrandImagePath(),
+            C["Sidebar"],
+            C["Text"],
+            "een handje extra :)"
+        )
+        BrandPicture := MainGui.AddPicture("x0 y0 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
+        ; AddCard()'s Picture-controls tonen wél: die worden via
+        ; AddPageControl() aan Pages["overzicht"] toegevoegd, en ShowPage()
+        ; roept aan het eind van BuildMainGui() ctrl.Opt("-Hidden") aan op
+        ; élk control van de actieve pagina — óók als het nooit met +Hidden
+        ; is aangemaakt. Dit control zit niet in Pages[] (het is sidebar-
+        ; chrome, geen paginagebonden inhoud) en kreeg die aanroep dus nooit,
+        ; wat bleek te verklaren waarom er niets te zien was ondanks een
+        ; geldige HBITMAP en Visible=1: de eerste render van de bitmap komt
+        ; kennelijk pas goed tot stand ná een expliciete Hidden-toggle. Doe
+        ; hier dezelfde (schijnbaar overbodige) toggle.
+        BrandPicture.Opt("-Hidden")
     } catch as brandError {
         DebugLog("✕", "Sidebar-logo", "Kon logo/slogan niet tekenen (" brandError.Message "); terugval op titel/subtitle.")
         appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
@@ -1857,103 +1862,79 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, slog
     pBitmap := UiCreateBitmap(width, height, &graphics)
     GdipCheck(DllCall("gdiplus\GdipGraphicsClear", "ptr", graphics, "uint", UiArgb(surfaceColor)), "GdipGraphicsClear")
 
-    ; TIJDELIJKE DIAGNOSE (D-sidebar-logo-render): GDI+ meldt succes voor elke
-    ; stap (afbeelding geladen, slogan getekend), maar er verschijnt niets op
-    ; het scherm. Om te bepalen of het probleem in de inhoud zit of in het
-    ; AddPicture/HBITMAP-mechanisme van dit specifieke control, vult dit
-    ; blok de hele bitmap eerst met effen rood en stopt daarna meteen — geen
-    ; afbeelding, geen tekst. Verschijnt er nu een rood vlak op de sidebar,
-    ; dan ligt het probleem bij de logo-/slogan-inhoud. Blijft het net zo
-    ; leeg als voorheen, dan toont dit control sowieso niets, ongeacht de
-    ; inhoud. Verwijderen zodra dat duidelijk is.
-    debugBrush := 0
-    GdipCheck(DllCall("gdiplus\GdipCreateSolidFill", "uint", 0xFFFF0000, "ptr*", &debugBrush), "GdipCreateSolidFill (diagnose)")
-    GdipCheck(DllCall("gdiplus\GdipFillRectangle", "ptr", graphics, "ptr", debugBrush, "float", 0, "float", 0, "float", width, "float", height), "GdipFillRectangle (diagnose)")
-    GdipCheck(DllCall("gdiplus\GdipDeleteBrush", "ptr", debugBrush), "GdipDeleteBrush (diagnose)")
-    debugHBitmap := UiFinishBitmap(pBitmap, graphics)
-    DebugLog("i", "Sidebar-logo", "DIAGNOSE: effen rood vlak getekend (alle statussen Ok), HBITMAP=" debugHBitmap ".")
-    return debugHBitmap
+    GdipCheck(DllCall("gdiplus\GdipSetInterpolationMode", "ptr", graphics, "int", 7), "GdipSetInterpolationMode") ; HighQualityBicubic
 
-    ; ---- einde tijdelijke diagnose; hieronder de echte implementatie,
-    ; uitgecommentarieerd (niet losse onbereikbare code na Return — dat
-    ; triggert AHK's #Warn UnreachableCode-dialoog, die de testrun blokkeert
-    ; totdat hij wordt weggeklikt). Terugzetten door dit blok te
-    ; decommentariëren en de Return + het diagnoseblok hierboven te
-    ; verwijderen zodra de rode-vlak-test een antwoord heeft gegeven.
-    ;
-    ; GdipCheck(DllCall("gdiplus\GdipSetInterpolationMode", "ptr", graphics, "int", 7), "GdipSetInterpolationMode") ; HighQualityBicubic
-    ;
-    ; pImage := 0
-    ; loadStatus := DllCall("gdiplus\GdipCreateBitmapFromFile", "str", imagePath, "ptr*", &pImage)
-    ; if loadStatus != 0 || !pImage {
-    ;     DebugLog("✕", "Sidebar-logo", "GdipCreateBitmapFromFile gaf status " loadStatus " voor " imagePath " (logo blijft weg, slogan wordt wel getekend).")
-    ; } else {
-    ;     imgW := 0, imgH := 0
-    ;     GdipCheck(DllCall("gdiplus\GdipGetImageWidth", "ptr", pImage, "uint*", &imgW), "GdipGetImageWidth")
-    ;     GdipCheck(DllCall("gdiplus\GdipGetImageHeight", "ptr", pImage, "uint*", &imgH), "GdipGetImageHeight")
-    ;     DebugLog("i", "Sidebar-logo", "Afbeelding geladen: " imgW "x" imgH " uit " imagePath ".")
-    ;
-    ;     if imgW > 0 && imgH > 0 {
-    ;         inset := 8
-    ;         scale := Min((width - inset * 2) / imgW, (height - inset * 2) / imgH)
-    ;         drawW := imgW * scale
-    ;         drawH := imgH * scale
-    ;         GdipCheck(
-    ;             DllCall(
-    ;                 "gdiplus\GdipDrawImageRect",
-    ;                 "ptr", graphics,
-    ;                 "ptr", pImage,
-    ;                 "float", (width - drawW) / 2,
-    ;                 "float", (height - drawH) / 2,
-    ;                 "float", drawW,
-    ;                 "float", drawH
-    ;             ),
-    ;             "GdipDrawImageRect"
-    ;         )
-    ;     }
-    ;     DllCall("gdiplus\GdipDisposeImage", "ptr", pImage)
-    ; }
-    ;
-    ; fontFamily := 0
-    ; GdipCheck(DllCall("gdiplus\GdipCreateFontFamilyFromName", "str", "Segoe UI", "ptr", 0, "ptr*", &fontFamily), "GdipCreateFontFamilyFromName")
-    ; font := 0
-    ; GdipCheck(DllCall("gdiplus\GdipCreateFont", "ptr", fontFamily, "float", 9, "int", 2, "int", 2, "ptr*", &font), "GdipCreateFont") ; Italic, UnitPixel
-    ;
-    ; format := 0
-    ; GdipCheck(DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "int", 0, "ptr*", &format), "GdipCreateStringFormat")
-    ; GdipCheck(DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", format, "int", 1), "GdipSetStringFormatAlign") ; Center
-    ; GdipCheck(DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", format, "int", 0x1000), "GdipSetStringFormatFlags") ; NoWrap
-    ;
-    ; brush := 0
-    ; GdipCheck(DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(textColor, 70), "ptr*", &brush), "GdipCreateSolidFill")
-    ;
-    ; layoutRect := Buffer(16, 0)
-    ; NumPut("float", 0, layoutRect, 0)
-    ; NumPut("float", height - 28, layoutRect, 4)
-    ; NumPut("float", width, layoutRect, 8)
-    ; NumPut("float", 20, layoutRect, 12)
-    ;
-    ; GdipCheck(
-    ;     DllCall(
-    ;         "gdiplus\GdipDrawString",
-    ;         "ptr", graphics,
-    ;         "str", sloganText,
-    ;         "int", -1,
-    ;         "ptr", font,
-    ;         "ptr", layoutRect,
-    ;         "ptr", format,
-    ;         "ptr", brush
-    ;     ),
-    ;     "GdipDrawString"
-    ; )
-    ; DebugLog("i", "Sidebar-logo", "Slogan getekend.")
-    ;
-    ; DllCall("gdiplus\GdipDeleteBrush", "ptr", brush)
-    ; DllCall("gdiplus\GdipDeleteStringFormat", "ptr", format)
-    ; DllCall("gdiplus\GdipDeleteFont", "ptr", font)
-    ; DllCall("gdiplus\GdipDeleteFontFamily", "ptr", fontFamily)
-    ;
-    ; return UiFinishBitmap(pBitmap, graphics)
+    pImage := 0
+    loadStatus := DllCall("gdiplus\GdipCreateBitmapFromFile", "str", imagePath, "ptr*", &pImage)
+    if loadStatus != 0 || !pImage {
+        DebugLog("✕", "Sidebar-logo", "GdipCreateBitmapFromFile gaf status " loadStatus " voor " imagePath " (logo blijft weg, slogan wordt wel getekend).")
+    } else {
+        imgW := 0, imgH := 0
+        GdipCheck(DllCall("gdiplus\GdipGetImageWidth", "ptr", pImage, "uint*", &imgW), "GdipGetImageWidth")
+        GdipCheck(DllCall("gdiplus\GdipGetImageHeight", "ptr", pImage, "uint*", &imgH), "GdipGetImageHeight")
+        DebugLog("i", "Sidebar-logo", "Afbeelding geladen: " imgW "x" imgH " uit " imagePath ".")
+
+        if imgW > 0 && imgH > 0 {
+            inset := 8
+            scale := Min((width - inset * 2) / imgW, (height - inset * 2) / imgH)
+            drawW := imgW * scale
+            drawH := imgH * scale
+            GdipCheck(
+                DllCall(
+                    "gdiplus\GdipDrawImageRect",
+                    "ptr", graphics,
+                    "ptr", pImage,
+                    "float", (width - drawW) / 2,
+                    "float", (height - drawH) / 2,
+                    "float", drawW,
+                    "float", drawH
+                ),
+                "GdipDrawImageRect"
+            )
+        }
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pImage)
+    }
+
+    fontFamily := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateFontFamilyFromName", "str", "Segoe UI", "ptr", 0, "ptr*", &fontFamily), "GdipCreateFontFamilyFromName")
+    font := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateFont", "ptr", fontFamily, "float", 9, "int", 2, "int", 2, "ptr*", &font), "GdipCreateFont") ; Italic, UnitPixel
+
+    format := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "int", 0, "ptr*", &format), "GdipCreateStringFormat")
+    GdipCheck(DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", format, "int", 1), "GdipSetStringFormatAlign") ; Center
+    GdipCheck(DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", format, "int", 0x1000), "GdipSetStringFormatFlags") ; NoWrap
+
+    brush := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(textColor, 70), "ptr*", &brush), "GdipCreateSolidFill")
+
+    layoutRect := Buffer(16, 0)
+    NumPut("float", 0, layoutRect, 0)
+    NumPut("float", height - 28, layoutRect, 4)
+    NumPut("float", width, layoutRect, 8)
+    NumPut("float", 20, layoutRect, 12)
+
+    GdipCheck(
+        DllCall(
+            "gdiplus\GdipDrawString",
+            "ptr", graphics,
+            "str", sloganText,
+            "int", -1,
+            "ptr", font,
+            "ptr", layoutRect,
+            "ptr", format,
+            "ptr", brush
+        ),
+        "GdipDrawString"
+    )
+    DebugLog("i", "Sidebar-logo", "Slogan getekend.")
+
+    DllCall("gdiplus\GdipDeleteBrush", "ptr", brush)
+    DllCall("gdiplus\GdipDeleteStringFormat", "ptr", format)
+    DllCall("gdiplus\GdipDeleteFont", "ptr", font)
+    DllCall("gdiplus\GdipDeleteFontFamily", "ptr", fontFamily)
+
+    return UiFinishBitmap(pBitmap, graphics)
 }
 
 ; Ongecompileerd wordt images\DocBot-slim.png rechtstreeks naast het script
