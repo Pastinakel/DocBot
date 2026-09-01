@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.1"
+global AppVersion := "2.4-sidebar-logo.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -451,15 +451,26 @@ BuildMainGui() {
 
     ; Logo met slogan i.p.v. de vroegere titel/subtitle-tekst. De hoogte
     ; blijft binnen de ruimte boven de "Overzicht"-knop (y110), zodat de
-    ; navigatieknoppen niet naar onderen verschuiven.
-    brandBitmap := CreateSidebarBrandBitmap(
-        210, 104,
-        GetSidebarBrandImagePath(),
-        C["Sidebar"],
-        C["Text"],
-        "een handje extra :)"
-    )
-    MainGui.AddPicture("x0 y0 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
+    ; navigatieknoppen niet naar onderen verschuiven. Bij een probleem met
+    ; het GDI+-tekenpad (bijvoorbeeld een DocBot.png die de PNG-decoder van
+    ; GDI+ niet aan de praat krijgt) valt de sidebar terug op de vroegere
+    ; titel/subtitle-tekst in plaats van stil leeg te blijven.
+    try {
+        brandBitmap := CreateSidebarBrandBitmap(
+            210, 104,
+            GetSidebarBrandImagePath(),
+            C["Sidebar"],
+            C["Text"],
+            "een handje extra :)"
+        )
+        MainGui.AddPicture("x0 y0 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
+    } catch as brandError {
+        DebugLog("✕", "Sidebar-logo", "Kon logo/slogan niet tekenen (" brandError.Message "); terugval op titel/subtitle.")
+        appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
+        appTitle.SetFont("s18 bold c" C["Text"], "Segoe UI")
+        appSub := MainGui.AddText("x28 y52 w170 h18 Background" C["Sidebar"], "Telefonie voor de werkplek")
+        appSub.SetFont("s9 c" C["Muted"], "Segoe UI")
+    }
 
     AddNavButton("overzicht", Chr(0xE80F), "Overzicht", 110)
     AddNavButton("telefonie", Chr(0xE717), "Telefonie", 162)
@@ -1803,7 +1814,10 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, slog
     DllCall("gdiplus\GdipSetInterpolationMode", "ptr", graphics, "int", 7) ; HighQualityBicubic
 
     pImage := 0
-    if DllCall("gdiplus\GdipCreateBitmapFromFile", "str", imagePath, "ptr*", &pImage) = 0 && pImage {
+    loadStatus := DllCall("gdiplus\GdipCreateBitmapFromFile", "str", imagePath, "ptr*", &pImage)
+    if loadStatus != 0 || !pImage {
+        DebugLog("✕", "Sidebar-logo", "GdipCreateBitmapFromFile gaf status " loadStatus " voor " imagePath " (logo blijft weg, slogan wordt wel getekend).")
+    } else {
         imgW := 0, imgH := 0
         DllCall("gdiplus\GdipGetImageWidth", "ptr", pImage, "uint*", &imgW)
         DllCall("gdiplus\GdipGetImageHeight", "ptr", pImage, "uint*", &imgH)
