@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.8"
+global AppVersion := "2.4-sidebar-logo.9"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -482,20 +482,20 @@ BuildMainGui() {
     ; GDI+ niet aan de praat krijgt) valt de sidebar terug op de vroegere
     ; titel/subtitle-tekst in plaats van stil leeg te blijven.
     try {
-        brandBitmap := CreateSidebarBrandBitmap(
-            210, 104,
-            GetSidebarBrandImagePath(),
-            C["Sidebar"],
-            C["Text"],
-            "een handje extra :)"
-        )
-        BrandPicture := MainGui.AddPicture("x0 y0 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
-        ; IsWindowVisible() hier (vóór MainGui.Show()) zou altijd 0 opleveren
-        ; ongeacht of dit control werkelijk een probleem heeft: het controleert
-        ; de hele ouderketen, en het topvenster is nog niet getoond. De
-        ; echte zichtbaarheidscontrole gebeurt daarom pas ná MainGui.Show(),
-        ; zie de DIAGNOSE-regel direct na die aanroep verderop in dit bestand.
-        DebugLog("i", "Sidebar-logo", "DIAGNOSE: Picture-control toegevoegd, Hwnd=" BrandPicture.Hwnd ".")
+        ; TIJDELIJKE DIAGNOSE (D-sidebar-logo-render, ronde 2): het vorige
+        ; Picture/HBITMAP-control tekent aantoonbaar succesvol (elke
+        ; GDI+-status Ok, geldige HBITMAP), staat op de juiste positie/
+        ; grootte (rect klopt exact t.o.v. SidebarPhoneText) en Windows
+        ; meldt Visible=1 — maar er is niets te zien, ook niet na resize.
+        ; Om GDI+/HBITMAP volledig uit te sluiten: dit is nu een doodgewoon
+        ; AddText-control met een effen achtergrondkleur en zichtbare tekst,
+        ; zonder GDI+, zonder HBITMAP — identiek aan hoe appTitle/appSub en
+        ; de navigatieknoppen al hun achtergrond tekenen. Verschijnt dit
+        ; ook niet, dan ligt het probleem niet bij Picture/HBITMAP maar bij
+        ; deze positie/dit control zelf.
+        BrandPicture := MainGui.AddText("x0 y0 w210 h104 BackgroundFF0000", "TESTVLAK")
+        BrandPicture.SetFont("s16 bold cFFFFFF", "Segoe UI")
+        DebugLog("i", "Sidebar-logo", "DIAGNOSE: gewoon AddText-testvlak toegevoegd, Hwnd=" BrandPicture.Hwnd ".")
     } catch as brandError {
         DebugLog("✕", "Sidebar-logo", "Kon logo/slogan niet tekenen (" brandError.Message "); terugval op titel/subtitle.")
         appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
