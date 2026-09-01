@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-telemetry-counter-race.2"
+global AppVersion := "2.4-rc.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -449,11 +449,17 @@ BuildMainGui() {
     ; Sidebar
     MainGui.AddText("x0 y0 w210 h700 Background" C["Sidebar"], "")
 
-    appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
-    appTitle.SetFont("s18 bold c" C["Text"], "Segoe UI")
-
-    appSub := MainGui.AddText("x28 y52 w170 h18 Background" C["Sidebar"], "Telefonie voor de werkplek")
-    appSub.SetFont("s9 c" C["Muted"], "Segoe UI")
+    ; Logo met slogan i.p.v. de vroegere titel/subtitle-tekst. De hoogte
+    ; blijft binnen de ruimte boven de "Overzicht"-knop (y110), zodat de
+    ; navigatieknoppen niet naar onderen verschuiven.
+    brandBitmap := CreateSidebarBrandBitmap(
+        210, 104,
+        GetSidebarBrandImagePath(),
+        C["Sidebar"],
+        C["Text"],
+        "een handje extra :)"
+    )
+    MainGui.AddPicture("x0 y0 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
 
     AddNavButton("overzicht", Chr(0xE80F), "Overzicht", 110)
     AddNavButton("telefonie", Chr(0xE717), "Telefonie", 162)
@@ -1785,6 +1791,90 @@ CreateToggleBitmap(isOn, primaryColor, offColor, surfaceColor) {
     DllCall("gdiplus\GdipDeleteBrush", "ptr", knobBrush)
 
     return UiFinishBitmap(pBitmap, graphics)
+}
+
+; Tekent het logo (bijvoorbeeld DocBot.png), passend geschaald en gecentreerd
+; binnen (width, height), met daaroverheen laag uitgelijnd en zo transparant
+; mogelijk de slogan. surfaceColor is de sidebarkleur eromheen, zodat de
+; bitmap naadloos aansluit op de rest van het paneel (zie CreateCardBitmap).
+CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, sloganText) {
+    pBitmap := UiCreateBitmap(width, height, &graphics)
+    DllCall("gdiplus\GdipGraphicsClear", "ptr", graphics, "uint", UiArgb(surfaceColor))
+    DllCall("gdiplus\GdipSetInterpolationMode", "ptr", graphics, "int", 7) ; HighQualityBicubic
+
+    pImage := 0
+    if DllCall("gdiplus\GdipCreateBitmapFromFile", "str", imagePath, "ptr*", &pImage) = 0 && pImage {
+        imgW := 0, imgH := 0
+        DllCall("gdiplus\GdipGetImageWidth", "ptr", pImage, "uint*", &imgW)
+        DllCall("gdiplus\GdipGetImageHeight", "ptr", pImage, "uint*", &imgH)
+
+        if imgW > 0 && imgH > 0 {
+            inset := 8
+            scale := Min((width - inset * 2) / imgW, (height - inset * 2) / imgH)
+            drawW := imgW * scale
+            drawH := imgH * scale
+            DllCall(
+                "gdiplus\GdipDrawImageRect",
+                "ptr", graphics,
+                "ptr", pImage,
+                "float", (width - drawW) / 2,
+                "float", (height - drawH) / 2,
+                "float", drawW,
+                "float", drawH
+            )
+        }
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pImage)
+    }
+
+    fontFamily := 0
+    DllCall("gdiplus\GdipCreateFontFamilyFromName", "str", "Segoe UI", "ptr", 0, "ptr*", &fontFamily)
+    font := 0
+    DllCall("gdiplus\GdipCreateFont", "ptr", fontFamily, "float", 9, "int", 2, "int", 2, "ptr*", &font) ; Italic, UnitPixel
+
+    format := 0
+    DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "int", 0, "ptr*", &format)
+    DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", format, "int", 1) ; Center
+    DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", format, "int", 0x1000) ; NoWrap
+
+    brush := 0
+    DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(textColor, 70), "ptr*", &brush)
+
+    layoutRect := Buffer(16, 0)
+    NumPut("float", 0, layoutRect, 0)
+    NumPut("float", height - 28, layoutRect, 4)
+    NumPut("float", width, layoutRect, 8)
+    NumPut("float", 20, layoutRect, 12)
+
+    DllCall(
+        "gdiplus\GdipDrawString",
+        "ptr", graphics,
+        "str", sloganText,
+        "int", -1,
+        "ptr", font,
+        "ptr", layoutRect,
+        "ptr", format,
+        "ptr", brush
+    )
+
+    DllCall("gdiplus\GdipDeleteBrush", "ptr", brush)
+    DllCall("gdiplus\GdipDeleteStringFormat", "ptr", format)
+    DllCall("gdiplus\GdipDeleteFont", "ptr", font)
+    DllCall("gdiplus\GdipDeleteFontFamily", "ptr", fontFamily)
+
+    return UiFinishBitmap(pBitmap, graphics)
+}
+
+; Ongecompileerd wordt DocBot.png rechtstreeks naast het script gelezen.
+; Gecompileerd bestaat die map niet met losse bestanden, dus moet het
+; bestand letterlijk genoemd worden zodat Ahk2Exe het als resource opneemt
+; (zelfde patroon als LoadReadmeChangelog() voor README.md).
+GetSidebarBrandImagePath() {
+    imagePath := A_ScriptDir "\DocBot.png"
+    if A_IsCompiled {
+        imagePath := A_Temp "\DocBot-brand.png"
+        FileInstall "DocBot.png", imagePath, true
+    }
+    return imagePath
 }
 
 UiCreateBitmap(width, height, &graphics) {
