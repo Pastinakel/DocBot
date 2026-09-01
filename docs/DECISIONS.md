@@ -2523,6 +2523,56 @@ the pre-confirmation values, leaving the Gebruik card stuck on 0 until the
 next recorded action or a restart even once the counters were correctly
 confirmed in memory.
 
+**Follow-up (2026-08-31, same session):** asked to audit for the same
+bug pattern elsewhere before shipping the counter fix. Every `IniRead()`/
+`IniWrite()`/`RegRead()` call site in `DocBot.ahk` and `Telemetry.ahk` was
+checked. Extracted the fix into a shared `IniReadOrThrow(path, section,
+key, default)` (`DocBot.ahk`, next to `LoadAppSettings()`) — a missing
+file still returns `default` without probing (a genuine "not created yet"
+case), but an existing, unreadable file now runs a `FileRead()` probe
+first so that case throws instead of silently returning `default`. Two
+more real call sites shared the exact same class of bug and were fixed
+to use it:
+
+- **`Telemetry_TryEnsureInstallationId()`** (`Telemetry.ahk`) — worse than
+  the counter bug: on a masked read failure, the function did not just
+  freeze at a stale value, it proceeded to *generate a brand-new
+  installation ID* and write it. If that write then happened to succeed
+  (a plausible, narrower but real timing window — e.g. a lock or AV scan
+  window that blocks reads but not writes), it would silently overwrite a
+  real, existing installation ID with a fresh one, breaking the "one
+  stable ID per device" invariant D-027/D-028 exists for, with no error
+  surfaced anywhere. Fixing `IniReadOrThrow()` to throw was only half the
+  fix — the surrounding `catch` block still treated *any* failure the
+  same as "no ID yet" and fell through to creating one regardless; that
+  had to be corrected too, so a genuine read failure now retries
+  (`Telemetry_ScheduleInstallationIdRetry()`) exactly like a write failure
+  already did, instead of falling through. The post-write reread (used to
+  detect a multi-instance race) was already safe by construction — any
+  wrong value there, masked-failure or not, fails the equality check
+  against the pending ID and correctly retries — but was switched to the
+  same helper anyway for defense in depth rather than relying on that
+  incidental safety.
+- **`LoadAppSettings()`** (`DocBot.ahk`) — `AutoSave`, `HotstringFile`,
+  `CallAction` (and its legacy `AutoCall`/`DirectCall` fallback),
+  `SmsCallActionTitle`, `TextReplacement`: all five/seven reads shared the
+  bug, each falling back to whatever `State` already held (i.e. the code
+  default on a first attempt) and reporting success, latching
+  `StorageRetryLoaders`'s "Instellingen" entry `Ready := true` on
+  unconfirmed defaults for the rest of the session — the user's own
+  `Belactie`/`Tekstvervanging` choice silently ignored until restart.
+- **`Tips_ReadShownCount()`/`Tips_ReadLastShownAt()`** (`DocBot.ahk`) —
+  same pattern, included for completeness at the project owner's request;
+  low severity (a one-off repeated onboarding tip at worst) and not part
+  of the `StorageRetryLoaders` retry/confirmation system at all, since
+  these are read live on demand rather than cached.
+- **Reviewed and left as out of scope**: `RebaseCopiedHotstringPath()`
+  and the legacy `DocBot.ini`→`settings.ini` migration read (both
+  `DocBot.ahk`), each a one-shot read immediately after a `FileCopy()`
+  that just synchronously succeeded moments earlier during bootstrap, not
+  part of the ongoing background retry contract — same bare-`IniRead()`
+  pattern, negligible risk window.
+
 ---
 
 ## D-064 — Degraded mode: hide unready content behind a persistent banner, all-or-nothing across the five storage loaders

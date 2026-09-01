@@ -182,18 +182,28 @@ Telemetry_TryEnsureInstallationId(*) {
 
     ; Lees vóór iedere schrijfpoging opnieuw. Een andere DocBot-instantie kan
     ; het ID inmiddels al hebben opgeslagen; die bestaande waarde is leidend.
+    ; IniReadOrThrow() (DocBot.ahk), niet kale IniRead(): een bestand dat op
+    ; dit moment even niet leesbaar is (bijv. vlak vóór degraded mode echt
+    ; opheft) gaf anders stilzwijgend "" terug, ononderscheidbaar van "nog
+    ; geen ID opgeslagen". Een échte leesfout hier mag daarna ook niet
+    ; alsnog als "nog geen ID" worden behandeld — dat zou hieronder alsnog
+    ; een gloednieuw ID aanmaken en, als de daaropvolgende schrijfactie wél
+    ; lukte, een bestaand, echt installatie-ID stilzwijgend overschrijven.
+    ; Een echte fout herprobeert dus, net als een mislukte schrijfactie
+    ; verderop, in plaats van door te vallen naar "ID aanmaken".
     try {
         storedInstallationId := Trim(
-            IniRead(TelemetryConfigFile, "Telemetry", "InstallationId", "")
+            IniReadOrThrow(TelemetryConfigFile, "Telemetry", "InstallationId", "")
         )
     } catch as readError {
-        storedInstallationId := ""
         Telemetry_LogError(
             "Installatie-ID kon niet worden gelezen uit "
             . TelemetryConfigFile
             . ": "
             . readError.Message
         )
+        Telemetry_ScheduleInstallationIdRetry()
+        return
     }
 
     if storedInstallationId != "" {
@@ -225,7 +235,7 @@ Telemetry_TryEnsureInstallationId(*) {
         ; Controleer dat precies hetzelfde ID ook teruggelezen kan worden
         ; voordat telemetrie het als permanente identiteit gebruikt.
         persistedInstallationId := Trim(
-            IniRead(TelemetryConfigFile, "Telemetry", "InstallationId", "")
+            IniReadOrThrow(TelemetryConfigFile, "Telemetry", "InstallationId", "")
         )
         if persistedInstallationId != TelemetryPendingInstallationId
             throw Error("Het opgeslagen installatie-ID kon niet worden bevestigd.")
@@ -335,29 +345,14 @@ Telemetry_GetSmsActions() {
 Telemetry_ReadCounter(name, &value) {
     global TelemetryConfigFile
 
-    ; A missing file is a genuine "not created yet" case (e.g. a real first
-    ; run) — same convention as LoadAppSettings() — not a read failure.
-    if !FileExist(TelemetryConfigFile) {
-        value := 0
-        return true
-    }
-
-    ; IniRead() with an explicit default never throws for a file it can't
-    ; actually read (e.g. still locked right as degraded mode is clearing):
-    ; it silently returns that default instead, so a transient access
-    ; failure was indistinguishable from a genuinely-zero counter and got
-    ; reported as success — defeating Telemetry_TryLoadCounters()'s retry
-    ; and permanently confirming a false 0 for the rest of the session.
-    ; Probe with a real read first, which does throw on that condition.
-    try
-        FileRead(TelemetryConfigFile, "UTF-8")
-    catch {
-        value := 0
-        return false
-    }
-
+    ; IniReadOrThrow() (DocBot.ahk): a missing file confirms 0 (genuine
+    ; first run), but a file that exists and can't actually be read right
+    ; now (e.g. still locked right as degraded mode is clearing) throws
+    ; instead of silently returning 0 — unlike bare IniRead(), which would
+    ; report that transient failure as a confirmed, genuinely-zero counter
+    ; and permanently stop Telemetry_TryLoadCounters()'s retry.
     try {
-        value := Max(0, Integer(IniRead(TelemetryConfigFile, "Usage", name, 0)))
+        value := Max(0, Integer(IniReadOrThrow(TelemetryConfigFile, "Usage", name, 0)))
         return true
     } catch {
         value := 0
