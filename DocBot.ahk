@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.11"
+global AppVersion := "2.4-sidebar-logo.12"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -482,23 +482,16 @@ BuildMainGui() {
     ; GDI+ niet aan de praat krijgt) valt de sidebar terug op de vroegere
     ; titel/subtitle-tekst in plaats van stil leeg te blijven.
     try {
-        brandBitmap := CreateSidebarBrandBitmap(
-            210, 104,
-            GetSidebarBrandImagePath(),
-            C["Sidebar"],
-            C["Text"],
-            "een handje extra :)"
-        )
-        ; TIJDELIJKE DIAGNOSE (D-sidebar-logo-render, ronde 3): de -Hidden-
-        ; toggle (vorige poging) loste het niet op. Dit control is de enige
-        ; HBITMAP-Picture in de hele app die exact in de linkerbovenhoek
-        ; (x0 y0) zit en exact zo breed is als zijn ouder-sidebar (w210);
-        ; alle werkende Picture-controls (cards) zitten ruim binnen hun
-        ; container. Om dat als factor uit te sluiten staat dit control nu
-        ; 20px van de rand — nog steeds hetzelfde HBITMAP-mechanisme,
-        ; dezelfde inhoud, alleen verschoven. Verschijnt het nu wél, dan is
-        ; positie (0,0) zelf het probleem; verschijnt het nog steeds niet,
-        ; dan is dat uitgesloten.
+        ; TIJDELIJKE DIAGNOSE (D-sidebar-logo-render, ronde 4): de vorige
+        ; twee tests (-Hidden-toggle, daarna 20px verschoven) gebruikten
+        ; allebei per ongeluk alweer de échte inhoud (images\DocBot-slim.png
+        ; + sloganstekst via CreateSidebarBrandBitmap()) — dus geen van
+        ; beide sloot de PNG zelf als factor daadwerkelijk uit. Terug naar
+        ; een schone, geïsoleerde test: alleen een effen kleur, via de
+        ; losstaande CreateSolidFillTestBitmap(), verder niets. Positie
+        ; (20,20) en de -Hidden-toggle blijven staan, dat waren al geen
+        ; verklaring maar zijn goedkoop om aan te houden.
+        brandBitmap := CreateSolidFillTestBitmap(210, 104, "FF0000")
         BrandPicture := MainGui.AddPicture("x20 y20 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
         BrandPicture.Opt("-Hidden")
     } catch as brandError {
@@ -1856,6 +1849,17 @@ GdipCheck(status, stap) {
         DebugLog("✕", "Sidebar-logo", stap " gaf status " status ".")
         throw Error(stap " gaf GDI+-status " status ".")
     }
+}
+
+; TIJDELIJK (D-sidebar-logo-render, ronde 4): losstaand van
+; CreateSidebarBrandBitmap() (die blijft ongemoeid) om één ding te testen —
+; toont het HBITMAP/Picture-mechanisme ÜBERHAUPT iets, los van of
+; images\DocBot-slim.png laadt of van de sloganstekst. Alleen een effen
+; kleur, verder niets.
+CreateSolidFillTestBitmap(width, height, color) {
+    pBitmap := UiCreateBitmap(width, height, &graphics)
+    GdipCheck(DllCall("gdiplus\GdipGraphicsClear", "ptr", graphics, "uint", UiArgb(color)), "GdipGraphicsClear (testvlak)")
+    return UiFinishBitmap(pBitmap, graphics)
 }
 
 CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, sloganText) {
