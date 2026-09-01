@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.6"
+global AppVersion := "2.4-sidebar-logo.7"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -463,7 +463,17 @@ BuildMainGui() {
             C["Text"],
             "een handje extra :)"
         )
-        MainGui.AddPicture("x0 y0 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
+        brandPicture := MainGui.AddPicture("x0 y0 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
+        isRealWindow := DllCall("IsWindow", "ptr", brandPicture.Hwnd, "int")
+        DebugLog(
+            "i",
+            "Sidebar-logo",
+            "DIAGNOSE: Picture-control toegevoegd, Hwnd=" brandPicture.Hwnd
+                ", IsWindow=" isRealWindow
+                ", Visible=" DllCall("IsWindowVisible", "ptr", brandPicture.Hwnd, "int") "."
+        )
+        DllCall("InvalidateRect", "ptr", brandPicture.Hwnd, "ptr", 0, "int", true)
+        DllCall("UpdateWindow", "ptr", brandPicture.Hwnd)
     } catch as brandError {
         DebugLog("✕", "Sidebar-logo", "Kon logo/slogan niet tekenen (" brandError.Message "); terugval op titel/subtitle.")
         appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
@@ -1835,11 +1845,12 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, slog
     ; leeg als voorheen, dan toont dit control sowieso niets, ongeacht de
     ; inhoud. Verwijderen zodra dat duidelijk is.
     debugBrush := 0
-    DllCall("gdiplus\GdipCreateSolidFill", "uint", 0xFFFF0000, "ptr*", &debugBrush)
-    DllCall("gdiplus\GdipFillRectangle", "ptr", graphics, "ptr", debugBrush, "float", 0, "float", 0, "float", width, "float", height)
-    DllCall("gdiplus\GdipDeleteBrush", "ptr", debugBrush)
-    DebugLog("i", "Sidebar-logo", "DIAGNOSE: effen rood vlak getekend, afbeelding/slogan overgeslagen.")
-    return UiFinishBitmap(pBitmap, graphics)
+    GdipCheck(DllCall("gdiplus\GdipCreateSolidFill", "uint", 0xFFFF0000, "ptr*", &debugBrush), "GdipCreateSolidFill (diagnose)")
+    GdipCheck(DllCall("gdiplus\GdipFillRectangle", "ptr", graphics, "ptr", debugBrush, "float", 0, "float", 0, "float", width, "float", height), "GdipFillRectangle (diagnose)")
+    GdipCheck(DllCall("gdiplus\GdipDeleteBrush", "ptr", debugBrush), "GdipDeleteBrush (diagnose)")
+    debugHBitmap := UiFinishBitmap(pBitmap, graphics)
+    DebugLog("i", "Sidebar-logo", "DIAGNOSE: effen rood vlak getekend (alle statussen Ok), HBITMAP=" debugHBitmap ".")
+    return debugHBitmap
 
     ; ---- einde tijdelijke diagnose; hieronder de echte implementatie,
     ; uitgecommentarieerd (niet losse onbereikbare code na Return — dat
