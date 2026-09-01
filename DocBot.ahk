@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.10"
+global AppVersion := "2.4-sidebar-logo.11"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -489,17 +489,17 @@ BuildMainGui() {
             C["Text"],
             "een handje extra :)"
         )
-        BrandPicture := MainGui.AddPicture("x0 y0 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
-        ; AddCard()'s Picture-controls tonen wél: die worden via
-        ; AddPageControl() aan Pages["overzicht"] toegevoegd, en ShowPage()
-        ; roept aan het eind van BuildMainGui() ctrl.Opt("-Hidden") aan op
-        ; élk control van de actieve pagina — óók als het nooit met +Hidden
-        ; is aangemaakt. Dit control zit niet in Pages[] (het is sidebar-
-        ; chrome, geen paginagebonden inhoud) en kreeg die aanroep dus nooit,
-        ; wat bleek te verklaren waarom er niets te zien was ondanks een
-        ; geldige HBITMAP en Visible=1: de eerste render van de bitmap komt
-        ; kennelijk pas goed tot stand ná een expliciete Hidden-toggle. Doe
-        ; hier dezelfde (schijnbaar overbodige) toggle.
+        ; TIJDELIJKE DIAGNOSE (D-sidebar-logo-render, ronde 3): de -Hidden-
+        ; toggle (vorige poging) loste het niet op. Dit control is de enige
+        ; HBITMAP-Picture in de hele app die exact in de linkerbovenhoek
+        ; (x0 y0) zit en exact zo breed is als zijn ouder-sidebar (w210);
+        ; alle werkende Picture-controls (cards) zitten ruim binnen hun
+        ; container. Om dat als factor uit te sluiten staat dit control nu
+        ; 20px van de rand — nog steeds hetzelfde HBITMAP-mechanisme,
+        ; dezelfde inhoud, alleen verschoven. Verschijnt het nu wél, dan is
+        ; positie (0,0) zelf het probleem; verschijnt het nog steeds niet,
+        ; dan is dat uitgesloten.
+        BrandPicture := MainGui.AddPicture("x20 y20 w210 h104 0x4000000", "HBITMAP:*" brandBitmap)
         BrandPicture.Opt("-Hidden")
     } catch as brandError {
         DebugLog("✕", "Sidebar-logo", "Kon logo/slogan niet tekenen (" brandError.Message "); terugval op titel/subtitle.")
