@@ -1650,6 +1650,58 @@ regressions.
 
 ---
 
+## P2 — Consider folding the telemetry retry timer into `StorageRetryLoaders`
+
+Filed 2026-08-31, while fixing the `Telemetry_ReadCounter()`/
+`Telemetry_TryEnsureInstallationId()` read-race bugs (`docs/DECISIONS.md`
+D-063 validation notes).
+
+`StorageRetryLoaders` (D-063) already unified five originally-independent
+loaders onto one shared background timer because they "sit on the same
+Documents/OneDrive-backed folder... fail and recover together." Telemetry's
+installation ID and usage counters (`Telemetry_TryEnsureInstallationId()`/
+`Telemetry_TryLoadCounters()`, `Telemetry.ahk`) were deliberately left on
+their own separate timer at the time, reusing the *shape* of the existing
+D-027/D-028 retry pattern rather than joining the new shared array.
+
+That argument for staying separate looks weaker now than it did then:
+telemetry reads/writes the exact same file as `LoadAppSettings()`
+(`TelemetryConfigFile`/`ConfigFile` are both `settings.ini`) — a stronger
+case for sharing one timer than "same backing folder" ever was. The split
+already produced one real coordination bug that needed a direct patch:
+counter confirmation could land after `StorageRetry_OnAllReady()`'s
+one-time Overzicht refresh already ran, leaving the Gebruik card stuck on
+0 until a manually-added `RefreshUsageStatistics()` call in
+`Telemetry_TryLoadCounters()`'s success path fixed it (D-063 validation
+note, 2026-08-31) — a symptom of two independently-completing systems
+that a shared timer would remove structurally instead of papering over.
+
+What would need solving before folding this in, not blockers so much as
+shape mismatches with the existing `StorageRetryLoaders` `Fn`-returns-bool
+interface:
+
+- Telemetry is optional (`TelemetryConfig["Enabled"]`), but the usage
+  counters are loaded regardless of that setting (they feed the local
+  Overzicht "Gebruik" card independent of telemetry consent) — a folded-in
+  loader would need to report ready immediately when telemetry itself is
+  disabled, without also disabling the counter read.
+- The counter loader merges pending in-session actions
+  (`TelemetryPhoneActions` etc., accumulated in memory before
+  confirmation) with the freshly-confirmed disk baseline on success — the
+  five existing loaders don't have an analogous "reconcile with
+  in-flight state" step.
+- The installation-ID loader has its own extra write-then-reread
+  confirmation step for the multi-instance race (`Telemetry_
+  TryEnsureInstallationId()`), not present in any current loader.
+
+None of these look hard to adapt, just different enough from the existing
+five loaders that this is a real (if modest) refactor, not a drive-by
+change — deliberately not bundled into the read-race bugfix that surfaced
+it. Revisit as a P2 cleanup in a future development cycle, not as part of
+finishing 2.4.
+
+---
+
 ## P3 — Also offer the EPD_Machine copy question for a stable release, not only `-dev`/`-rc`
 
 _Downgraded from P1 to P3 (2026-08-26, project-owner decision)._
