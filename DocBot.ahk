@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.3"
+global AppVersion := "2.4-sidebar-logo.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -1824,6 +1824,23 @@ GdipCheck(status, stap) {
 CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, sloganText) {
     pBitmap := UiCreateBitmap(width, height, &graphics)
     GdipCheck(DllCall("gdiplus\GdipGraphicsClear", "ptr", graphics, "uint", UiArgb(surfaceColor)), "GdipGraphicsClear")
+
+    ; TIJDELIJKE DIAGNOSE (D-sidebar-logo-render): GDI+ meldt succes voor elke
+    ; stap (afbeelding geladen, slogan getekend), maar er verschijnt niets op
+    ; het scherm. Om te bepalen of het probleem in de inhoud zit of in het
+    ; AddPicture/HBITMAP-mechanisme van dit specifieke control, vult dit
+    ; blok de hele bitmap eerst met effen rood en stopt daarna meteen — geen
+    ; afbeelding, geen tekst. Verschijnt er nu een rood vlak op de sidebar,
+    ; dan ligt het probleem bij de logo-/slogan-inhoud. Blijft het net zo
+    ; leeg als voorheen, dan toont dit control sowieso niets, ongeacht de
+    ; inhoud. Verwijderen zodra dat duidelijk is.
+    debugBrush := 0
+    DllCall("gdiplus\GdipCreateSolidFill", "uint", 0xFFFF0000, "ptr*", &debugBrush)
+    DllCall("gdiplus\GdipFillRectangle", "ptr", graphics, "ptr", debugBrush, "float", 0, "float", 0, "float", width, "float", height)
+    DllCall("gdiplus\GdipDeleteBrush", "ptr", debugBrush)
+    DebugLog("i", "Sidebar-logo", "DIAGNOSE: effen rood vlak getekend, afbeelding/slogan overgeslagen.")
+    return UiFinishBitmap(pBitmap, graphics)
+    ; ---- einde tijdelijke diagnose; onderstaande code is nu onbereikbaar ----
     GdipCheck(DllCall("gdiplus\GdipSetInterpolationMode", "ptr", graphics, "int", 7), "GdipSetInterpolationMode") ; HighQualityBicubic
 
     pImage := 0
