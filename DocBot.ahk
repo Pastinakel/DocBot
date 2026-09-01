@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.14"
+global AppVersion := "2.4-sidebar-logo.15"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -1815,7 +1815,7 @@ CreateToggleBitmap(isOn, primaryColor, offColor, surfaceColor) {
     return UiFinishBitmap(pBitmap, graphics)
 }
 
-; Tekent het logo (images\DocBot-slim.png), passend geschaald en gecentreerd
+; Tekent het logo (images\DocBot.png), passend geschaald en gecentreerd
 ; binnen (width, height), met daaroverheen laag uitgelijnd en zo transparant
 ; mogelijk de slogan. surfaceColor is de sidebarkleur eromheen, zodat de
 ; bitmap naadloos aansluit op de rest van het paneel (zie CreateCardBitmap).
@@ -1854,7 +1854,7 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, slog
             drawW := imgW * scale
             drawH := imgH * scale
 
-            ; images\DocBot-slim.png heeft geen alfakanaal (colortype 2,
+            ; images\DocBot.png heeft geen alfakanaal (colortype 2,
             ; platte RGB) — de witte ondergrond zit gewoon in de pixels
             ; gebakken. Een colorkey behandelt (bijna) zuiver wit als
             ; transparant bij het tekenen, zodat de sidebarkleur er doorheen
@@ -1941,15 +1941,15 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, slog
     return UiFinishBitmap(pBitmap, graphics)
 }
 
-; Ongecompileerd wordt images\DocBot-slim.png rechtstreeks naast het script
+; Ongecompileerd wordt images\DocBot.png rechtstreeks naast het script
 ; gelezen. Gecompileerd bestaat die map niet met losse bestanden, dus moet
 ; het bestand letterlijk genoemd worden zodat Ahk2Exe het als resource
 ; opneemt (zelfde patroon als LoadReadmeChangelog() voor README.md).
 GetSidebarBrandImagePath() {
-    imagePath := A_ScriptDir "\images\DocBot-slim.png"
+    imagePath := A_ScriptDir "\images\DocBot.png"
     if A_IsCompiled {
         imagePath := A_Temp "\DocBot-brand.png"
-        FileInstall "images\DocBot-slim.png", imagePath, true
+        FileInstall "images\DocBot.png", imagePath, true
     }
     return imagePath
 }
