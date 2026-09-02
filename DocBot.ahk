@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.23"
+global AppVersion := "2.4-rc.5"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -353,6 +353,11 @@ global StorageRetryLoaders := [
     Map("Name", "SMS-standaardteksten", "Fn", InitializeSmsDefaultTextStorage, "Ready", false)
 ]
 global StorageRetryAttempts := 0
+; Eerste, kortste cyclus: vangt het veelvoorkomende geval op waarin storage
+; maar heel even niet beschikbaar was (bijv. OneDrive dat net klaar is met
+; mounten) veel sneller op dan de eerste 60s af te wachten.
+global StorageRetryUltraQuickMs := 10000
+global StorageRetryUltraQuickCount := 3
 global StorageRetryQuickMs := 60000
 global StorageRetryQuickCount := 5
 global StorageRetrySlowMs := 3600000
@@ -2191,7 +2196,7 @@ Tips_ReadShownCount(key) {
     global ConfigFile
 
     try
-        return Max(0, Integer(IniRead(ConfigFile, "Tips", key "ShownCount", 0)))
+        return Max(0, Integer(IniReadOrThrow(ConfigFile, "Tips", key "ShownCount", 0)))
     catch
         return 0
 }
@@ -2205,7 +2210,7 @@ Tips_ReadLastShownAt(key) {
     global ConfigFile
 
     try
-        return IniRead(ConfigFile, "Tips", key "LastShownAt", "")
+        return IniReadOrThrow(ConfigFile, "Tips", key "LastShownAt", "")
     catch
         return ""
 }
@@ -8448,13 +8453,19 @@ StorageRetry_AllLoadersReady() {
 
 StorageRetry_ScheduleIfNeeded() {
     global StorageRetryLoaders, StorageRetryAttempts, StorageAllReady
+    global StorageRetryUltraQuickMs, StorageRetryUltraQuickCount
     global StorageRetryQuickMs, StorageRetryQuickCount, StorageRetrySlowMs
 
     if !StorageRetry_AllLoadersReady() {
         StorageRetryAttempts += 1
-        delay := StorageRetryAttempts < StorageRetryQuickCount
-            ? StorageRetryQuickMs
-            : StorageRetrySlowMs
+        ; Drie cycli: eerst StorageRetryUltraQuickCount pogingen om de
+        ; StorageRetryUltraQuickMs, dan StorageRetryQuickCount pogingen om
+        ; de StorageRetryQuickMs, daarna onbeperkt StorageRetrySlowMs.
+        delay := StorageRetryAttempts <= StorageRetryUltraQuickCount
+            ? StorageRetryUltraQuickMs
+            : (StorageRetryAttempts <= StorageRetryUltraQuickCount + StorageRetryQuickCount
+                ? StorageRetryQuickMs
+                : StorageRetrySlowMs)
         SetTimer StorageRetry_Tick, -delay
         return
     }
@@ -9464,6 +9475,26 @@ RebaseCopiedHotstringPath(sourceDir) {
     )
 }
 
+; IniRead() with an explicit default never throws for a file that exists but
+; can't actually be read right now (locked, still hydrating, an antivirus
+; scan window) — it silently returns that default instead, masking a
+; transient failure as a confirmed value. That is dangerous wherever the
+; caller then treats "read succeeded" as license to stop retrying, or worse,
+; to write a freshly generated value over what may still be a real one
+; (see Telemetry_TryEnsureInstallationId()). Probe with a real FileRead()
+; first, which does throw on that condition, before delegating to IniRead()
+; for the actual value. A missing file returns `default` without probing —
+; that is a genuine "not created yet" case (e.g. a real first run), not a
+; failure; callers needing to tell that apart from "exists but stale"
+; already check FileExist()/UserDataDirIsPreexisting themselves where it
+; matters (see LoadAppSettings() below).
+IniReadOrThrow(path, section, key, default) {
+    if !FileExist(path)
+        return default
+    FileRead(path, "UTF-8")
+    return IniRead(path, section, key, default)
+}
+
 LoadAppSettings() {
     global State, ConfigFile, UserDataDirIsPreexisting
 
@@ -9487,16 +9518,16 @@ LoadAppSettings() {
 
     try {
         State["AutoSave"] := ParseBooleanSetting(
-            IniRead(ConfigFile, "Hotstrings", "AutoSave", State["AutoSave"])
+            IniReadOrThrow(ConfigFile, "Hotstrings", "AutoSave", State["AutoSave"])
         )
-        State["HotstringFile"] := IniRead(
+        State["HotstringFile"] := IniReadOrThrow(
             ConfigFile,
             "Hotstrings",
             "File",
             State["HotstringFile"]
         )
         storedCallAction := Trim(
-            IniRead(ConfigFile, "Features", "CallAction", "")
+            IniReadOrThrow(ConfigFile, "Features", "CallAction", "")
         )
         if storedCallAction != "" {
             State["CallAction"] := ParseCallActionSetting(
@@ -9505,17 +9536,17 @@ LoadAppSettings() {
             )
         } else {
             legacyAutoCall := ParseBooleanSetting(
-                IniRead(ConfigFile, "Features", "AutoCall", 1)
+                IniReadOrThrow(ConfigFile, "Features", "AutoCall", 1)
             )
             legacyDirectCall := ParseBooleanSetting(
-                IniRead(ConfigFile, "Features", "DirectCall", 0)
+                IniReadOrThrow(ConfigFile, "Features", "DirectCall", 0)
             )
             State["CallAction"] := !legacyAutoCall
                 ? 0
                 : (legacyDirectCall ? 2 : 1)
         }
         State["SmsCallActionTitle"] := ResolveSmsCallActionTitle(
-            IniRead(
+            IniReadOrThrow(
                 ConfigFile,
                 "Features",
                 "SmsCallActionTitle",
@@ -9524,7 +9555,7 @@ LoadAppSettings() {
         )
         State["CallAction"] := NormalizeCallAction(State["CallAction"])
         State["TextReplacement"] := ParseBooleanSetting(
-            IniRead(
+            IniReadOrThrow(
                 ConfigFile,
                 "Features",
                 "TextReplacement",

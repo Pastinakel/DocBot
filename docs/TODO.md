@@ -1650,6 +1650,58 @@ regressions.
 
 ---
 
+## P2 — Consider folding the telemetry retry timer into `StorageRetryLoaders`
+
+Filed 2026-08-31, while fixing the `Telemetry_ReadCounter()`/
+`Telemetry_TryEnsureInstallationId()` read-race bugs (`docs/DECISIONS.md`
+D-063 validation notes).
+
+`StorageRetryLoaders` (D-063) already unified five originally-independent
+loaders onto one shared background timer because they "sit on the same
+Documents/OneDrive-backed folder... fail and recover together." Telemetry's
+installation ID and usage counters (`Telemetry_TryEnsureInstallationId()`/
+`Telemetry_TryLoadCounters()`, `Telemetry.ahk`) were deliberately left on
+their own separate timer at the time, reusing the *shape* of the existing
+D-027/D-028 retry pattern rather than joining the new shared array.
+
+That argument for staying separate looks weaker now than it did then:
+telemetry reads/writes the exact same file as `LoadAppSettings()`
+(`TelemetryConfigFile`/`ConfigFile` are both `settings.ini`) — a stronger
+case for sharing one timer than "same backing folder" ever was. The split
+already produced one real coordination bug that needed a direct patch:
+counter confirmation could land after `StorageRetry_OnAllReady()`'s
+one-time Overzicht refresh already ran, leaving the Gebruik card stuck on
+0 until a manually-added `RefreshUsageStatistics()` call in
+`Telemetry_TryLoadCounters()`'s success path fixed it (D-063 validation
+note, 2026-08-31) — a symptom of two independently-completing systems
+that a shared timer would remove structurally instead of papering over.
+
+What would need solving before folding this in, not blockers so much as
+shape mismatches with the existing `StorageRetryLoaders` `Fn`-returns-bool
+interface:
+
+- Telemetry is optional (`TelemetryConfig["Enabled"]`), but the usage
+  counters are loaded regardless of that setting (they feed the local
+  Overzicht "Gebruik" card independent of telemetry consent) — a folded-in
+  loader would need to report ready immediately when telemetry itself is
+  disabled, without also disabling the counter read.
+- The counter loader merges pending in-session actions
+  (`TelemetryPhoneActions` etc., accumulated in memory before
+  confirmation) with the freshly-confirmed disk baseline on success — the
+  five existing loaders don't have an analogous "reconcile with
+  in-flight state" step.
+- The installation-ID loader has its own extra write-then-reread
+  confirmation step for the multi-instance race (`Telemetry_
+  TryEnsureInstallationId()`), not present in any current loader.
+
+None of these look hard to adapt, just different enough from the existing
+five loaders that this is a real (if modest) refactor, not a drive-by
+change — deliberately not bundled into the read-race bugfix that surfaced
+it. Revisit as a P2 cleanup in a future development cycle, not as part of
+finishing 2.4.
+
+---
+
 ## P3 — Also offer the EPD_Machine copy question for a stable release, not only `-dev`/`-rc`
 
 _Downgraded from P1 to P3 (2026-08-26, project-owner decision)._
@@ -1705,6 +1757,50 @@ This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
 bump applies.
 
 ---
+
+## P3 — Change the sidebar slogan
+
+Filed by the project owner (2026-08-26). Change the app subtitle shown
+under "DocBot" in the main window's sidebar from "Telefonie voor de
+werkplek" to "Een handje extra voor je werk". Classified P3 (cosmetic,
+narrow-impact single-line UI text) unless the project owner wants it
+prioritized higher.
+
+**Status (2026-09-01):** superseded by a broader request (logo image +
+overlaid slogan, not just a text swap) that is being implemented on its own
+branch, `claude/sidebar-logo-slogan` (based on `develop`, not on this RC).
+It was briefly on `release/2.4-rc.1`/`release/2.4-rc` as an explicit,
+acknowledged exception to the "RC only gets bugfixes" rule, then withdrawn
+and moved back to the normal feature-branch route at the project owner's
+request — none of that work is on the RC branch. The scope below is the
+original, narrower request; see the `claude/sidebar-logo-slogan` branch and
+its own TODO/changelog entries for what actually shipped there.
+
+### Scope
+
+- [ ] Update the literal string in `DocBot.ahk` (`appSub := MainGui.AddText(...)`
+  around line 338) from `"Telefonie voor de werkplek"` to `"Een handje
+  extra voor je werk"`.
+- [ ] Check the fixed-width text control it sits in (`w170`, `s9` font,
+  directly under the `appTitle`/`appSub` pair at `x28 y52`) on a real
+  Windows build: the new string is a few characters longer than the old
+  one, so confirm it neither clips nor wraps awkwardly against the nav
+  buttons starting at `y=110` — widen the control or adjust its position
+  only if it actually does.
+- [ ] This is the only in-repo occurrence of "Telefonie voor de werkplek"
+  (confirmed via a full-repo search) — no README, About-screen, or other
+  duplicate copy needs updating. Note this is a different string from the
+  GitHub repository's own "description" metadata field ("DocBot is een
+  AutoHotkey v2-hulpmiddel voor medewerkers met twee hoofdfuncties..."),
+  which lives in GitHub's repo settings, not in a tracked file — out of
+  scope here unless the project owner separately wants that changed too.
+- [ ] Consider whether the new slogan should also be reflected in the
+  README's own product description at the top, for consistency between
+  the app and its documentation — project-owner call, not assumed here.
+
+This changes `DocBot.ahk` behavior (visible UI text). Implement it on a
+dedicated feature/fix branch from the then-current `develop` and update
+the branch-specific `AppVersion` in the same commit.
 
 ---
 

@@ -12,6 +12,11 @@ global TelemetryConfig := Map(
 global TelemetryInstallationId := ""
 global TelemetryPendingInstallationId := ""
 global TelemetryInstallationIdPersistenceAttempts := 0
+; Zelfde derde, ultra-korte cyclus als StorageRetryUltraQuickMs/Count
+; (DocBot.ahk) — gedeeld tussen het installatie-ID en de gebruikstellers,
+; net als de bestaande Quick-globals hieronder al zijn.
+global TelemetryUltraQuickRetryMs := 10000
+global TelemetryUltraQuickRetryCount := 3
 global TelemetryInstallationIdQuickRetryMs := 60000
 global TelemetryInstallationIdQuickRetryCount := 5
 global TelemetryInstallationIdSlowRetryMs := 3600000
@@ -116,6 +121,7 @@ Telemetry_TryLoadCounters(*) {
     global TelemetryConfigFile, TelemetryCountersConfirmed
     global TelemetryPhoneActions, TelemetryLongHotstringActions, TelemetrySmsActions
     global TelemetryCounterRetryAttempts
+    global TelemetryUltraQuickRetryMs, TelemetryUltraQuickRetryCount
     global TelemetryInstallationIdQuickRetryMs, TelemetryInstallationIdQuickRetryCount
     global TelemetryInstallationIdSlowRetryMs
 
@@ -130,13 +136,15 @@ Telemetry_TryLoadCounters(*) {
         Telemetry_LogError(
             "Gebruikstellers konden niet worden gelezen uit " TelemetryConfigFile
         )
-        ; Hergebruikt bewust dezelfde snelle/langzame cadans als de
+        ; Hergebruikt bewust dezelfde drietraps-cadans als de
         ; installatie-ID-retry hierboven: beide races op dezelfde
         ; Documents/OneDrive-map, geen reden voor een tweede eigen klok.
         TelemetryCounterRetryAttempts += 1
-        delay := TelemetryCounterRetryAttempts < TelemetryInstallationIdQuickRetryCount
-            ? TelemetryInstallationIdQuickRetryMs
-            : TelemetryInstallationIdSlowRetryMs
+        delay := TelemetryCounterRetryAttempts <= TelemetryUltraQuickRetryCount
+            ? TelemetryUltraQuickRetryMs
+            : (TelemetryCounterRetryAttempts <= TelemetryUltraQuickRetryCount + TelemetryInstallationIdQuickRetryCount
+                ? TelemetryInstallationIdQuickRetryMs
+                : TelemetryInstallationIdSlowRetryMs)
         SetTimer Telemetry_TryLoadCounters, -delay
         return
     }
@@ -158,6 +166,15 @@ Telemetry_TryLoadCounters(*) {
         Telemetry_WriteCounter("LongHotstringActions", TelemetryLongHotstringActions)
     if TelemetrySmsActions != smsValue
         Telemetry_WriteCounter("SmsActions", TelemetrySmsActions)
+
+    ; Confirmation can land after StorageRetry_OnAllReady()'s one-time
+    ; Overzicht refresh already ran with the pre-confirmation (0) values —
+    ; this is on its own independent retry cadence, not gated by
+    ; StorageAllReady. Without this, the Gebruik card would stay stuck on 0
+    ; until the next recorded action or a restart. Guarded like every other
+    ; DocBot.ahk call from this file (see Telemetry_LogError()): harmless if
+    ; the GUI isn't built yet.
+    try RefreshUsageStatistics()
 }
 
 Telemetry_TryEnsureInstallationId(*) {
@@ -173,18 +190,28 @@ Telemetry_TryEnsureInstallationId(*) {
 
     ; Lees vóór iedere schrijfpoging opnieuw. Een andere DocBot-instantie kan
     ; het ID inmiddels al hebben opgeslagen; die bestaande waarde is leidend.
+    ; IniReadOrThrow() (DocBot.ahk), niet kale IniRead(): een bestand dat op
+    ; dit moment even niet leesbaar is (bijv. vlak vóór degraded mode echt
+    ; opheft) gaf anders stilzwijgend "" terug, ononderscheidbaar van "nog
+    ; geen ID opgeslagen". Een échte leesfout hier mag daarna ook niet
+    ; alsnog als "nog geen ID" worden behandeld — dat zou hieronder alsnog
+    ; een gloednieuw ID aanmaken en, als de daaropvolgende schrijfactie wél
+    ; lukte, een bestaand, echt installatie-ID stilzwijgend overschrijven.
+    ; Een echte fout herprobeert dus, net als een mislukte schrijfactie
+    ; verderop, in plaats van door te vallen naar "ID aanmaken".
     try {
         storedInstallationId := Trim(
-            IniRead(TelemetryConfigFile, "Telemetry", "InstallationId", "")
+            IniReadOrThrow(TelemetryConfigFile, "Telemetry", "InstallationId", "")
         )
     } catch as readError {
-        storedInstallationId := ""
         Telemetry_LogError(
             "Installatie-ID kon niet worden gelezen uit "
             . TelemetryConfigFile
             . ": "
             . readError.Message
         )
+        Telemetry_ScheduleInstallationIdRetry()
+        return
     }
 
     if storedInstallationId != "" {
@@ -216,7 +243,7 @@ Telemetry_TryEnsureInstallationId(*) {
         ; Controleer dat precies hetzelfde ID ook teruggelezen kan worden
         ; voordat telemetrie het als permanente identiteit gebruikt.
         persistedInstallationId := Trim(
-            IniRead(TelemetryConfigFile, "Telemetry", "InstallationId", "")
+            IniReadOrThrow(TelemetryConfigFile, "Telemetry", "InstallationId", "")
         )
         if persistedInstallationId != TelemetryPendingInstallationId
             throw Error("Het opgeslagen installatie-ID kon niet worden bevestigd.")
@@ -239,14 +266,17 @@ Telemetry_TryEnsureInstallationId(*) {
 
 Telemetry_ScheduleInstallationIdRetry() {
     global TelemetryInstallationIdPersistenceAttempts
+    global TelemetryUltraQuickRetryMs, TelemetryUltraQuickRetryCount
     global TelemetryInstallationIdQuickRetryMs
     global TelemetryInstallationIdQuickRetryCount
     global TelemetryInstallationIdSlowRetryMs
 
     TelemetryInstallationIdPersistenceAttempts += 1
-    delay := TelemetryInstallationIdPersistenceAttempts < TelemetryInstallationIdQuickRetryCount
-        ? TelemetryInstallationIdQuickRetryMs
-        : TelemetryInstallationIdSlowRetryMs
+    delay := TelemetryInstallationIdPersistenceAttempts <= TelemetryUltraQuickRetryCount
+        ? TelemetryUltraQuickRetryMs
+        : (TelemetryInstallationIdPersistenceAttempts <= TelemetryUltraQuickRetryCount + TelemetryInstallationIdQuickRetryCount
+            ? TelemetryInstallationIdQuickRetryMs
+            : TelemetryInstallationIdSlowRetryMs)
 
     SetTimer Telemetry_TryEnsureInstallationId, -delay
 }
@@ -326,8 +356,14 @@ Telemetry_GetSmsActions() {
 Telemetry_ReadCounter(name, &value) {
     global TelemetryConfigFile
 
+    ; IniReadOrThrow() (DocBot.ahk): a missing file confirms 0 (genuine
+    ; first run), but a file that exists and can't actually be read right
+    ; now (e.g. still locked right as degraded mode is clearing) throws
+    ; instead of silently returning 0 — unlike bare IniRead(), which would
+    ; report that transient failure as a confirmed, genuinely-zero counter
+    ; and permanently stop Telemetry_TryLoadCounters()'s retry.
     try {
-        value := Max(0, Integer(IniRead(TelemetryConfigFile, "Usage", name, 0)))
+        value := Max(0, Integer(IniReadOrThrow(TelemetryConfigFile, "Usage", name, 0)))
         return true
     } catch {
         value := 0
