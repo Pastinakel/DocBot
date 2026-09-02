@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-rc.5"
+global AppVersion := "2.4-rc.6"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -1897,7 +1897,7 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, text
     ; er niet toe, maar dit houdt de layoutgetallen bij elkaar.
     chipX := 84
     chipY := 28
-    chipW := width - chipX - 6
+    chipW := width - chipX - 10
     chipH := 54
     UiFillRoundedRect(graphics, chipX, chipY, chipW, chipH, 14, UiArgb(chipColor))
 
@@ -1912,12 +1912,12 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, text
         DebugLog("i", "Sidebar-logo", "Afbeelding geladen: " imgW "x" imgH " uit " imagePath ".")
 
         if imgW > 0 && imgH > 0 {
-            ; Meer marge links/boven/onder dan voorheen (was 8), maar de
-            ; kloof met de chip blijft bewust 6px zodat logo en chip dicht
-            ; bij elkaar blijven staan, zoals in de mockup.
+            ; Meer marge links/boven/onder dan voorheen (was 8). Het logo-vak
+            ; raakt nu de chip zonder kloof, zodat logo en chip echt tegen
+            ; elkaar aan staan, zoals in de mockup.
             logoBoxX := 14
             logoBoxY := 14
-            logoBoxW := chipX - logoBoxX - 6
+            logoBoxW := chipX - logoBoxX
             logoBoxH := height - logoBoxY * 2
             scale := Min(logoBoxW / imgW, logoBoxH / imgH)
             drawW := imgW * scale
