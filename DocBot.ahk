@@ -1895,7 +1895,7 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, text
     ; Chip eerst (achtergrond), dan het logo erover — het logo blijft binnen
     ; zijn eigen linkerkolom en overlapt de chip niet, dus de volgorde doet
     ; er niet toe, maar dit houdt de layoutgetallen bij elkaar.
-    chipX := 84
+    chipX := 80
     chipY := 28
     chipW := width - chipX - 10
     chipH := 54
