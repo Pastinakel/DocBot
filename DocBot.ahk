@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.15"
+global AppVersion := "2.4-sidebar-logo.16"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -449,18 +449,22 @@ BuildMainGui() {
     ; Sidebar
     MainGui.AddText("x0 y0 w210 h700 Background" C["Sidebar"], "")
 
-    ; Logo met slogan i.p.v. de vroegere titel/subtitle-tekst. De hoogte
-    ; blijft binnen de ruimte boven de "Overzicht"-knop (y110), zodat de
-    ; navigatieknoppen niet naar onderen verschuiven. Bij een probleem met
-    ; het GDI+-tekenpad (bijvoorbeeld een logo-PNG die de PNG-decoder van
-    ; GDI+ niet aan de praat krijgt) valt de sidebar terug op de vroegere
-    ; titel/subtitle-tekst in plaats van stil leeg te blijven.
+    ; Logo naast een afgeronde chip met titel + motto, i.p.v. de vroegere
+    ; losse titel/subtitle-tekst. De hoogte blijft binnen de ruimte boven de
+    ; "Overzicht"-knop (y110), zodat de navigatieknoppen niet naar onderen
+    ; verschuiven. Bij een probleem met het GDI+-tekenpad (bijvoorbeeld een
+    ; logo-PNG die de PNG-decoder van GDI+ niet aan de praat krijgt) valt de
+    ; sidebar terug op de vroegere titel/subtitle-tekst in plaats van stil
+    ; leeg te blijven.
     try {
         brandBitmap := CreateSidebarBrandBitmap(
             210, 104,
             GetSidebarBrandImagePath(),
             C["Sidebar"],
+            C["PrimarySoft"],
             C["Text"],
+            "F08200", ; zelfde oranje als de bestaande tip-/waarschuwingsbanners
+            "DocBot",
             "een handje extra :)"
         )
         ; Geen WS_CLIPSIBLINGS (0x4000000) hier, in tegenstelling tot
@@ -1815,13 +1819,13 @@ CreateToggleBitmap(isOn, primaryColor, offColor, surfaceColor) {
     return UiFinishBitmap(pBitmap, graphics)
 }
 
-; Tekent het logo (images\DocBot.png), passend geschaald en gecentreerd
-; binnen (width, height), met daaroverheen laag uitgelijnd en zo transparant
-; mogelijk de slogan. surfaceColor is de sidebarkleur eromheen, zodat de
-; bitmap naadloos aansluit op de rest van het paneel (zie CreateCardBitmap).
-; Elke Gdip*-aanroep hier geeft een statuscode terug in plaats van een
+; Tekent het logo (images\DocBot.png) links, vierkant en passend geschaald,
+; met daarnaast een afgeronde "chip" met daarin de titel en het motto.
+; surfaceColor is de sidebarkleur eromheen, zodat de bitmap naadloos
+; aansluit op de rest van het paneel (zie CreateCardBitmap). Elke
+; Gdip*-aanroep hier geeft een statuscode terug in plaats van een
 ; AHK-uitzondering te gooien bij een probleem; zonder controle tekent een
-; mislukte stap gewoon niets, stil, zonder spoor in debug.log. Deze helper
+; mislukte stap gewoon niets, stil, zonder spoor in debug.log. GdipCheck()
 ; logt en gooit alsnog bij een niet-Ok status, zodat CreateSidebarBrandBitmap()
 ; ofwel volledig lukt, ofwel duidelijk faalt (en BuildMainGui() terugvalt op
 ; titel/subtitle) met de exacte GDI+-statuscode in debug.log.
@@ -1832,16 +1836,67 @@ GdipCheck(status, stap) {
     }
 }
 
-CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, sloganText) {
+; Links uitgelijnde tekst binnen (x, y, w, h), gebruikt voor zowel de titel
+; als het motto in de chip — scheelt het dupliceren van de font/format/
+; brush-boilerplate.
+DrawSidebarBrandText(graphics, text, x, y, w, h, fontSize, bold, color, alpha) {
+    fontFamily := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateFontFamilyFromName", "str", "Segoe UI", "ptr", 0, "ptr*", &fontFamily), "GdipCreateFontFamilyFromName")
+    font := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateFont", "ptr", fontFamily, "float", fontSize, "int", bold ? 1 : 0, "int", 2, "ptr*", &font), "GdipCreateFont") ; UnitPixel
+
+    format := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "int", 0, "ptr*", &format), "GdipCreateStringFormat")
+    GdipCheck(DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", format, "int", 0), "GdipSetStringFormatAlign") ; Near (links)
+    GdipCheck(DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", format, "int", 0x1000), "GdipSetStringFormatFlags") ; NoWrap
+
+    brush := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(color, alpha), "ptr*", &brush), "GdipCreateSolidFill")
+
+    layoutRect := Buffer(16, 0)
+    NumPut("float", x, layoutRect, 0)
+    NumPut("float", y, layoutRect, 4)
+    NumPut("float", w, layoutRect, 8)
+    NumPut("float", h, layoutRect, 12)
+
+    GdipCheck(
+        DllCall(
+            "gdiplus\GdipDrawString",
+            "ptr", graphics,
+            "str", text,
+            "int", -1,
+            "ptr", font,
+            "ptr", layoutRect,
+            "ptr", format,
+            "ptr", brush
+        ),
+        "GdipDrawString"
+    )
+
+    DllCall("gdiplus\GdipDeleteBrush", "ptr", brush)
+    DllCall("gdiplus\GdipDeleteStringFormat", "ptr", format)
+    DllCall("gdiplus\GdipDeleteFont", "ptr", font)
+    DllCall("gdiplus\GdipDeleteFontFamily", "ptr", fontFamily)
+}
+
+CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, textColor, accentColor, titleText, sloganText) {
     pBitmap := UiCreateBitmap(width, height, &graphics)
     GdipCheck(DllCall("gdiplus\GdipGraphicsClear", "ptr", graphics, "uint", UiArgb(surfaceColor)), "GdipGraphicsClear")
-
     GdipCheck(DllCall("gdiplus\GdipSetInterpolationMode", "ptr", graphics, "int", 7), "GdipSetInterpolationMode") ; HighQualityBicubic
+
+    ; Chip eerst (achtergrond), dan het logo erover — het logo blijft binnen
+    ; zijn eigen linkerkolom en overlapt de chip niet, dus de volgorde doet
+    ; er niet toe, maar dit houdt de layoutgetallen bij elkaar.
+    chipX := 76
+    chipY := 18
+    chipW := width - chipX - 8
+    chipH := 68
+    UiFillRoundedRect(graphics, chipX, chipY, chipW, chipH, 14, UiArgb(chipColor))
 
     pImage := 0
     loadStatus := DllCall("gdiplus\GdipCreateBitmapFromFile", "str", imagePath, "ptr*", &pImage)
     if loadStatus != 0 || !pImage {
-        DebugLog("✕", "Sidebar-logo", "GdipCreateBitmapFromFile gaf status " loadStatus " voor " imagePath " (logo blijft weg, slogan wordt wel getekend).")
+        DebugLog("✕", "Sidebar-logo", "GdipCreateBitmapFromFile gaf status " loadStatus " voor " imagePath " (logo blijft weg, titel/motto worden wel getekend).")
     } else {
         imgW := 0, imgH := 0
         GdipCheck(DllCall("gdiplus\GdipGetImageWidth", "ptr", pImage, "uint*", &imgW), "GdipGetImageWidth")
@@ -1849,18 +1904,23 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, slog
         DebugLog("i", "Sidebar-logo", "Afbeelding geladen: " imgW "x" imgH " uit " imagePath ".")
 
         if imgW > 0 && imgH > 0 {
-            inset := 8
-            scale := Min((width - inset * 2) / imgW, (height - inset * 2) / imgH)
+            logoBoxX := 8
+            logoBoxY := 8
+            logoBoxW := chipX - logoBoxX - 6
+            logoBoxH := height - logoBoxY * 2
+            scale := Min(logoBoxW / imgW, logoBoxH / imgH)
             drawW := imgW * scale
             drawH := imgH * scale
+            logoX := logoBoxX + (logoBoxW - drawW) / 2
+            logoY := logoBoxY + (logoBoxH - drawH) / 2
 
-            ; images\DocBot.png heeft geen alfakanaal (colortype 2,
-            ; platte RGB) — de witte ondergrond zit gewoon in de pixels
-            ; gebakken. Een colorkey behandelt (bijna) zuiver wit als
-            ; transparant bij het tekenen, zodat de sidebarkleur er doorheen
-            ; komt in plaats van een wit vlak. Smalle bandbreedte (0xF5–0xFF)
-            ; om alleen de achtergrond te raken en niet de lichte vlakken
-            ; van het logo zelf.
+            ; images\DocBot.png heeft geen alfakanaal (colortype 2, platte
+            ; RGB) — de witte ondergrond zit gewoon in de pixels gebakken.
+            ; Een colorkey behandelt (bijna) zuiver wit als transparant bij
+            ; het tekenen, zodat de sidebarkleur er doorheen komt in plaats
+            ; van een wit vlak. Smalle bandbreedte (0xF5–0xFF) om alleen de
+            ; achtergrond te raken en niet de lichte vlakken van het logo
+            ; zelf.
             imageAttr := 0
             GdipCheck(DllCall("gdiplus\GdipCreateImageAttributes", "ptr*", &imageAttr), "GdipCreateImageAttributes")
             GdipCheck(
@@ -1879,8 +1939,8 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, slog
                     "gdiplus\GdipDrawImageRectRect",
                     "ptr", graphics,
                     "ptr", pImage,
-                    "float", (width - drawW) / 2,
-                    "float", (height - drawH) / 2,
+                    "float", logoX,
+                    "float", logoY,
                     "float", drawW,
                     "float", drawH,
                     "float", 0,
@@ -1899,44 +1959,10 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, textColor, slog
         DllCall("gdiplus\GdipDisposeImage", "ptr", pImage)
     }
 
-    fontFamily := 0
-    GdipCheck(DllCall("gdiplus\GdipCreateFontFamilyFromName", "str", "Segoe UI", "ptr", 0, "ptr*", &fontFamily), "GdipCreateFontFamilyFromName")
-    font := 0
-    GdipCheck(DllCall("gdiplus\GdipCreateFont", "ptr", fontFamily, "float", 9, "int", 2, "int", 2, "ptr*", &font), "GdipCreateFont") ; Italic, UnitPixel
-
-    format := 0
-    GdipCheck(DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "int", 0, "ptr*", &format), "GdipCreateStringFormat")
-    GdipCheck(DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", format, "int", 1), "GdipSetStringFormatAlign") ; Center
-    GdipCheck(DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", format, "int", 0x1000), "GdipSetStringFormatFlags") ; NoWrap
-
-    brush := 0
-    GdipCheck(DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(textColor, 70), "ptr*", &brush), "GdipCreateSolidFill")
-
-    layoutRect := Buffer(16, 0)
-    NumPut("float", 0, layoutRect, 0)
-    NumPut("float", height - 28, layoutRect, 4)
-    NumPut("float", width, layoutRect, 8)
-    NumPut("float", 20, layoutRect, 12)
-
-    GdipCheck(
-        DllCall(
-            "gdiplus\GdipDrawString",
-            "ptr", graphics,
-            "str", sloganText,
-            "int", -1,
-            "ptr", font,
-            "ptr", layoutRect,
-            "ptr", format,
-            "ptr", brush
-        ),
-        "GdipDrawString"
-    )
-    DebugLog("i", "Sidebar-logo", "Slogan getekend.")
-
-    DllCall("gdiplus\GdipDeleteBrush", "ptr", brush)
-    DllCall("gdiplus\GdipDeleteStringFormat", "ptr", format)
-    DllCall("gdiplus\GdipDeleteFont", "ptr", font)
-    DllCall("gdiplus\GdipDeleteFontFamily", "ptr", fontFamily)
+    textPad := 10
+    DrawSidebarBrandText(graphics, titleText, chipX + textPad, chipY + 8, chipW - textPad * 2, 24, 16, true, textColor, 255)
+    DrawSidebarBrandText(graphics, sloganText, chipX + textPad, chipY + 36, chipW - textPad * 2, 20, 8.5, false, accentColor, 255)
+    DebugLog("i", "Sidebar-logo", "Titel en motto getekend.")
 
     return UiFinishBitmap(pBitmap, graphics)
 }
