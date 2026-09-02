@@ -12,6 +12,11 @@ global TelemetryConfig := Map(
 global TelemetryInstallationId := ""
 global TelemetryPendingInstallationId := ""
 global TelemetryInstallationIdPersistenceAttempts := 0
+; Zelfde derde, ultra-korte cyclus als StorageRetryUltraQuickMs/Count
+; (DocBot.ahk) — gedeeld tussen het installatie-ID en de gebruikstellers,
+; net als de bestaande Quick-globals hieronder al zijn.
+global TelemetryUltraQuickRetryMs := 10000
+global TelemetryUltraQuickRetryCount := 3
 global TelemetryInstallationIdQuickRetryMs := 60000
 global TelemetryInstallationIdQuickRetryCount := 5
 global TelemetryInstallationIdSlowRetryMs := 3600000
@@ -116,6 +121,7 @@ Telemetry_TryLoadCounters(*) {
     global TelemetryConfigFile, TelemetryCountersConfirmed
     global TelemetryPhoneActions, TelemetryLongHotstringActions, TelemetrySmsActions
     global TelemetryCounterRetryAttempts
+    global TelemetryUltraQuickRetryMs, TelemetryUltraQuickRetryCount
     global TelemetryInstallationIdQuickRetryMs, TelemetryInstallationIdQuickRetryCount
     global TelemetryInstallationIdSlowRetryMs
 
@@ -130,13 +136,15 @@ Telemetry_TryLoadCounters(*) {
         Telemetry_LogError(
             "Gebruikstellers konden niet worden gelezen uit " TelemetryConfigFile
         )
-        ; Hergebruikt bewust dezelfde snelle/langzame cadans als de
+        ; Hergebruikt bewust dezelfde drietraps-cadans als de
         ; installatie-ID-retry hierboven: beide races op dezelfde
         ; Documents/OneDrive-map, geen reden voor een tweede eigen klok.
         TelemetryCounterRetryAttempts += 1
-        delay := TelemetryCounterRetryAttempts < TelemetryInstallationIdQuickRetryCount
-            ? TelemetryInstallationIdQuickRetryMs
-            : TelemetryInstallationIdSlowRetryMs
+        delay := TelemetryCounterRetryAttempts <= TelemetryUltraQuickRetryCount
+            ? TelemetryUltraQuickRetryMs
+            : (TelemetryCounterRetryAttempts <= TelemetryUltraQuickRetryCount + TelemetryInstallationIdQuickRetryCount
+                ? TelemetryInstallationIdQuickRetryMs
+                : TelemetryInstallationIdSlowRetryMs)
         SetTimer Telemetry_TryLoadCounters, -delay
         return
     }
@@ -258,14 +266,17 @@ Telemetry_TryEnsureInstallationId(*) {
 
 Telemetry_ScheduleInstallationIdRetry() {
     global TelemetryInstallationIdPersistenceAttempts
+    global TelemetryUltraQuickRetryMs, TelemetryUltraQuickRetryCount
     global TelemetryInstallationIdQuickRetryMs
     global TelemetryInstallationIdQuickRetryCount
     global TelemetryInstallationIdSlowRetryMs
 
     TelemetryInstallationIdPersistenceAttempts += 1
-    delay := TelemetryInstallationIdPersistenceAttempts < TelemetryInstallationIdQuickRetryCount
-        ? TelemetryInstallationIdQuickRetryMs
-        : TelemetryInstallationIdSlowRetryMs
+    delay := TelemetryInstallationIdPersistenceAttempts <= TelemetryUltraQuickRetryCount
+        ? TelemetryUltraQuickRetryMs
+        : (TelemetryInstallationIdPersistenceAttempts <= TelemetryUltraQuickRetryCount + TelemetryInstallationIdQuickRetryCount
+            ? TelemetryInstallationIdQuickRetryMs
+            : TelemetryInstallationIdSlowRetryMs)
 
     SetTimer Telemetry_TryEnsureInstallationId, -delay
 }

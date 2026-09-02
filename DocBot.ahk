@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-rc.4"
+global AppVersion := "2.4-ultra-quick-retry.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -353,6 +353,11 @@ global StorageRetryLoaders := [
     Map("Name", "SMS-standaardteksten", "Fn", InitializeSmsDefaultTextStorage, "Ready", false)
 ]
 global StorageRetryAttempts := 0
+; Eerste, kortste cyclus: vangt het veelvoorkomende geval op waarin storage
+; maar heel even niet beschikbaar was (bijv. OneDrive dat net klaar is met
+; mounten) veel sneller op dan de eerste 60s af te wachten.
+global StorageRetryUltraQuickMs := 10000
+global StorageRetryUltraQuickCount := 3
 global StorageRetryQuickMs := 60000
 global StorageRetryQuickCount := 5
 global StorageRetrySlowMs := 3600000
@@ -8271,13 +8276,19 @@ StorageRetry_AllLoadersReady() {
 
 StorageRetry_ScheduleIfNeeded() {
     global StorageRetryLoaders, StorageRetryAttempts, StorageAllReady
+    global StorageRetryUltraQuickMs, StorageRetryUltraQuickCount
     global StorageRetryQuickMs, StorageRetryQuickCount, StorageRetrySlowMs
 
     if !StorageRetry_AllLoadersReady() {
         StorageRetryAttempts += 1
-        delay := StorageRetryAttempts < StorageRetryQuickCount
-            ? StorageRetryQuickMs
-            : StorageRetrySlowMs
+        ; Drie cycli: eerst StorageRetryUltraQuickCount pogingen om de
+        ; StorageRetryUltraQuickMs, dan StorageRetryQuickCount pogingen om
+        ; de StorageRetryQuickMs, daarna onbeperkt StorageRetrySlowMs.
+        delay := StorageRetryAttempts <= StorageRetryUltraQuickCount
+            ? StorageRetryUltraQuickMs
+            : (StorageRetryAttempts <= StorageRetryUltraQuickCount + StorageRetryQuickCount
+                ? StorageRetryQuickMs
+                : StorageRetrySlowMs)
         SetTimer StorageRetry_Tick, -delay
         return
     }

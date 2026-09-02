@@ -2573,6 +2573,25 @@ to use it:
   part of the ongoing background retry contract — same bare-`IniRead()`
   pattern, negligible risk window.
 
+**Follow-up (2026-09-01, project-owner request): added a third, ultra-quick
+retry tier ahead of the existing two.** Waiting a full 60 seconds for the
+*first* background retry felt long for the common case — storage was only
+unavailable for a few seconds (e.g. OneDrive finishing its mount), not
+minutes. Added `StorageRetryUltraQuickMs`/`StorageRetryUltraQuickCount`
+(`DocBot.ahk`) and the mirrored `TelemetryUltraQuickRetryMs`/
+`TelemetryUltraQuickRetryCount` (`Telemetry.ahk`, shared by the
+installation-ID and usage-counter retries, same as the existing "Quick"
+globals): **3 attempts at 10-second intervals**, before falling through to
+the existing cadence (quick: 60s × a few more attempts; then hourly,
+unbounded) unchanged. All three retry-scheduling call sites
+(`StorageRetry_ScheduleIfNeeded()`, `Telemetry_TryLoadCounters()`,
+`Telemetry_ScheduleInstallationIdRetry()`) now select the delay from three
+tiers instead of two, using the same `SetTimer -delay` one-shot-reschedule
+shape as before — no new timer mechanism, just an extra threshold. A
+genuinely slow recovery (still not ready after the ultra-quick and quick
+tiers) is unaffected: it still falls back to the same bounded 60s cadence
+and then hourly as before this change.
+
 ---
 
 ## D-064 — Degraded mode: hide unready content behind a persistent banner, all-or-nothing across the five storage loaders
