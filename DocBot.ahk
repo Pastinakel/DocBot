@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.18"
+global AppVersion := "2.4-sidebar-logo.19"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -1890,10 +1890,10 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, text
     ; Chip eerst (achtergrond), dan het logo erover — het logo blijft binnen
     ; zijn eigen linkerkolom en overlapt de chip niet, dus de volgorde doet
     ; er niet toe, maar dit houdt de layoutgetallen bij elkaar.
-    chipX := 64
-    chipY := 14
-    chipW := width - chipX - 8
-    chipH := 76
+    chipX := 84
+    chipY := 8
+    chipW := width - chipX - 6
+    chipH := 88
     UiFillRoundedRect(graphics, chipX, chipY, chipW, chipH, 14, UiArgb(chipColor))
 
     pImage := 0
@@ -1966,9 +1966,9 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, text
     ; motto op dezelfde grootte als de statusindicatoren onderaan de sidebar
     ; ("Telefonie: Actief" e.d., s9). DrawSidebarBrandText() gebruikt nu
     ; UnitPoint, dus deze getallen zijn punten, net als SetFont("sXX ...").
-    textPad := 6
-    DrawSidebarBrandText(graphics, titleText, chipX + textPad, chipY + 4, chipW - textPad * 2, 32, 18, true, textColor, 255)
-    DrawSidebarBrandText(graphics, sloganText, chipX + textPad, chipY + 38, chipW - textPad * 2, 22, 9, false, accentColor, 255)
+    textPad := 5
+    DrawSidebarBrandText(graphics, titleText, chipX + textPad, chipY + 12, chipW - textPad * 2, 34, 18, true, textColor, 255)
+    DrawSidebarBrandText(graphics, sloganText, chipX + textPad, chipY + 58, chipW - textPad * 2, 24, 9, false, accentColor, 255)
     DebugLog("i", "Sidebar-logo", "Titel en motto getekend.")
 
     return UiFinishBitmap(pBitmap, graphics)
