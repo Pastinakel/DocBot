@@ -454,11 +454,43 @@ BuildMainGui() {
     ; Sidebar
     MainGui.AddText("x0 y0 w210 h700 Background" C["Sidebar"], "")
 
-    appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
-    appTitle.SetFont("s18 bold c" C["Text"], "Segoe UI")
-
-    appSub := MainGui.AddText("x28 y52 w170 h18 Background" C["Sidebar"], "Telefonie voor de werkplek")
-    appSub.SetFont("s9 c" C["Muted"], "Segoe UI")
+    ; Logo naast een afgeronde chip met titel + motto, i.p.v. de vroegere
+    ; losse titel/subtitle-tekst. De hoogte blijft binnen de ruimte boven de
+    ; "Overzicht"-knop (y110), zodat de navigatieknoppen niet naar onderen
+    ; verschuiven. Bij een probleem met het GDI+-tekenpad (bijvoorbeeld een
+    ; logo-PNG die de PNG-decoder van GDI+ niet aan de praat krijgt) valt de
+    ; sidebar terug op de vroegere titel/subtitle-tekst in plaats van stil
+    ; leeg te blijven.
+    try {
+        brandBitmap := CreateSidebarBrandBitmap(
+            210, 104,
+            GetSidebarBrandImagePath(),
+            C["Sidebar"],
+            C["PrimarySoft"],
+            C["Text"],
+            "F08200", ; zelfde oranje als de bestaande tip-/waarschuwingsbanners
+            "DocBot",
+            "een handje extra :)"
+        )
+        ; Geen WS_CLIPSIBLINGS (0x4000000) hier, in tegenstelling tot
+        ; AddCard(): dat control leeft in het contentvlak waar niets anders
+        ; die ruimte vult, dus de vlag is daar een no-op. Dit control ligt
+        ; wél bovenop een overlappende sibling — de sidebar-achtergrond
+        ; hierboven, x0 y0 w210 h700 — en WS_CLIPSIBLINGS sluit precies dat
+        ; overlappende gebied uit van het eigen tekenoppervlak. Bij exact
+        ; dezelfde positie/grootte als die achtergrond betekende dat: 100%
+        ; geklipt, dus onzichtbaar (bevestigd door het 20px-verschoven-testje
+        ; hiervoor, dat wél een 20px reepje liet zien — precies het stukje
+        ; dat níét overlapte). Dit control moet júist over die achtergrond
+        ; heen tekenen, dus de vlag blijft weg.
+        MainGui.AddPicture("x0 y0 w210 h104", "HBITMAP:*" brandBitmap)
+    } catch as brandError {
+        DebugLog("✕", "Sidebar-logo", "Kon logo/slogan niet tekenen (" brandError.Message "); terugval op titel/subtitle.")
+        appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
+        appTitle.SetFont("s18 bold c" C["Text"], "Segoe UI")
+        appSub := MainGui.AddText("x28 y52 w170 h18 Background" C["Sidebar"], "Telefonie voor de werkplek")
+        appSub.SetFont("s9 c" C["Muted"], "Segoe UI")
+    }
 
     AddNavButton("overzicht", Chr(0xE80F), "Overzicht", 110)
     AddNavButton("telefonie", Chr(0xE717), "Telefonie", 162)
@@ -1790,6 +1822,151 @@ CreateToggleBitmap(isOn, primaryColor, offColor, surfaceColor) {
     DllCall("gdiplus\GdipDeleteBrush", "ptr", knobBrush)
 
     return UiFinishBitmap(pBitmap, graphics)
+}
+
+; Tekent het logo (images\DocBot-slim.png) links, vierkant en passend geschaald,
+; met daarnaast een afgeronde "chip" met daarin de titel en het motto.
+; surfaceColor is de sidebarkleur eromheen, zodat de bitmap naadloos
+; aansluit op de rest van het paneel (zie CreateCardBitmap). Elke
+; Gdip*-aanroep hier geeft een statuscode terug in plaats van een
+; AHK-uitzondering te gooien bij een probleem; zonder controle tekent een
+; mislukte stap gewoon niets, stil, zonder spoor in debug.log. GdipCheck()
+; logt en gooit alsnog bij een niet-Ok status, zodat CreateSidebarBrandBitmap()
+; ofwel volledig lukt, ofwel duidelijk faalt (en BuildMainGui() terugvalt op
+; titel/subtitle) met de exacte GDI+-statuscode in debug.log.
+GdipCheck(status, stap) {
+    if status != 0 {
+        DebugLog("✕", "Sidebar-logo", stap " gaf status " status ".")
+        throw Error(stap " gaf GDI+-status " status ".")
+    }
+}
+
+; Links uitgelijnde tekst binnen (x, y, w, h), gebruikt voor zowel de titel
+; als het motto in de chip — scheelt het dupliceren van de font/format/
+; brush-boilerplate.
+DrawSidebarBrandText(graphics, text, x, y, w, h, fontSize, bold, color, alpha) {
+    fontFamily := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateFontFamilyFromName", "str", "Segoe UI", "ptr", 0, "ptr*", &fontFamily), "GdipCreateFontFamilyFromName")
+    font := 0
+    ; UnitPoint (3), niet UnitPixel: fontSize komt hier binnen als hetzelfde
+    ; puntenformaat als AHK's eigen SetFont("sXX ..."), zodat "18" hier ook
+    ; echt even groot rendert als het vroegere SetFont("s18 bold ...").
+    GdipCheck(DllCall("gdiplus\GdipCreateFont", "ptr", fontFamily, "float", fontSize, "int", bold ? 1 : 0, "int", 3, "ptr*", &font), "GdipCreateFont")
+
+    format := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "int", 0, "ptr*", &format), "GdipCreateStringFormat")
+    GdipCheck(DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", format, "int", 0), "GdipSetStringFormatAlign") ; Near (links)
+    GdipCheck(DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", format, "int", 0x1000), "GdipSetStringFormatFlags") ; NoWrap
+
+    brush := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(color, alpha), "ptr*", &brush), "GdipCreateSolidFill")
+
+    layoutRect := Buffer(16, 0)
+    NumPut("float", x, layoutRect, 0)
+    NumPut("float", y, layoutRect, 4)
+    NumPut("float", w, layoutRect, 8)
+    NumPut("float", h, layoutRect, 12)
+
+    GdipCheck(
+        DllCall(
+            "gdiplus\GdipDrawString",
+            "ptr", graphics,
+            "str", text,
+            "int", -1,
+            "ptr", font,
+            "ptr", layoutRect,
+            "ptr", format,
+            "ptr", brush
+        ),
+        "GdipDrawString"
+    )
+
+    DllCall("gdiplus\GdipDeleteBrush", "ptr", brush)
+    DllCall("gdiplus\GdipDeleteStringFormat", "ptr", format)
+    DllCall("gdiplus\GdipDeleteFont", "ptr", font)
+    DllCall("gdiplus\GdipDeleteFontFamily", "ptr", fontFamily)
+}
+
+CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, textColor, accentColor, titleText, sloganText) {
+    pBitmap := UiCreateBitmap(width, height, &graphics)
+    GdipCheck(DllCall("gdiplus\GdipGraphicsClear", "ptr", graphics, "uint", UiArgb(surfaceColor)), "GdipGraphicsClear")
+    GdipCheck(DllCall("gdiplus\GdipSetInterpolationMode", "ptr", graphics, "int", 7), "GdipSetInterpolationMode") ; HighQualityBicubic
+
+    ; Chip eerst (achtergrond), dan het logo erover — het logo blijft binnen
+    ; zijn eigen linkerkolom en overlapt de chip niet, dus de volgorde doet
+    ; er niet toe, maar dit houdt de layoutgetallen bij elkaar.
+    chipX := 84
+    chipY := 28
+    chipW := width - chipX - 6
+    chipH := 54
+    UiFillRoundedRect(graphics, chipX, chipY, chipW, chipH, 14, UiArgb(chipColor))
+
+    pImage := 0
+    loadStatus := DllCall("gdiplus\GdipCreateBitmapFromFile", "str", imagePath, "ptr*", &pImage)
+    if loadStatus != 0 || !pImage {
+        DebugLog("✕", "Sidebar-logo", "GdipCreateBitmapFromFile gaf status " loadStatus " voor " imagePath " (logo blijft weg, titel/motto worden wel getekend).")
+    } else {
+        imgW := 0, imgH := 0
+        GdipCheck(DllCall("gdiplus\GdipGetImageWidth", "ptr", pImage, "uint*", &imgW), "GdipGetImageWidth")
+        GdipCheck(DllCall("gdiplus\GdipGetImageHeight", "ptr", pImage, "uint*", &imgH), "GdipGetImageHeight")
+        DebugLog("i", "Sidebar-logo", "Afbeelding geladen: " imgW "x" imgH " uit " imagePath ".")
+
+        if imgW > 0 && imgH > 0 {
+            ; Meer marge links/boven/onder dan voorheen (was 8), maar de
+            ; kloof met de chip blijft bewust 6px zodat logo en chip dicht
+            ; bij elkaar blijven staan, zoals in de mockup.
+            logoBoxX := 14
+            logoBoxY := 14
+            logoBoxW := chipX - logoBoxX - 6
+            logoBoxH := height - logoBoxY * 2
+            scale := Min(logoBoxW / imgW, logoBoxH / imgH)
+            drawW := imgW * scale
+            drawH := imgH * scale
+            logoX := logoBoxX + (logoBoxW - drawW) / 2
+            logoY := logoBoxY + (logoBoxH - drawH) / 2
+
+            ; images\DocBot-slim.png heeft nu een echt alfakanaal (colortype
+            ; 6, RGBA), dus een gewone GdipDrawImageRect volstaat — geen
+            ; colorkey-benadering meer nodig voor de doorzichtige achtergrond.
+            GdipCheck(
+                DllCall(
+                    "gdiplus\GdipDrawImageRect",
+                    "ptr", graphics,
+                    "ptr", pImage,
+                    "float", logoX,
+                    "float", logoY,
+                    "float", drawW,
+                    "float", drawH
+                ),
+                "GdipDrawImageRect"
+            )
+        }
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pImage)
+    }
+
+    ; Titel op dezelfde grootte als de vroegere losse titel (s18 bold);
+    ; motto op dezelfde grootte als de statusindicatoren onderaan de sidebar
+    ; ("Telefonie: Actief" e.d., s9). DrawSidebarBrandText() gebruikt nu
+    ; UnitPoint, dus deze getallen zijn punten, net als SetFont("sXX ...").
+    textPad := 6
+    DrawSidebarBrandText(graphics, titleText, chipX + textPad, chipY + 0, chipW - textPad * 2, 36, 18, true, textColor, 255)
+    DrawSidebarBrandText(graphics, sloganText, chipX + textPad, chipY + 30, chipW - textPad * 2, 22, 9, false, accentColor, 255)
+    DebugLog("i", "Sidebar-logo", "Titel en motto getekend.")
+
+    return UiFinishBitmap(pBitmap, graphics)
+}
+
+; Ongecompileerd wordt images\DocBot-slim.png rechtstreeks naast het script
+; gelezen. Gecompileerd bestaat die map niet met losse bestanden, dus moet
+; het bestand letterlijk genoemd worden zodat Ahk2Exe het als resource
+; opneemt (zelfde patroon als LoadReadmeChangelog() voor README.md).
+GetSidebarBrandImagePath() {
+    imagePath := A_ScriptDir "\images\DocBot-slim.png"
+    if A_IsCompiled {
+        imagePath := A_Temp "\DocBot-brand.png"
+        FileInstall "images\DocBot-slim.png", imagePath, true
+    }
+    return imagePath
 }
 
 UiCreateBitmap(width, height, &graphics) {
