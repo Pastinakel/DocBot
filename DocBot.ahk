@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.20"
+global AppVersion := "2.4-sidebar-logo.21"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -1819,7 +1819,7 @@ CreateToggleBitmap(isOn, primaryColor, offColor, surfaceColor) {
     return UiFinishBitmap(pBitmap, graphics)
 }
 
-; Tekent het logo (images\DocBot.png) links, vierkant en passend geschaald,
+; Tekent het logo (images\DocBot-slim.png) links, vierkant en passend geschaald,
 ; met daarnaast een afgeronde "chip" met daarin de titel en het motto.
 ; surfaceColor is de sidebarkleur eromheen, zodat de bitmap naadloos
 ; aansluit op de rest van het paneel (zie CreateCardBitmap). Elke
@@ -1891,9 +1891,9 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, text
     ; zijn eigen linkerkolom en overlapt de chip niet, dus de volgorde doet
     ; er niet toe, maar dit houdt de layoutgetallen bij elkaar.
     chipX := 84
-    chipY := 8
+    chipY := 28
     chipW := width - chipX - 6
-    chipH := 74
+    chipH := 54
     UiFillRoundedRect(graphics, chipX, chipY, chipW, chipH, 14, UiArgb(chipColor))
 
     pImage := 0
@@ -1917,7 +1917,7 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, text
             logoX := logoBoxX + (logoBoxW - drawW) / 2
             logoY := logoBoxY + (logoBoxH - drawH) / 2
 
-            ; images\DocBot.png heeft geen alfakanaal (colortype 2, platte
+            ; images\DocBot-slim.png heeft geen alfakanaal (colortype 2, platte
             ; RGB) — de witte ondergrond zit gewoon in de pixels gebakken.
             ; Een colorkey behandelt (bijna) zuiver wit als transparant bij
             ; het tekenen, zodat de sidebarkleur er doorheen komt in plaats
@@ -1966,23 +1966,23 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, text
     ; motto op dezelfde grootte als de statusindicatoren onderaan de sidebar
     ; ("Telefonie: Actief" e.d., s9). DrawSidebarBrandText() gebruikt nu
     ; UnitPoint, dus deze getallen zijn punten, net als SetFont("sXX ...").
-    textPad := 5
-    DrawSidebarBrandText(graphics, titleText, chipX + textPad, chipY + 10, chipW - textPad * 2, 32, 18, true, textColor, 255)
-    DrawSidebarBrandText(graphics, sloganText, chipX + textPad, chipY + 44, chipW - textPad * 2, 22, 9, false, accentColor, 255)
+    textPad := 6
+    DrawSidebarBrandText(graphics, titleText, chipX + textPad, chipY + 0, chipW - textPad * 2, 36, 18, true, textColor, 255)
+    DrawSidebarBrandText(graphics, sloganText, chipX + textPad, chipY + 30, chipW - textPad * 2, 22, 9, false, accentColor, 255)
     DebugLog("i", "Sidebar-logo", "Titel en motto getekend.")
 
     return UiFinishBitmap(pBitmap, graphics)
 }
 
-; Ongecompileerd wordt images\DocBot.png rechtstreeks naast het script
+; Ongecompileerd wordt images\DocBot-slim.png rechtstreeks naast het script
 ; gelezen. Gecompileerd bestaat die map niet met losse bestanden, dus moet
 ; het bestand letterlijk genoemd worden zodat Ahk2Exe het als resource
 ; opneemt (zelfde patroon als LoadReadmeChangelog() voor README.md).
 GetSidebarBrandImagePath() {
-    imagePath := A_ScriptDir "\images\DocBot.png"
+    imagePath := A_ScriptDir "\images\DocBot-slim.png"
     if A_IsCompiled {
         imagePath := A_Temp "\DocBot-brand.png"
-        FileInstall "images\DocBot.png", imagePath, true
+        FileInstall "images\DocBot-slim.png", imagePath, true
     }
     return imagePath
 }
