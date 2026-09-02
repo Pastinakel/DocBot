@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.21"
+global AppVersion := "2.4-sidebar-logo.22"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -1917,47 +1917,21 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, text
             logoX := logoBoxX + (logoBoxW - drawW) / 2
             logoY := logoBoxY + (logoBoxH - drawH) / 2
 
-            ; images\DocBot-slim.png heeft geen alfakanaal (colortype 2, platte
-            ; RGB) — de witte ondergrond zit gewoon in de pixels gebakken.
-            ; Een colorkey behandelt (bijna) zuiver wit als transparant bij
-            ; het tekenen, zodat de sidebarkleur er doorheen komt in plaats
-            ; van een wit vlak. Smalle bandbreedte (0xF5–0xFF) om alleen de
-            ; achtergrond te raken en niet de lichte vlakken van het logo
-            ; zelf.
-            imageAttr := 0
-            GdipCheck(DllCall("gdiplus\GdipCreateImageAttributes", "ptr*", &imageAttr), "GdipCreateImageAttributes")
+            ; images\DocBot-slim.png heeft nu een echt alfakanaal (colortype
+            ; 6, RGBA), dus een gewone GdipDrawImageRect volstaat — geen
+            ; colorkey-benadering meer nodig voor de doorzichtige achtergrond.
             GdipCheck(
                 DllCall(
-                    "gdiplus\GdipSetImageAttributesColorKeys",
-                    "ptr", imageAttr,
-                    "int", 0, ; ColorAdjustTypeDefault
-                    "int", 1, ; enableFlag
-                    "uint", 0xFFF5F5F5,
-                    "uint", 0xFFFFFFFF
-                ),
-                "GdipSetImageAttributesColorKeys"
-            )
-            GdipCheck(
-                DllCall(
-                    "gdiplus\GdipDrawImageRectRect",
+                    "gdiplus\GdipDrawImageRect",
                     "ptr", graphics,
                     "ptr", pImage,
                     "float", logoX,
                     "float", logoY,
                     "float", drawW,
-                    "float", drawH,
-                    "float", 0,
-                    "float", 0,
-                    "float", imgW,
-                    "float", imgH,
-                    "int", 2, ; UnitPixel
-                    "ptr", imageAttr,
-                    "ptr", 0,
-                    "ptr", 0
+                    "float", drawH
                 ),
-                "GdipDrawImageRectRect"
+                "GdipDrawImageRect"
             )
-            DllCall("gdiplus\GdipDisposeImageAttributes", "ptr", imageAttr)
         }
         DllCall("gdiplus\GdipDisposeImage", "ptr", pImage)
     }
