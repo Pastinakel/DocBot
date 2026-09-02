@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-sidebar-logo.22"
+global AppVersion := "2.4-sidebar-logo.23"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -1907,8 +1907,11 @@ CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, text
         DebugLog("i", "Sidebar-logo", "Afbeelding geladen: " imgW "x" imgH " uit " imagePath ".")
 
         if imgW > 0 && imgH > 0 {
-            logoBoxX := 8
-            logoBoxY := 8
+            ; Meer marge links/boven/onder dan voorheen (was 8), maar de
+            ; kloof met de chip blijft bewust 6px zodat logo en chip dicht
+            ; bij elkaar blijven staan, zoals in de mockup.
+            logoBoxX := 14
+            logoBoxY := 14
             logoBoxW := chipX - logoBoxX - 6
             logoBoxH := height - logoBoxY * 2
             scale := Min(logoBoxW / imgW, logoBoxH / imgH)
