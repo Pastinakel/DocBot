@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-31. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-09-03. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -13,7 +13,7 @@ _Last updated: 2026-08-31. This file is a handover backlog, not a promise that e
 
 ---
 
-## P0 — Autostart race: user-data storage not yet available at DocBot startup (implemented and merged into `develop`; not yet in a stable release)
+## P0 — Autostart race: user-data storage not yet available at DocBot startup (shipped in stable DocBot 2.4)
 
 Filed 2026-08-28 from a user-supplied standard log
 (`docs/uploads/0dbac3d9-standaardlog.txt`, redacted). DocBot was started via
@@ -1517,8 +1517,8 @@ in both places, following the exact same established pattern.
   three columns on one row (project owner's choice over a second row); the
   per-item "Lange en meerregelige vervangingen" caption that only existed
   under the hotstring stat was dropped so all three columns get equal
-  treatment. Still needs Windows visual validation (spacing/legibility,
-  no clipping) — not yet confirmed on a compiled build.
+  treatment. Shipped as part of the `release/2.4-rc` field test; no
+  spacing/clipping issue reported.
 - [x] Update `RefreshUsageStatistics()` (`DocBot.ahk` around line 1981) to
   also refresh the new label live, matching the existing two counters
   (`OverviewPhoneActionsText`/`OverviewLongHotstringActionsText` pattern).
@@ -1552,9 +1552,8 @@ in both places, following the exact same established pattern.
 This changes `DocBot.ahk`/`Telemetry.ahk` behavior and the telemetry
 payload. Implemented on branch `claude/sms-actieteller-gui-telemetry-gv38n7`
 from `develop` (`2.4-dev.2`); `AppVersion` bumped to
-`2.4-sms-actieteller.1` in the same commit. Still needs Windows
-visual/functional validation (D-037) before merge — nothing here has been
-run on a compiled build yet.
+`2.4-sms-actieteller.1` in the same commit, later merged into `develop` and
+`release/2.4-rc`. Shipped as part of DocBot 2.4.
 
 ---
 
@@ -1758,49 +1757,23 @@ bump applies.
 
 ---
 
-## P3 — Change the sidebar slogan
+## P3 — Change the sidebar slogan (done, shipped as a broader redesign in DocBot 2.4)
 
-Filed by the project owner (2026-08-26). Change the app subtitle shown
-under "DocBot" in the main window's sidebar from "Telefonie voor de
-werkplek" to "Een handje extra voor je werk". Classified P3 (cosmetic,
-narrow-impact single-line UI text) unless the project owner wants it
-prioritized higher.
+Filed by the project owner (2026-08-26) as a narrow text swap: change the
+app subtitle shown under "DocBot" in the main window's sidebar from
+"Telefonie voor de werkplek" to "Een handje extra voor je werk".
 
-**Status (2026-09-01):** superseded by a broader request (logo image +
-overlaid slogan, not just a text swap) that is being implemented on its own
-branch, `claude/sidebar-logo-slogan` (based on `develop`, not on this RC).
-It was briefly on `release/2.4-rc.1`/`release/2.4-rc` as an explicit,
-acknowledged exception to the "RC only gets bugfixes" rule, then withdrawn
-and moved back to the normal feature-branch route at the project owner's
-request — none of that work is on the RC branch. The scope below is the
-original, narrower request; see the `claude/sidebar-logo-slogan` branch and
-its own TODO/changelog entries for what actually shipped there.
-
-### Scope
-
-- [ ] Update the literal string in `DocBot.ahk` (`appSub := MainGui.AddText(...)`
-  around line 338) from `"Telefonie voor de werkplek"` to `"Een handje
-  extra voor je werk"`.
-- [ ] Check the fixed-width text control it sits in (`w170`, `s9` font,
-  directly under the `appTitle`/`appSub` pair at `x28 y52`) on a real
-  Windows build: the new string is a few characters longer than the old
-  one, so confirm it neither clips nor wraps awkwardly against the nav
-  buttons starting at `y=110` — widen the control or adjust its position
-  only if it actually does.
-- [ ] This is the only in-repo occurrence of "Telefonie voor de werkplek"
-  (confirmed via a full-repo search) — no README, About-screen, or other
-  duplicate copy needs updating. Note this is a different string from the
-  GitHub repository's own "description" metadata field ("DocBot is een
-  AutoHotkey v2-hulpmiddel voor medewerkers met twee hoofdfuncties..."),
-  which lives in GitHub's repo settings, not in a tracked file — out of
-  scope here unless the project owner separately wants that changed too.
-- [ ] Consider whether the new slogan should also be reflected in the
-  README's own product description at the top, for consistency between
-  the app and its documentation — project-owner call, not assumed here.
-
-This changes `DocBot.ahk` behavior (visible UI text). Implement it on a
-dedicated feature/fix branch from the then-current `develop` and update
-the branch-specific `AppVersion` in the same commit.
+**Final outcome:** superseded on 2026-09-01 by a broader project-owner
+request (logo image + title/slogan chip, not a text swap), implemented on
+`claude/sidebar-logo-slogan` from `develop`. It briefly sat directly on
+`release/2.4-rc.1`/`release/2.4-rc` as an explicit, acknowledged exception
+to the "RC only gets bugfixes" rule, was then withdrawn back to its own
+feature branch — and was subsequently merged into `develop` and back into
+`release/2.4-rc` via PR #71 once the design settled, so it does ship as
+part of DocBot 2.4 after all. See `docs/DECISIONS.md` D-065 for the final
+design, the GDI+/non-standard-PNG-chunk bug it surfaced and its fix, and
+the fallback-to-text behavior. The original narrower text-only request
+above is superseded, not separately implemented.
 
 ---
 
@@ -1823,8 +1796,8 @@ These problems are important historical context but are not open TODOs unless th
 - **Clipboard-based hotstring expansion:** deliberately removed/prohibited.
 - **Extended-logging integration status in durable docs:** synchronized with the integrated `develop`/RC2 source; obsolete feature-branch promotion tasks were removed while broader release-candidate acceptance remains open.
 - **Integrated problem reporting on RC2:** the dedicated compiled-Windows validation checklist was completed by the project owner on 2026-08-09, including consent/privacy boundaries, session behavior, diagnostic content, ZIP creation, and Outlook/manual fallback paths.
-- **Sidebar slogan:** the previously filed P3 slogan-text change was superseded on 2026-09-01 by a broader project-owner request, first implemented directly on `release/2.4-rc.1` as an explicit, acknowledged exception to the "RC only gets bugfixes" rule, then withdrawn from the RC and moved to its own branch, `claude/sidebar-logo-slogan` (based on `develop`, `AppVersion` `2.4-sidebar-logo.N`), once the owner decided it should follow the normal feature-branch route after all — the RC no longer carries any of this work. The "DocBot" title and "Telefonie voor de werkplek" subtitle texts are replaced by `DocBot.png`, scaled to fit the sidebar space above the nav buttons without moving them, with the slogan "een handje extra :)" overlaid low on the image at low opacity. First Windows test (while still on the RC) showed a fully blank area (no logo, no slogan). Root cause: `DocBot.png` carried a non-standard private PNG chunk (`caBX`, ~29KB, right after `IHDR`) that GDI+'s PNG decoder (`GdipCreateBitmapFromFile`) failed to load, silently, while ordinary viewers/browsers ignored it fine. Fixed by re-saving `DocBot.png` with that chunk stripped (pixel data verified byte-identical). `CreateSidebarBrandBitmap()`/`BuildMainGui()` also log a `DebugLog` line and fall back to the old title/subtitle text if image loading or bitmap creation ever fails again, instead of rendering nothing. Still needs a real-Windows re-check (D-037) and, when the owner is ready, a PR from `claude/sidebar-logo-slogan` into `develop`.
-- **Startup onboarding tips based on zero-usage counters:** implemented on `claude/onboarding-tips`. A yellow dismissible hint banner on Overzicht (`TipBannerSurface`/`-Accent`/`-Link`/`-CloseButton`, `EvaluateStartupTip()`) randomly picks one eligible tip per session — phone/hotstrings/sms zero-usage tips plus a "closing hides DocBot in the tray" tip that replaced the old fixed Overzicht footer text. Eligibility needs both a true condition and enough time since last shown (`[Tips]` section in `settings.ini`, separate from telemetry's `[Usage]`): at least 10 days for a tip's first `TipRepeatCapCount` (5) shows, then at least `TipLongTermIntervalMonths` (6) months — a tip never stops permanently, it just drops to a much lower frequency after the cap. Pending compiled-Windows validation (D-037).
+- **Sidebar slogan/logo:** the originally filed P3 slogan-text change was superseded on 2026-09-01 by a broader project-owner request (logo + title/slogan chip, not a text swap), implemented on `claude/sidebar-logo-slogan` from `develop`. It briefly sat directly on `release/2.4-rc.1`/`release/2.4-rc` as an explicit, acknowledged exception to the "RC only gets bugfixes" rule, was withdrawn back to its own branch once the owner decided it should follow the normal feature-branch route, and was later merged into both `develop` and `release/2.4-rc` (PR #71) once the design settled — it ships as part of DocBot 2.4. The "DocBot" title and "Telefonie voor de werkplek" subtitle texts are replaced by the DocBot logo next to a rounded title/slogan chip ("een handje extra :)"). First Windows test showed a fully blank area (no logo, no slogan): `DocBot.png` carried a non-standard private PNG chunk (`caBX`, ~29KB, right after `IHDR`) that GDI+'s PNG decoder (`GdipCreateBitmapFromFile`) failed to load silently, while ordinary viewers/browsers ignored it fine. Fixed by re-saving `DocBot.png` with that chunk stripped (pixel data verified byte-identical) and moving the source images into `images/`. `CreateSidebarBrandBitmap()`/`BuildMainGui()` log a `DebugLog` line and fall back to the old title/subtitle text if image loading or bitmap creation ever fails again, instead of rendering nothing. See `docs/DECISIONS.md` D-065.
+- **Startup onboarding tips based on zero-usage counters:** implemented on `claude/onboarding-tips`. A yellow dismissible hint banner on Overzicht (`TipBannerSurface`/`-Accent`/`-Link`/`-CloseButton`, `EvaluateStartupTip()`) randomly picks one eligible tip per session — phone/hotstrings/sms zero-usage tips plus a "closing hides DocBot in the tray" tip that replaced the old fixed Overzicht footer text. Eligibility needs both a true condition and enough time since last shown (`[Tips]` section in `settings.ini`, separate from telemetry's `[Usage]`): at least 10 days for a tip's first `TipRepeatCapCount` (5) shows, then at least `TipLongTermIntervalMonths` (6) months — a tip never stops permanently, it just drops to a much lower frequency after the cap. Shipped as part of DocBot 2.4, field-tested on the shared `DocBot-test` profile before the stable release.
 
 ---
 

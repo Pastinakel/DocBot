@@ -1,6 +1,6 @@
 # DocBot — Decisions
 
-_Last updated: 2026-08-25. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
+_Last updated: 2026-09-03. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
 
 ## How to read this file
 
@@ -77,17 +77,25 @@ Only an explicitly requested production hotfix starts from `main`.
 
 **Status:** Accepted
 
-Current scheme, after the DocBot 2.3 release (tag `v2.3` on `main`):
+Current scheme, after the DocBot 2.4 release (tag `v2.4` on `main`):
 
 ```text
-main                 2.3 (stable)
-develop              2.4-dev.N
-feature/fix          2.4-<short-branch-name>.N
-release candidate    2.4-rc
-stable release       2.4
+main                 2.4 (stable)
+develop              2.5-dev.N
+feature/fix          2.5-<short-branch-name>.N
+release candidate    2.5-rc
+stable release       2.5
 ```
 
-The same numeric scheme applied to the 2.3 cycle that just shipped: `main`
+The same numeric scheme applied to the 2.4 cycle that just shipped: `main`
+carried `2.3` until the final `2.4` release; `develop` used `2.4-dev.N`;
+feature/fix branches used `2.4-<short-branch-name>.N`; the release candidate
+used `2.4-rc.N` (`release/2.4-rc`, merged into `main` via PR #70, tagged
+`v2.4`). The release-only fixes were then merged back into `develop`, which
+started the next development line at `2.5-dev.1` (direct commit on
+`develop`, mirroring how `2.4-dev.1` started after the 2.3 release).
+
+The same numeric scheme applied to the 2.3 cycle before that: `main`
 carried `2.2` until the final `2.3` release; `develop` used `2.3-dev.N`;
 feature/fix branches used `2.3-<short-branch-name>.N`; the release candidate
 used `2.3-rc.N` (`release/2.3-rc`, merged into `main` via PR #51, tagged
@@ -2755,3 +2763,65 @@ after a real degraded-to-ready transition. This was missed in the original
 D-064 pass because the tray menu build only explicitly reasoned about the
 two items that write to `State`/`settings.ini`; the speed-dial section's
 own dependency on unloaded storage was not considered.
+
+---
+
+## D-065 — Sidebar branding: replace the title/subtitle text with a logo + title/slogan chip
+
+**Status:** Accepted, implemented (PR #71, `claude/sidebar-logo-slogan`,
+merged into `release/2.4-rc`)
+
+Filed by the project owner as a broader follow-up to the original P3
+"change the sidebar slogan" text-only request (`docs/TODO.md`): replace the
+plain "DocBot" title and "Telefonie voor de werkplek" subtitle text in the
+sidebar with the DocBot robot logo next to a rounded chip carrying the
+title "DocBot" and the slogan "een handje extra :)" in the existing accent
+orange, without shifting the nav buttons below it.
+
+**Root cause of the first Windows regression**
+
+The first compiled-Windows test showed a fully blank sidebar area — no
+logo, no slogan, no fallback text. `DocBot.png` carried a non-standard
+private PNG chunk (`caBX`, ~29KB, immediately after `IHDR`) that GDI+'s
+PNG decoder (`GdipCreateBitmapFromFile`) failed to load silently, while
+ordinary image viewers and browsers ignored the chunk and rendered the
+file fine. Fixed by re-saving `DocBot.png` with that chunk stripped
+(pixel data verified byte-identical) and moving the source images into
+`images/` (`DocBot.png`, `DocBot.ico`, `DocBot-slim.png`).
+
+**Decision**
+
+`CreateSidebarBrandBitmap()` composites the logo and chip into one bitmap
+at startup (`DocBot.ahk`); `BuildMainGui()` uses it in place of the old
+`appTitle`/`appSub` `AddText()` controls. If image loading or bitmap
+creation fails for any reason, it logs a `DebugLog` line and falls back to
+the original title/subtitle text instead of rendering nothing — the
+original blank-sidebar failure mode is no longer possible even if a future
+image regresses the same way.
+
+**Reasoning**
+
+- A silent, hard-to-diagnose GDI+ decode failure on a seemingly-valid PNG
+  is exactly the kind of runtime-only failure D-040/`docs/PROJECT_CONTEXT.md`
+  §8 already warns is invisible to source review and the `/Validate`-based
+  syntax check — only caught by actually running the compiled build on
+  Windows.
+- A silent fallback to the old text, rather than a blocking error, matches
+  the project's general pattern of degrading a cosmetic feature gracefully
+  instead of failing startup over it.
+- This is purely a UI/branding change: no new data flow, no new personal
+  data, no telemetry impact — not regulatory-assessment-relevant beyond a
+  cosmetic-change note (`docs/REGULATORY_ASSESSMENT.md`).
+
+**Consequences**
+
+- `images/` is now a real top-level content directory (moved out of the
+  repository root), referenced from `DocBot.ahk` and embedded via
+  `FileInstall`/Ahk2Exe at compile time like the rest of the app's assets.
+- The literal strings "DocBot" (title) and "Telefonie voor de werkplek"
+  (old subtitle) remain in `DocBot.ahk` only as the fallback path's text,
+  not as the primary rendered UI.
+- Final layout (logo size, chip width/margins, text scale) was hand-tuned
+  against the project owner's feedback over several iterations; see the
+  `claude/sidebar-logo-slogan` branch history for the intermediate steps
+  if the exact geometry ever needs revisiting.

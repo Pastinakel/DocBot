@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-08-25. Repository facts refer to stable DocBot 2.3 (`main`, tag `v2.3`) and the start of the 2.4 development line unless noted otherwise._
+_Last updated: 2026-09-03. Repository facts refer to `release/2.4-rc` (`AppVersion 2.4-rc.6`), shipping as stable DocBot 2.4, and the start of the 2.5 development line unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -11,6 +11,12 @@ DocBot is a Windows desktop application written in AutoHotkey v2. The architectu
 - third-party libraries are included directly from `ThirdParty/`;
 - local environment/secrets are injected through ignored `DocBot.local.ahk`;
 - bundled content is stored as JSON under `packages/`;
+- app icon/logo assets live under `images/` (`DocBot.png`, `DocBot.ico`,
+  `DocBot-slim.png`), loaded at runtime for the sidebar branding and
+  embedded at compile time for the executable icon;
+- `tools/` holds PowerShell build/CI helpers (`Invoke-WithTimeout.ps1`,
+  `Read-YesNoAnswer.ps1`) used by `Build-EPD_Machine.bat` and the
+  AHK-syntax-check CI workflow, not by the running application itself;
 - persistent user state is stored as INI/JSON files outside the repository.
 
 The main script is large, but it is organized by subsystem and uses explicit global maps/controls as the primary shared-state mechanism. Refactoring it into many modules may be desirable eventually, but should not be attempted casually because startup order, global initialization, GUI control references, hotstring callbacks, AutoHotkey event binding, and compiled `FileInstall` behavior are tightly coupled.
@@ -106,13 +112,17 @@ The current startup flow in `DocBot.ahk` is approximately:
 10. build the main GUI and tray menu — `StorageAllReady` (§7.4) is already
     known by this point, so degraded-mode visibility (D-064) is correct
     from the first paint, not something applied afterward;
-11. register Windows messages and exit handler;
-12. show GUI and apply custom visual rendering;
-13. start clipboard polling (suppressed while degraded — §7.4/D-064);
-14. start registration-button countdown timer;
-15. request telephony registration and start chained event polling —
+11. evaluate and select the Overzicht onboarding-tip banner
+    (`EvaluateStartupTip()`, gated on `StorageAllReady`) — re-run once more
+    when `StorageRetry_OnAllReady()` fires later, so a tip eligible only
+    once storage finishes loading can still appear that session;
+12. register Windows messages and exit handler;
+13. show GUI and apply custom visual rendering;
+14. start clipboard polling (suppressed while degraded — §7.4/D-064);
+15. start registration-button countdown timer;
+16. request telephony registration and start chained event polling —
     unaffected by user-data availability throughout;
-16. start/check `signal.txt` update/shutdown coordination.
+17. start/check `signal.txt` update/shutdown coordination.
 
 Changing this order can have user-data, UI, or network side effects. Treat initialization order as behavior, not formatting.
 
@@ -150,7 +160,9 @@ The application keeps many control references globally because event callbacks a
 - sidebar status indicators;
 - custom-notification GUI;
 - debug window controls;
-- call/SMS dialog keyboard state.
+- call/SMS dialog keyboard state;
+- onboarding-tip banner controls and per-session selection state
+  (`TipBannerActive`, `TipBannerSelected`, `CurrentTipKey`).
 
 This is one reason an aggressive module split would require care.
 

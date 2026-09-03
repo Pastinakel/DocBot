@@ -1,6 +1,6 @@
 # DocBot — Project Context
 
-_Last updated: 2026-08-25. This document combines the repository state around the DocBot 2.3 release and the start of the 2.4 development line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
+_Last updated: 2026-09-03. This document combines the repository state around the DocBot 2.4 release and the start of the 2.5 development line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
 
 ## 1. Purpose
 
@@ -30,6 +30,8 @@ Current top-level structure:
 - `ThirdParty/JXON/` — JSON library and original license.
 - `ThirdParty/UIA-v2/` — UI Automation library and original license.
 - `tests/SelfTests.ahk` — opt-in self-test suite for pure migration-support logic, run via `DocBot.ahk --selftest`; see `tests/README.md` and `docs/DECISIONS.md` D-053.
+- `tools/` — PowerShell build/CI helpers (`Invoke-WithTimeout.ps1`, a timeout-and-force-kill wrapper for GUI-subsystem AutoHotkey processes; `Read-YesNoAnswer.ps1`, a single-keypress J/N prompt reader), used by `Build-EPD_Machine.bat` and `.github/workflows/ahk-syntax-check.yml`.
+- `images/` — app icon/logo assets (`DocBot.png`, `DocBot.ico`, `DocBot-slim.png`) used by the compiled executable and the sidebar branding.
 - `README.md` — end-user/developer documentation and the only maintained changelog.
 - `AGENTS.md` and `CLAUDE.md` — repository workflow rules for coding agents.
 - `LICENSE` — DocBot's own license.
@@ -44,35 +46,37 @@ Windows.
 
 ## 3. Branch and release status at handover
 
-Repository state checked on 2026-08-25:
+Repository state checked on 2026-09-03, on the assumption that `release/2.4-rc`
+(then at `AppVersion 2.4-rc.6`) ships as stable **DocBot 2.4** once the
+project owner's field test on the shared `DocBot-test` profile comes back
+clean:
 
-- `main` is the production line and represents stable **DocBot 2.3**, merged
-  from `release/2.3-rc` via PR #51 (merge commit `dbe4c52`) and tagged
-  `v2.3` on that commit. No further work is expected on `main` outside an
-  explicitly requested hotfix.
-- `release/2.3-rc` and `release/2.3-finalize` are the historical release
-  branches for 2.3; both have been deleted after merging, no further work
-  is expected on them. The full 2.3 feature/fix set is recorded in the
-  README `### 2.3 — Huidige stabiele release` changelog section — treat
-  that section, not this one, as the authoritative feature list.
-- `develop` was brought back in line with the released `main` via PR #52
-  (`chore/bring-back-2.3-to-develop`, mirroring PR #28 for 2.2) and started
-  the 2.4 development line at `AppVersion = 2.4-dev.1` (direct commit on
-  `develop`, mirroring commit `35d3937` after the 2.2 release). Verify this
+- `main` is the production line and represents stable **DocBot 2.4**, merged
+  from `release/2.4-rc` via PR #70 and tagged `v2.4` on the stable release
+  commit. No further work is expected on `main` outside an explicitly
+  requested hotfix. Verify the exact merge commit and tag against `git log`/
+  `git tag` before citing it elsewhere — this section does not repeat that
+  hash so it cannot go stale if it is ever re-derived (e.g. after a hotfix).
+- `release/2.4-rc` is the historical release branch for 2.4; expect it to be
+  deleted after merging, no further work on it. The full 2.4 feature/fix set
+  is recorded in the README `### 2.4 — Huidige stabiele release` changelog
+  section — treat that section, not this one, as the authoritative feature
+  list. Highlights: the autostart-race storage-retry/degraded-mode mechanism
+  (`docs/DECISIONS.md` D-063/D-064), startup onboarding tips, a third
+  telemetry/Overzicht counter for SMS actions, the sidebar logo/chip
+  redesign (`docs/DECISIONS.md` D-065), and several diagnostics/build
+  hardening fixes (D-062, D-060/D-061).
+- `develop` was brought back in line with the released `main` and started the
+  2.5 development line at `AppVersion = 2.5-dev.1` (direct commit on
+  `develop`, mirroring the pattern used after 2.2 and 2.3). Verify this
   against `global AppVersion` in `DocBot.ahk` before relying on it, since
   this section is a point-in-time snapshot and further branches may have
   merged since.
 - `feature/extended-logging` is no longer the branch to test or integrate;
   its work shipped as part of 2.2.
-- The autostart-race storage retry/degraded-mode work
-  (`docs/DECISIONS.md` D-063/D-064) merged into `develop` via PR #63
-  (2026-08-31, `claude/docbot-autostart-telemetry-s8bhu8`), functionally
-  validated on Windows in the same pass — see `docs/TODO.md`'s P0
-  "Autostart race" section for what was tested and the two regressions it
-  caught and fixed. Not yet in a stable release; still on `develop` only.
-- See `docs/TODO.md` for the current backlog; the "P0 — Release plan:
-  finalize stable DocBot 2.3" section is now a completed record, not an
-  open plan.
+- See `docs/TODO.md` for the current backlog; the P0 sections for the
+  autostart-race work and for finalizing stable DocBot 2.4 are completed
+  records, not open plans, once the release above actually lands.
 
 Do not infer functional validation from source integration alone for future
 cycles. Both the 2.2 feature work and the D-044 diagnostics-retention work
@@ -151,6 +155,17 @@ Requirements for the SMS path:
 - Help contains expandable topics and clickable navigation links into DocBot pages.
 - Managed Windows environments are part of the design target. `TrayTip()` proved unreliable under group policy and was replaced by a custom always-visible notification window.
 - Globals needed while building the GUI must be initialized in the top globals block before the auto-execute section. AutoHotkey v2 executes top-level statements in file order; moving such globals lower in the file can create runtime failures even though function definitions themselves are parsed earlier.
+- Overzicht shows a dismissible yellow onboarding-tip banner that rotates
+  through a small set of tips pointing at unused functionality (linking
+  telephony, hotstrings, SMS default texts) plus a tip about the
+  tray-close behavior, gated on both a per-tip repeat cap and a minimum
+  interval since last shown (`[Tips]` in `settings.ini`, separate from
+  telemetry's `[Usage]`). A tip is never permanently retired, only shown
+  much less often once its repeat cap is reached.
+- The sidebar title/subtitle text was replaced by the DocBot logo next to a
+  rounded chip carrying the title and slogan (`docs/DECISIONS.md` D-065);
+  a failure to load or render the logo falls back to the original
+  title/subtitle text instead of rendering nothing.
 
 ### 4.6 Storage profiles
 
@@ -238,7 +253,7 @@ Installation-ID durability is important:
 
 ### 4.9 Diagnostics and problem reporting
 
-Baseline diagnostics include a bounded/buffered background log at `%LocalAppData%\DocBot\debug.log` and a developer-only live debug window. The current DocBot code also contains the user-facing `Probleem melden...` flow through Help and the tray menu (shipped as part of 2.2, still present in 2.3).
+Baseline diagnostics include a bounded/buffered background log at `%LocalAppData%\DocBot\debug.log` and a developer-only live debug window. The current DocBot code also contains the user-facing `Probleem melden...` flow through Help and the tray menu (shipped as part of 2.2, still present in 2.4).
 
 The implementation has two reporting paths:
 
