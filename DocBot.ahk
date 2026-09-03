@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-rc.6"
+global AppVersion := "2.4-rc.7"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -3375,6 +3375,17 @@ DebugLog(richting, label, tekst := "") {
     }
 }
 
+; Schrijft, anders dan de normale DebugLog() (die tot 2 seconden gebufferd
+; blijft vóór FlushDebugLog() die regel wegschrijft), een checkpointregel
+; meteen naar schijf. Gebruikt op een klein aantal plekken in de
+; belvenster-/belactieflow, zodat bij een vastlopend hoofdproces het laatst
+; bereikte punt toch zichtbaar is in debug.log in plaats van verloren te
+; gaan in een nooit weggeschreven buffer.
+LogActivityCheckpoint(label, tekst := "") {
+    DebugLog("•", label, tekst)
+    FlushDebugLog()
+}
+
 ExtendedDebugLog(richting, label, tekst := "") {
     global ProblemReportSession, ExtendedDebugLogBuffer
     global ExtendedDebugFlushPending
@@ -4864,6 +4875,7 @@ HandleClipboardNumberDetected() {
     CloseExistingPhoneActionDialog()
 
     action := State["CallAction"]
+    LogActivityCheckpoint("Belactie bepaald", "Actie " action " voor extern nummer.")
     switch action {
         case 0:
             ClearClipBoardNumber("geen belactie geconfigureerd")
@@ -4886,6 +4898,7 @@ HandleInternalClipboardNumberDetected() {
     CloseExistingPhoneActionDialog()
 
     action := State["CallAction"]
+    LogActivityCheckpoint("Belactie bepaald", "Actie " action " voor intern nummer.")
     switch action {
         case 0:
             ClearClipBoardNumber("geen belactie geconfigureerd")
@@ -4953,6 +4966,7 @@ ShowCallConfirmationDialog() {
         "Selected", 2
     )
 
+    LogActivityCheckpoint("Belvenster", "Bevestigingsvenster (bellen) wordt getoond.")
     dlg.Show("w360 h224 Center")
 
     SetPhoneActionDialogSelection(2)
@@ -5023,6 +5037,7 @@ ShowCallOrSmsChoiceDialog() {
         "Selected", 3
     )
 
+    LogActivityCheckpoint("Belvenster", "Keuzevenster (bellen/sms) wordt getoond.")
     dlg.Show("w500 h224 Center")
 
     ; SetColor vóór Show() is niet voldoende: Windows toont dan eerst kort de
@@ -5144,6 +5159,8 @@ CloseExistingPhoneActionDialog() {
 ClosePhoneActionDialog(dialog, *) {
     global PhoneActionDialogState
 
+    LogActivityCheckpoint("Belvenster", "Venster wordt gesloten en klembordstatus opgeruimd.")
+
     if IsObject(PhoneActionDialogState)
         && PhoneActionDialogState["DialogHwnd"] = dialog.Hwnd {
         PhoneActionDialogState := 0
@@ -5154,11 +5171,13 @@ ClosePhoneActionDialog(dialog, *) {
 }
 
 ExecutePhoneActionCallChoice(dialog, number, *) {
+    LogActivityCheckpoint("Belvenster", "Bellen-knop gekozen; venster wordt gesloten.")
     ClosePhoneActionDialog(dialog)
     IPT_callNumber(number)
 }
 
 StartSmsCallAction(dialog, number, *) {
+    LogActivityCheckpoint("Belvenster", "SMS-knop gekozen; venster wordt gesloten.")
     ClosePhoneActionDialog(dialog)
     DebugLog("→", "SMS actie", "SMS-route gestart.")
 
