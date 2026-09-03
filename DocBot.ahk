@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-klembord-race.3"
+global AppVersion := "2.4-klembord-race.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -4792,7 +4792,7 @@ ReadClipboardTextSafely() {
 }
 
 ClipBoardPoller() {
-    global State, StorageAllReady
+    global State, StorageAllReady, PhoneActionDialogState
     static lastSeq := DllCall("GetClipboardSequenceNumber")  ; voorkomt dat de klembordinhoud bij opstarten al wordt opgepakt
 
     seq := DllCall("GetClipboardSequenceNumber")
@@ -4838,6 +4838,19 @@ ClipBoardPoller() {
         )
         return
     }
+
+    telNummer := externalTel != "" ? externalTel : internalTel
+
+    ; Sommige klembordbronnen (Windows Klembordgeschiedenis/Cloud Klembord,
+    ; of een webpagina die het klembord in meerdere stappen beschrijft)
+    ; laten de klembordteller soms twee keer oplopen voor wat voor de
+    ; gebruiker één kopieeractie is, met exact dezelfde inhoud. Staat er al
+    ; een venster open voor precies dit nummer, dan is dit geen nieuwe
+    ; kopieeractie: doe niets, in plaats van het bestaande venster te
+    ; vervangen door een identiek nieuw venster (met de "vorig venster
+    ; gesloten"-melding tot gevolg).
+    if IsObject(PhoneActionDialogState) && State["IPT"]["ClipBoardNumber"] = telNummer
+        return
 
     if externalTel != "" {
         SetClipBoardNumber(externalTel)
