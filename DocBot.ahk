@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-rc.7"
+global AppVersion := "2.4-klembord-race.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -4752,6 +4752,31 @@ ResetProblemReportAfterCompletion() {
     )
 }
 
+; Een andere applicatie (bijv. HiX) kan het kopiëren van een nummer in
+; meerdere stappen uitvoeren, elk met een eigen OpenClipboard-aanroep. Valt
+; DocBot's eigen klembordlezing precies tussen die stappen, dan kan dat bij
+; die andere applicatie een "OpenClipboard is mislukt (CLIPBRD_E_CANT_OPEN)"
+; veroorzaken. De korte vertraging geeft de schrijvende applicatie de kans
+; om af te ronden vóórdat DocBot leest; de herpogingen vangen een
+; resterende botsing op zonder de poller te laten crashen. Geeft "" terug
+; als lezen na de pogingen nog steeds niet lukt.
+ReadClipboardTextSafely() {
+    Sleep(75)
+
+    Loop 3 {
+        try
+            return A_ClipBoard
+        catch as clipError {
+            if A_Index = 3 {
+                DebugLog("✕", "Klembord lezen", "Mislukt na 3 pogingen: " clipError.Message)
+                return ""
+            }
+            Sleep(50)
+        }
+    }
+    return ""
+}
+
 ClipBoardPoller() {
     global State, StorageAllReady
     static lastSeq := DllCall("GetClipboardSequenceNumber")  ; voorkomt dat de klembordinhoud bij opstarten al wordt opgepakt
@@ -4762,8 +4787,12 @@ ClipBoardPoller() {
 
     lastSeq := seq
 
-    externalTel := NormalizePhoneNumberExternal(A_ClipBoard)
-    internalTel := externalTel = "" ? NormalizePhoneNumberInternal(A_ClipBoard) : ""
+    clipboardText := ReadClipboardTextSafely()
+    if clipboardText = ""
+        return
+
+    externalTel := NormalizePhoneNumberExternal(clipboardText)
+    internalTel := externalTel = "" ? NormalizePhoneNumberInternal(clipboardText) : ""
 
     if externalTel = "" && internalTel = ""
         return
