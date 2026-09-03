@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-klembord-race.2"
+global AppVersion := "2.4-klembord-race.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -4802,6 +4802,19 @@ ClipBoardPoller() {
     lastSeq := seq
 
     clipboardText := ReadClipboardTextSafely()
+
+    ; Is de klembordinhoud tijdens het wachten/lezen hierboven ondertussen
+    ; wéér gewijzigd (de gebruiker kopieerde iets nieuws terwijl DocBot nog
+    ; bezig was), dan is clipboardText alweer achterhaald. lastSeq bewust
+    ; niet verder bijwerken: de eerstvolgende poll ziet dan zelf een
+    ; afwijkende teller (lastSeq staat nog op de oude waarde seq) en
+    ; verwerkt de daadwerkelijk actuele inhoud in een eigen, schone ronde —
+    ; in plaats van hier alsnog een gedateerd belvenster te openen dat
+    ; meteen weer als "vorig venster" wordt gesloten door die volgende
+    ; ronde.
+    if DllCall("GetClipboardSequenceNumber") != seq
+        return
+
     if clipboardText = ""
         return
 
