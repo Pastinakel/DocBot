@@ -552,6 +552,13 @@ Changelog
   `NormalizeSmsPhoneNumber`): 4-cijferige interne nummers, externe
   NL-nummers in +31-/0031-/kale-0-vorm met spaties/streepjes genegeerd, de
   06-only-eis voor de SMS-variant, en te korte/ongeldige invoer.
+- DocBot leest het klembord bij een herkende wijziging voortaan met een
+  korte vertraging en enkele herpogingen in plaats van meteen. Een andere
+  applicatie die tijdens het kopiëren zelf meerdere keren het klembord
+  opent — waargenomen bij HiX — kon daardoor soms zelf een klembordfout
+  krijgen. Dezelfde aanpassing voorkomt ook dat het belvenster soms dubbel
+  opende, met de melding dat het vorige venster alsnog werd gesloten,
+  terwijl er maar één keer was gekopieerd.
 
 ### 2.3 — Vorige stabiele release
 - DocBot probeert de gebruikersdatamap bij het opstarten niet langer lokaal

@@ -440,9 +440,19 @@ Clipboard-triggered dialing is a separate entry path into the same call gate:
 ```text
 ClipBoardPoller()
   -> detect a clipboard sequence-number change
+  -> read the clipboard content with a short delay and a few retries
+       (ReadClipboardTextSafely(); reading immediately on the raw sequence-
+       number change could make another application's own multi-step
+       clipboard write fail, observed as a clipboard error in HiX)
+  -> if the sequence number changed again during that wait/read, discard
+       the result as stale rather than act on it; the next poll picks up
+       the by-then-settled content in a clean round
   -> normalize (external Dutch number / internal four-digit number)
   -> no match: ignore
-  -> match: SetClipBoardNumber() then
+  -> a dialog is already open for this exact number: ignore as a duplicate
+       detection (e.g. Windows Clipboard History re-touching the clipboard,
+       or a source that writes the clipboard in more than one step)
+  -> otherwise: SetClipBoardNumber() then
        HandleClipboardNumberDetected() / HandleInternalClipboardNumberDetected()
 
 Handle...ClipboardNumberDetected()
@@ -459,9 +469,12 @@ Handle...ClipboardNumberDetected()
 At most one call-action dialog (confirmation, or the cancel/SMS/call choice)
 may be open at a time; a newer clipboard detection always resolves — by
 closing — whatever an older detection left open, regardless of which action
-the new detection then takes. Manual dial paths (speed dial, right-click,
-linking call) call `IPT_callNumber()` directly and do not go through this
-close step, so they intentionally leave an open dialog untouched.
+the new detection then takes — unless the new detection is for the exact
+same number as the dialog that is already open, which is treated as a
+duplicate and ignored rather than reopening an identical dialog. Manual dial
+paths (speed dial, right-click, linking call) call `IPT_callNumber()`
+directly and do not go through this close step, so they intentionally leave
+an open dialog untouched.
 
 ### 11.3 Number normalization
 

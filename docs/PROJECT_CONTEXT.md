@@ -125,6 +125,7 @@ before declaring a change complete, not just source review.
 - Request objects are intentionally separate for registration, polling, and dialing. Do not collapse them into one shared mutable XHR object.
 - Event polling is chained: the next poll starts after the previous request finishes. Do not restore a fixed-interval overlapping poll timer.
 - Clipboard detection supports Dutch external numbers and a deliberately separate path for internal four-digit numbers.
+- Reading the clipboard on a detected sequence-number change is deliberately delayed and retried (`ReadClipboardTextSafely()`), and the result is discarded if the sequence number changed again during that wait. Reading immediately can make another application's own multi-step clipboard write fail (observed as a clipboard error in HiX) or attach stale content to the earlier detection. Do not remove the delay/retry or the staleness check to "simplify" this path.
 
 ### 4.4 Call action and SMS assistance
 
@@ -146,7 +147,7 @@ Requirements for the SMS path:
 - An `SmsCallAction` may optionally set `TextFieldId`, the field id of a second, message-body field on the same SMS page. Where set, and where the user has configured a default text for that page's `Title` on Instellingen (`sms-default-texts.json`), DocBot best-effort-fills that field too, right after the phone-number fill succeeds — a failed text fill never turns an otherwise-successful SMS action into a reported failure, and is only logged.
 - The default-text field on Instellingen is multiline and preserves real newlines (hard Enters), reusing the same control already used for the multiline hotstring Replacement editor.
 - The cancel/SMS/call dialog is keyboard-operable with left/right plus Enter and must paint its initial visual selection correctly.
-- Only one call-action dialog (confirmation, or the cancel/SMS/call choice) may be open at a time. A newer clipboard-detected number always closes a still-open older dialog first — with a short notification — regardless of which action the new number then triggers (a new dialog, an immediate call, or no action). Do not reintroduce stacking dialogs by adding a new outcome path that skips this close step.
+- Only one call-action dialog (confirmation, or the cancel/SMS/call choice) may be open at a time. A newer clipboard-detected number always closes a still-open older dialog first — with a short notification — regardless of which action the new number then triggers (a new dialog, an immediate call, or no action). Do not reintroduce stacking dialogs by adding a new outcome path that skips this close step. The one exception: a repeat detection of the exact same number while its own dialog is still open is treated as a duplicate (e.g. Windows Clipboard History re-touching the clipboard) and ignored, instead of closing and reopening an identical dialog.
 - `State["IPT"]["ClipBoardNumber"]` is cleared immediately once the current action is handed off, completed, or cancelled (call placed, SMS started, dialog cancelled/closed, or no action configured) — not left until the next number is detected or the app exits.
 
 ### 4.5 Help and GUI
