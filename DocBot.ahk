@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-klembord-race.1"
+global AppVersion := "2.4-klembord-race.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2882,17 +2882,24 @@ IPT_callNumber(telNummer := "", isRegistrationCall := false) {
 }
 
 ; Simpele ERROR-check, net als bij IPT_RegisterResponse — DialNumber geeft
-; geen event-XML terug.
+; geen event-XML terug. De COM-aanroepen naar .status/.ResponseText in een
+; try/catch, net als bij IPT_PollResponse: een falende toegang (bijv. een
+; afgebroken verbinding) mag deze asynchrone COM-callback nooit onafgevangen
+; laten crashen.
 IPT_DialResponse() {
     global IPTConfig, IPTDialRequest
 
     if IPTDialRequest.readyState != 4
         return
 
-    DebugLog("←", IPTConfig["DialPage"] . " status " . IPTDialRequest.status, IPTDialRequest.ResponseText)
+    try {
+        DebugLog("←", IPTConfig["DialPage"] . " status " . IPTDialRequest.status, IPTDialRequest.ResponseText)
 
-    if InStr(IPTDialRequest.ResponseText, "ERROR")
-        ShowNotification("Er is een fout opgetreden bij het bellen.", 4000, "error")
+        if InStr(IPTDialRequest.ResponseText, "ERROR")
+            ShowNotification("Er is een fout opgetreden bij het bellen.", 4000, "error")
+    } catch as err {
+        DebugLog("←", IPTConfig["DialPage"] . " PARSE-FOUT: " . err.Message, "")
+    }
 }
 
 ; startCooldown := false bij de automatische aanvraag tijdens opstarten,
@@ -2930,17 +2937,24 @@ IPT_register(startCooldown := true) {
 }
 
 ; Simpele ERROR-check, geen XML-parsing — de server geeft hier geen
-; event-XML terug (dat gebeurt uitsluitend via IPT_poller/GetEvent).
+; event-XML terug (dat gebeurt uitsluitend via IPT_poller/GetEvent). De
+; COM-aanroepen naar .status/.ResponseText in een try/catch, net als bij
+; IPT_PollResponse: een falende toegang (bijv. een afgebroken verbinding)
+; mag deze asynchrone COM-callback nooit onafgevangen laten crashen.
 IPT_RegisterResponse() {
     global IPTConfig, IPTRegisterRequest
 
     if IPTRegisterRequest.readyState != 4
         return
 
-    DebugLog("←", IPTConfig["AllocatePage"] . " status " . IPTRegisterRequest.status, IPTRegisterRequest.ResponseText)
+    try {
+        DebugLog("←", IPTConfig["AllocatePage"] . " status " . IPTRegisterRequest.status, IPTRegisterRequest.ResponseText)
 
-    if InStr(IPTRegisterRequest.ResponseText, "ERROR")
-        ShowNotification("Aanmelden bij de telefonieserver is mislukt.", 4000, "error")
+        if InStr(IPTRegisterRequest.ResponseText, "ERROR")
+            ShowNotification("Aanmelden bij de telefonieserver is mislukt.", 4000, "error")
+    } catch as err {
+        DebugLog("←", IPTConfig["AllocatePage"] . " PARSE-FOUT: " . err.Message, "")
+    }
 }
 
 ; Voorkomt dat de Verversen-knop bij elke klik een nieuw koppelnummer aanvraagt.
