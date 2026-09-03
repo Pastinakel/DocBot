@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-rc.7"
+global AppVersion := "2.4-klembord-race.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2882,17 +2882,24 @@ IPT_callNumber(telNummer := "", isRegistrationCall := false) {
 }
 
 ; Simpele ERROR-check, net als bij IPT_RegisterResponse — DialNumber geeft
-; geen event-XML terug.
+; geen event-XML terug. De COM-aanroepen naar .status/.ResponseText in een
+; try/catch, net als bij IPT_PollResponse: een falende toegang (bijv. een
+; afgebroken verbinding) mag deze asynchrone COM-callback nooit onafgevangen
+; laten crashen.
 IPT_DialResponse() {
     global IPTConfig, IPTDialRequest
 
     if IPTDialRequest.readyState != 4
         return
 
-    DebugLog("←", IPTConfig["DialPage"] . " status " . IPTDialRequest.status, IPTDialRequest.ResponseText)
+    try {
+        DebugLog("←", IPTConfig["DialPage"] . " status " . IPTDialRequest.status, IPTDialRequest.ResponseText)
 
-    if InStr(IPTDialRequest.ResponseText, "ERROR")
-        ShowNotification("Er is een fout opgetreden bij het bellen.", 4000, "error")
+        if InStr(IPTDialRequest.ResponseText, "ERROR")
+            ShowNotification("Er is een fout opgetreden bij het bellen.", 4000, "error")
+    } catch as err {
+        DebugLog("←", IPTConfig["DialPage"] . " PARSE-FOUT: " . err.Message, "")
+    }
 }
 
 ; startCooldown := false bij de automatische aanvraag tijdens opstarten,
@@ -2930,17 +2937,24 @@ IPT_register(startCooldown := true) {
 }
 
 ; Simpele ERROR-check, geen XML-parsing — de server geeft hier geen
-; event-XML terug (dat gebeurt uitsluitend via IPT_poller/GetEvent).
+; event-XML terug (dat gebeurt uitsluitend via IPT_poller/GetEvent). De
+; COM-aanroepen naar .status/.ResponseText in een try/catch, net als bij
+; IPT_PollResponse: een falende toegang (bijv. een afgebroken verbinding)
+; mag deze asynchrone COM-callback nooit onafgevangen laten crashen.
 IPT_RegisterResponse() {
     global IPTConfig, IPTRegisterRequest
 
     if IPTRegisterRequest.readyState != 4
         return
 
-    DebugLog("←", IPTConfig["AllocatePage"] . " status " . IPTRegisterRequest.status, IPTRegisterRequest.ResponseText)
+    try {
+        DebugLog("←", IPTConfig["AllocatePage"] . " status " . IPTRegisterRequest.status, IPTRegisterRequest.ResponseText)
 
-    if InStr(IPTRegisterRequest.ResponseText, "ERROR")
-        ShowNotification("Aanmelden bij de telefonieserver is mislukt.", 4000, "error")
+        if InStr(IPTRegisterRequest.ResponseText, "ERROR")
+            ShowNotification("Aanmelden bij de telefonieserver is mislukt.", 4000, "error")
+    } catch as err {
+        DebugLog("←", IPTConfig["AllocatePage"] . " PARSE-FOUT: " . err.Message, "")
+    }
 }
 
 ; Voorkomt dat de Verversen-knop bij elke klik een nieuw koppelnummer aanvraagt.
@@ -4752,8 +4766,33 @@ ResetProblemReportAfterCompletion() {
     )
 }
 
+; Een andere applicatie (bijv. HiX) kan het kopiëren van een nummer in
+; meerdere stappen uitvoeren, elk met een eigen OpenClipboard-aanroep. Valt
+; DocBot's eigen klembordlezing precies tussen die stappen, dan kan dat bij
+; die andere applicatie een "OpenClipboard is mislukt (CLIPBRD_E_CANT_OPEN)"
+; veroorzaken. De korte vertraging geeft de schrijvende applicatie de kans
+; om af te ronden vóórdat DocBot leest; de herpogingen vangen een
+; resterende botsing op zonder de poller te laten crashen. Geeft "" terug
+; als lezen na de pogingen nog steeds niet lukt.
+ReadClipboardTextSafely() {
+    Sleep(75)
+
+    Loop 3 {
+        try
+            return A_ClipBoard
+        catch as clipError {
+            if A_Index = 3 {
+                DebugLog("✕", "Klembord lezen", "Mislukt na 3 pogingen: " clipError.Message)
+                return ""
+            }
+            Sleep(50)
+        }
+    }
+    return ""
+}
+
 ClipBoardPoller() {
-    global State, StorageAllReady
+    global State, StorageAllReady, PhoneActionDialogState
     static lastSeq := DllCall("GetClipboardSequenceNumber")  ; voorkomt dat de klembordinhoud bij opstarten al wordt opgepakt
 
     seq := DllCall("GetClipboardSequenceNumber")
@@ -4762,8 +4801,25 @@ ClipBoardPoller() {
 
     lastSeq := seq
 
-    externalTel := NormalizePhoneNumberExternal(A_ClipBoard)
-    internalTel := externalTel = "" ? NormalizePhoneNumberInternal(A_ClipBoard) : ""
+    clipboardText := ReadClipboardTextSafely()
+
+    ; Is de klembordinhoud tijdens het wachten/lezen hierboven ondertussen
+    ; wéér gewijzigd (de gebruiker kopieerde iets nieuws terwijl DocBot nog
+    ; bezig was), dan is clipboardText alweer achterhaald. lastSeq bewust
+    ; niet verder bijwerken: de eerstvolgende poll ziet dan zelf een
+    ; afwijkende teller (lastSeq staat nog op de oude waarde seq) en
+    ; verwerkt de daadwerkelijk actuele inhoud in een eigen, schone ronde —
+    ; in plaats van hier alsnog een gedateerd belvenster te openen dat
+    ; meteen weer als "vorig venster" wordt gesloten door die volgende
+    ; ronde.
+    if DllCall("GetClipboardSequenceNumber") != seq
+        return
+
+    if clipboardText = ""
+        return
+
+    externalTel := NormalizePhoneNumberExternal(clipboardText)
+    internalTel := externalTel = "" ? NormalizePhoneNumberInternal(clipboardText) : ""
 
     if externalTel = "" && internalTel = ""
         return
@@ -4782,6 +4838,19 @@ ClipBoardPoller() {
         )
         return
     }
+
+    telNummer := externalTel != "" ? externalTel : internalTel
+
+    ; Sommige klembordbronnen (Windows Klembordgeschiedenis/Cloud Klembord,
+    ; of een webpagina die het klembord in meerdere stappen beschrijft)
+    ; laten de klembordteller soms twee keer oplopen voor wat voor de
+    ; gebruiker één kopieeractie is, met exact dezelfde inhoud. Staat er al
+    ; een venster open voor precies dit nummer, dan is dit geen nieuwe
+    ; kopieeractie: doe niets, in plaats van het bestaande venster te
+    ; vervangen door een identiek nieuw venster (met de "vorig venster
+    ; gesloten"-melding tot gevolg).
+    if IsObject(PhoneActionDialogState) && State["IPT"]["ClipBoardNumber"] = telNummer
+        return
 
     if externalTel != "" {
         SetClipBoardNumber(externalTel)
