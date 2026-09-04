@@ -1650,6 +1650,77 @@ regressions.
 
 ---
 
+## P2 — TeleQ → HiX patient search: stop DocBot treating a copied lookup number as a number to call, then automate the copy
+
+Filed by the project owner (2026-09-03). TeleQ is the application used to
+answer incoming phone calls. To find the right patient, staff copy the
+phone number shown in TeleQ's web interface and paste it into HiX's
+patient-search field — this copy is never meant to place a call. DocBot's
+clipboard-based phone-number detection cannot currently tell this apart
+from a genuine "call this number" copy, so a `Belactie` setting other than
+"Niets doen" can show a call-confirmation dialog for — or, depending on the
+setting, directly call — a number that was only ever meant to be searched,
+not dialed. This is a workflow conflict with a real incorrect-call risk,
+not just a convenience gap.
+
+### Level 1 — prevent DocBot from treating a TeleQ-sourced number as callable
+
+- [ ] Decide how DocBot recognizes that a clipboard number came from TeleQ's
+  web interface rather than a source it should still treat as callable —
+  most likely the foreground/source browser window title or URL at the
+  moment of copy, the same kind of technical identifier
+  `SmsCallAction.WindowTitle` already uses to identify a specific page.
+  Needs the actual TeleQ window title/URL/tab pattern from the project
+  owner; do not guess or hardcode a placeholder value.
+- [ ] Design where this check fits into the existing clipboard-detection
+  path (`ClipBoardPoller`/`NormalizePhoneNumber` and the code that reads
+  `State["IPT"]["ClipBoardNumber"]`) so a recognized TeleQ-sourced number
+  is suppressed before any call-related UI (confirmation dialog or direct
+  call) can trigger for it.
+- [ ] Confirm scope with the project owner: does a TeleQ-sourced number
+  get ignored by clipboard detection entirely (as if it were not a phone
+  number), or detected but always routed to "Niets doen" regardless of the
+  user's configured `Belactie`?
+- [ ] Once designed, this is a safety-relevant behavior change to a default
+  (do not call), not a cosmetic one — give it its own `docs/DECISIONS.md`
+  entry, and update `docs/PROJECT_CONTEXT.md` §4.3/§4.4 and
+  `docs/ARCHITECTURE.md`'s clipboard-detection description to match.
+
+### Level 2 — automate TeleQ → HiX
+
+- [ ] Read the phone number directly from TeleQ's web interface instead of
+  relying on a manual copy — likely UI Automation on the TeleQ browser tab,
+  mirroring the existing SMS/Edge UIA integration
+  (`RunSmsCallAction()`/`GetUsableEdgeBrowserWindows()`) rather than a new
+  mechanism.
+- [ ] Fill that number into HiX's patient-search field automatically —
+  needs HiX's search-field UI Automation identifiers/`AutomationId` and
+  confirmation of how HiX is actually reachable (an Edge tab like the SMS
+  pages, a separate desktop/thick client, or something else). This is a
+  materially different automation target than the existing Edge-only SMS
+  integration and needs its own feasibility check before committing to an
+  approach.
+- [ ] Confirm with the project owner whether Level 2 should still show the
+  number for a human confirmation step before it lands in HiX's search
+  field, or fill it automatically without confirmation.
+- [ ] Out of scope unless separately requested: DocBot does not decide
+  patient identity or clinical context here either — it only relays a
+  technical phone number, mirroring the existing "DocBot does not verify
+  patient/dossier context" limitation in `docs/INTENDED_PURPOSE.md` §7.
+  Recognizing a number in TeleQ does not prove it belongs to the patient
+  the user intends to search for.
+
+Level 2 depends on Level 1 existing first (removing the incorrect-call risk
+matters regardless of whether the workflow is ever automated); do not
+implement Level 2 as a way to route around a still-unresolved Level 1.
+
+This changes `DocBot.ahk` behavior once implemented (both levels).
+Implement on a dedicated feature/fix branch from the then-current `develop`
+and update the branch-specific `AppVersion` in every commit that changes
+`DocBot.ahk`.
+
+---
+
 ## P3 — Also offer the EPD_Machine copy question for a stable release, not only `-dev`/`-rc`
 
 _Downgraded from P1 to P3 (2026-08-26, project-owner decision)._
