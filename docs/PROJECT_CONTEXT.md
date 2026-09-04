@@ -46,8 +46,8 @@ Windows.
 
 ## 3. Branch and release status at handover
 
-Repository state checked on 2026-09-03, on the assumption that `release/2.4-rc`
-(then at `AppVersion 2.4-rc.6`) ships as stable **DocBot 2.4** once the
+Repository state checked on 2026-09-04, on the assumption that `release/2.4-rc`
+(then at `AppVersion 2.4-rc.8`) ships as stable **DocBot 2.4** once the
 project owner's field test on the shared `DocBot-test` profile comes back
 clean:
 
@@ -64,8 +64,10 @@ clean:
   list. Highlights: the autostart-race storage-retry/degraded-mode mechanism
   (`docs/DECISIONS.md` D-063/D-064), startup onboarding tips, a third
   telemetry/Overzicht counter for SMS actions, the sidebar logo/chip
-  redesign (`docs/DECISIONS.md` D-065), and several diagnostics/build
-  hardening fixes (D-062, D-060/D-061).
+  redesign (D-065), a clipboard-read hardening fix discovered during the
+  field test that stopped a HiX-side clipboard error and an occasional
+  duplicate call window (D-066), and several diagnostics/build hardening
+  fixes (D-062, D-060/D-061).
 - `develop` was brought back in line with the released `main` and started the
   2.5 development line at `AppVersion = 2.5-dev.1` (direct commit on
   `develop`, mirroring the pattern used after 2.2 and 2.3). Verify this
@@ -125,7 +127,7 @@ before declaring a change complete, not just source review.
 - Request objects are intentionally separate for registration, polling, and dialing. Do not collapse them into one shared mutable XHR object.
 - Event polling is chained: the next poll starts after the previous request finishes. Do not restore a fixed-interval overlapping poll timer.
 - Clipboard detection supports Dutch external numbers and a deliberately separate path for internal four-digit numbers.
-- Reading the clipboard on a detected sequence-number change is deliberately delayed and retried (`ReadClipboardTextSafely()`), and the result is discarded if the sequence number changed again during that wait. Reading immediately can make another application's own multi-step clipboard write fail (observed as a clipboard error in HiX) or attach stale content to the earlier detection. Do not remove the delay/retry or the staleness check to "simplify" this path.
+- Reading the clipboard on a detected sequence-number change is deliberately delayed and retried (`ReadClipboardTextSafely()`), and the result is discarded if the sequence number changed again during that wait. Reading immediately can make another application's own multi-step clipboard write fail (observed as a clipboard error in HiX) or attach stale content to the earlier detection (`docs/DECISIONS.md` D-066). Do not remove the delay/retry or the staleness check to "simplify" this path.
 
 ### 4.4 Call action and SMS assistance
 

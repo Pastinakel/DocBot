@@ -558,7 +558,12 @@ Changelog
   opent — waargenomen bij HiX — kon daardoor soms zelf een klembordfout
   krijgen. Dezelfde aanpassing voorkomt ook dat het belvenster soms dubbel
   opende, met de melding dat het vorige venster alsnog werd gesloten,
-  terwijl er maar één keer was gekopieerd.
+  terwijl er maar één keer was gekopieerd (`docs/DECISIONS.md` D-066).
+- DocBot toont tijdens het herstellen van tijdelijk niet-beschikbare opslag
+  (zie hierboven) voortaan hooguit één melding per onderdeel, in plaats van
+  bij elke achtergrond-herpoging opnieuw. De eerdere serie bijna-identieke
+  meldingen in de eerste minuut was niet nuttig; elke poging blijft gewoon
+  zichtbaar in het diagnostieklog (`docs/DECISIONS.md` D-064).
 
 ### 2.3 — Vorige stabiele release
 - DocBot probeert de gebruikersdatamap bij het opstarten niet langer lokaal

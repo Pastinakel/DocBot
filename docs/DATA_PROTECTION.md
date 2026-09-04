@@ -4,7 +4,7 @@ _Status: technisch concept met openstaande organisatorische invulpunten._
 
 _Opgesteld: 2026-08-09._
 
-_Onderzochte basis: `release/2.4-rc` (`AppVersion 2.4-rc.6`), uitgebracht als
+_Onderzochte basis: `release/2.4-rc` (`AppVersion 2.4-rc.8`), uitgebracht als
 DocBot `2.4` (stabiele release). Deze update verwerkt de sinds 2.3
 doorgevoerde wijzigingen: een derde telemetrieveld `smsActions` (§3.8,
 reeds aanwezig, ongewijzigd qua inhoud), de leesbevestiging-vóór-schrijven-
@@ -14,9 +14,11 @@ opstarten (D-063/D-064, zie §2/§9): zolang instellingen, hotstrings,
 pakketkeuzes, snelkiesnummers of sms-standaardteksten nog niet zijn geladen,
 is de bijbehorende functionaliteit zichtbaar en echt niet beschikbaar in
 plaats van stilzwijgend op standaardwaarden te draaien — er wordt geen
-nieuwe categorie persoonsgegevens verwerkt of verzameld. De sidebar-logo-
-wijziging (D-065) en de startup-onboardingtips zijn zuiver cosmetisch/UI en
-raken geen gegevensstroom.
+nieuwe categorie persoonsgegevens verwerkt of verzameld. Een tijdens de
+veldtest gevonden klembordleesfout (D-066, zie §3.1) is een technische
+betrouwbaarheidsfix zonder wijziging aan welke klembordinhoud wordt gelezen
+of verwerkt. De sidebar-logo-wijziging (D-065) en de startup-onboardingtips
+zijn zuiver cosmetisch/UI en raken geen gegevensstroom.
 
 _Dit document is geen juridisch advies, verwerkingsregister, goedgekeurde DPIA
 of vervanging van het privacy- en informatiebeveiligingsdossier van de
@@ -104,10 +106,11 @@ Windows-klembord
 ```
 
 DocBot controleert eerst het wijzigingsnummer van het Windows-klembord en
-leest bij een wijziging de inhoud om te bepalen of deze een ondersteund
-telefoonnummer is. Daardoor wordt technisch kortstondig ook klembordtekst
-gelezen die uiteindelijk geen telefoonnummer blijkt te zijn. DocBot slaat die
-niet-herkende inhoud niet bewust op of extern door.
+leest bij een wijziging de inhoud, sinds 2.4 met een korte vertraging en
+enkele herpogingen (`docs/DECISIONS.md` D-066), om te bepalen of deze een
+ondersteund telefoonnummer is. Daardoor wordt technisch kortstondig ook
+klembordtekst gelezen die uiteindelijk geen telefoonnummer blijkt te zijn.
+DocBot slaat die niet-herkende inhoud niet bewust op of extern door.
 
 **Gegevens:** Nederlandse externe telefoonnummers, interne viercijferige
 nummers en kortstondig de onderzochte klembordinhoud.

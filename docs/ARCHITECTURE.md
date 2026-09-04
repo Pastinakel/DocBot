@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-09-03. Repository facts refer to `release/2.4-rc` (`AppVersion 2.4-rc.6`), shipping as stable DocBot 2.4, and the start of the 2.5 development line unless noted otherwise._
+_Last updated: 2026-09-04. Repository facts refer to `release/2.4-rc` (`AppVersion 2.4-rc.8`), shipping as stable DocBot 2.4, and the start of the 2.5 development line unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -443,7 +443,8 @@ ClipBoardPoller()
   -> read the clipboard content with a short delay and a few retries
        (ReadClipboardTextSafely(); reading immediately on the raw sequence-
        number change could make another application's own multi-step
-       clipboard write fail, observed as a clipboard error in HiX)
+       clipboard write fail, observed as a clipboard error in HiX —
+       docs/DECISIONS.md D-066)
   -> if the sequence number changed again during that wait/read, discard
        the result as stale rather than act on it; the next poll picks up
        the by-then-settled content in a clean round
@@ -600,13 +601,15 @@ README disclosure is part of the architecture contract: payload changes and docu
 
 The normal application maintains a bounded/buffered background debug log and flush scheduling. It is intended to provide useful troubleshooting context without enabling highly detailed/sensitive tracing all the time.
 
+`LogActivityCheckpoint(label, tekst)` is the one exception to the buffered write path: it calls `DebugLog()` and then `FlushDebugLog()` immediately, used at a handful of points in the call-window/call-action flow so the last point reached survives a hung main process instead of being lost in a not-yet-flushed buffer.
+
 The developer-only debug UI is gated by Windows account in current code.
 
 Retention is enforced per log entry, not per file: `RunDiagnosticsMaintenance()` runs once at startup and then on a repeating 24-hour timer, and `PruneExpiredDebugLogEntries()` removes individual entries older than seven days from both the active `debug.log` and the rotated `debug.log.oud`, based on each entry's own leading timestamp rather than file modification time (see `docs/DECISIONS.md` D-044). This exists independently of, and does not change, the ~2 MB size-based rotation in `FlushDebugLog()`.
 
 ### 15.2 Integrated problem reporting and extended logging
 
-The current DocBot 2.3 code contains the `Probleem melden...`
+The current DocBot 2.4 code contains the `Probleem melden...`
 flow. Help and the tray menu open the same reporting GUI and session state.
 `ProblemReportSession` is held in memory and tracks the phase, consented logging
 state, start time, user description, temporary log path, and finalization lock.

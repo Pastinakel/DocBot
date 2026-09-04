@@ -2868,3 +2868,89 @@ image regresses the same way.
   against the project owner's feedback over several iterations; see the
   `claude/sidebar-logo-slogan` branch history for the intermediate steps
   if the exact geometry ever needs revisiting.
+
+---
+
+## D-066 — Clipboard reading hardening: delay/retry against other apps, ignore stale/duplicate detections
+
+**Status:** Accepted, implemented (PR #72, `claude/klembord-race-hix`, merged
+into `release/2.4-rc`)
+
+Reported from the field test: HiX (and potentially other applications that
+open the clipboard multiple times during a single copy) intermittently
+showed a clipboard error to the user when copying a number, and DocBot's
+call-confirmation window sometimes opened twice for a single copy action —
+the second window immediately closed the first with a "previous window
+closed" notice, even though the user had only copied once.
+
+**Root causes**
+
+1. `ClipBoardPoller()` read `A_ClipBoard` synchronously and immediately on
+   every clipboard-sequence-number change, with no tolerance for another
+   process still being mid-write. If DocBot's read landed between two of
+   that other application's own `OpenClipboard()` calls for the same copy,
+   the other application could see its own access fail
+   (`CLIPBRD_E_CANT_OPEN`) — a DocBot-caused side effect on a completely
+   unrelated application.
+2. Some clipboard sources (Windows Clipboard History/Cloud Clipboard, or a
+   web page that writes the clipboard in more than one step) can increment
+   `GetClipboardSequenceNumber()` twice for what is, to the user, a single
+   copy — with identical resulting content. `ClipBoardPoller()` treated
+   every sequence-number change as a brand-new detection, so the second,
+   content-identical change opened a second dialog and closed the first
+   one via the existing `CloseExistingPhoneActionDialog()` path.
+
+**Decision**
+
+- `ReadClipboardTextSafely()`: waits 75ms, then reads `A_ClipBoard` inside
+  a `try`, retrying up to 3 times (50ms apart) on failure; returns `""` if
+  still unreadable after all attempts. `ClipBoardPoller()` uses this
+  instead of a direct `A_ClipBoard` read.
+- After that delay/retry window, `ClipBoardPoller()` re-checks
+  `GetClipboardSequenceNumber()` against the value seen at the start of
+  the poll. If it changed again while waiting/reading, the just-read
+  content is already stale — bail out without acting (without advancing
+  the poller's own `lastSeq`), so the next poll tick picks up the actually
+  current content in a clean pass, instead of DocBot acting on outdated
+  content or generating a spurious "previous window closed" notice.
+- If a call/SMS dialog is already open for exactly the same number
+  (`State["IPT"]["ClipBoardNumber"]` unchanged), a new detection is a
+  no-op instead of closing and reopening an identical dialog.
+- `IPT_DialResponse()`/`IPT_RegisterResponse()` wrapped their
+  `.status`/`.ResponseText` COM access in `try`/`catch`, matching
+  `IPT_PollResponse()`'s existing pattern — an async COM callback must
+  never crash unhandled on a failed property access (e.g. a dropped
+  connection).
+- `LogActivityCheckpoint(label, tekst)` added: an immediate-flush variant
+  of `DebugLog()` (see `docs/ARCHITECTURE.md` §15.1), called at a handful
+  of points in the call-window/call-action flow so the last point reached
+  is visible in `debug.log` even after a hang, instead of possibly lost in
+  `FlushDebugLog()`'s normal buffering.
+
+**Reasoning**
+
+- Fixing DocBot's own read timing is the correct target, not something to
+  ask every other application on the workplace to change — DocBot is the
+  guest reading a clipboard another application is actively writing.
+- The stale-content re-check avoids a subtler failure mode a naive
+  delay-then-read fix would still have: content read correctly but no
+  longer current by the time it's acted on.
+- Suppressing an identical-number redetection while a dialog is already
+  open is a narrower, more targeted fix than deduplicating on the sequence
+  number itself, since a genuinely new copy of the same number (e.g. the
+  user copies it again on purpose) should still be allowed to matter once
+  the first dialog is resolved.
+- Mirrors `IPT_PollResponse()`'s existing try/catch precedent rather than
+  inventing a new error-handling shape for the two sibling response
+  handlers.
+
+**Consequences**
+
+- No DocBot.ahk-caused clipboard contention with other applications during
+  a copy, as observed with HiX.
+- A single user copy action can no longer produce two call/SMS dialogs.
+- `debug.log` now carries checkpoint lines for the call-window/call-action
+  flow that survive a hang, aiding any future diagnosis of a stuck or
+  unresponsive call flow.
+- See the README `### 2.4` changelog for the user-facing summary of this
+  fix.

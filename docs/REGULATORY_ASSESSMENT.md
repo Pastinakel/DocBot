@@ -2,18 +2,21 @@
 
 _Status: voorlopige repositoryanalyse, geen juridisch advies of formeel conformiteitsoordeel._
 
-_Beoordelingsdatum: 2026-09-03._
+_Beoordelingsdatum: 2026-09-04._
 
-_Onderzochte basis: `release/2.4-rc` (`AppVersion 2.4-rc.6`), uitgebracht als
+_Onderzochte basis: `release/2.4-rc` (`AppVersion 2.4-rc.8`), uitgebracht als
 DocBot `2.4` (stabiele release). Deze update volgt op de vorige beoordeling
 (commit `dbe4c52`, `2.3`) en verwerkt de sindsdien doorgevoerde
 functionele wijzigingen: de opslag-opnieuw-proberen/degraded-modus bij het
 opstarten (D-063/D-064, zie §5.5 en §9) — zichtbaar maken van tijdelijk
 niet-beschikbare functionaliteit in plaats van stilzwijgend op
 standaardwaarden draaien, geen nieuwe patiëntgegevensverwerking; een derde
-telemetrieteller voor sms-acties (reeds verwerkt in §5.5); en de
-standaardlog-formaatherkenning (D-062, reeds afgehandeld in §11/§12). De
-startup-onboardingtips en de sidebar-logo/chip-redesign (D-065) zijn
+telemetrieteller voor sms-acties (reeds verwerkt in §5.5); de
+standaardlog-formaatherkenning (D-062, reeds afgehandeld in §11/§12); en
+een tijdens de veldtest gevonden klembordleesfout die soms een dubbel
+belvenster opende en bij HiX een klembordfout kon veroorzaken (D-066, zie
+§5.1) — een technische betrouwbaarheidsfix zonder nieuwe gegevensverwerking.
+De startup-onboardingtips en de sidebar-logo/chip-redesign (D-065) zijn
 zuiver cosmetisch/UI en niet regulatoir beoordelingsplichtig. Het
 telefonieserver-authenticatievraagstuk (§11 item 6) is inmiddels
 beantwoord en gesloten (D-059) — zie de bijgewerkte tekst daar._
@@ -133,7 +136,9 @@ De software:
 - registreert dynamische hotstrings en voert tekst uit in de actieve
   applicatie (`DocBot.ahk:5234-5424`);
 - controleert het Windows-klembord op telefoonnummers via de
-  `ClipBoardPoller`-timer (`DocBot.ahk:408`);
+  `ClipBoardPoller`-timer (`DocBot.ahk:408`), sinds 2.4 met een korte
+  leesvertraging/herpogingen en een staleness-check (`docs/DECISIONS.md`
+  D-066);
 - communiceert via POST met registratie-, event- en bel-endpoints van de
   interne telefonieserver (zie o.a. `IPT_register()` `DocBot.ahk:2903` en
   `IPT_callNumber()` `DocBot.ahk:2854`);
