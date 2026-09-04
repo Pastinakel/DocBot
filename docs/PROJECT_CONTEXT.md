@@ -46,10 +46,8 @@ Windows.
 
 ## 3. Branch and release status at handover
 
-Repository state checked on 2026-09-04, on the assumption that `release/2.4-rc`
-(then at `AppVersion 2.4-rc.8`) ships as stable **DocBot 2.4** once the
-project owner's field test on the shared `DocBot-test` profile comes back
-clean:
+Repository state checked on 2026-09-04, but `release/2.4-rc`
+is released aslready:
 
 - `main` is the production line and represents stable **DocBot 2.4**, merged
   from `release/2.4-rc` via PR #70 and tagged `v2.4` on the stable release
