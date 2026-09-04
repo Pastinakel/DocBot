@@ -64,6 +64,21 @@ kwalificatie niet stilzwijgend toe op nieuwe medische functionaliteit: voer bij
 een genoemde herbeoordelingstrigger eerst een nieuwe kwalificatie- en
 risicoanalyse uit.
 
+## Taalgebruik in documentatie en commits
+
+- Nederlands: `README.md`, `CLAUDE.md`/`AGENTS.md`, `docs/DATA_PROTECTION.md`,
+  `docs/REGULATORY_ASSESSMENT.md`, `docs/INTENDED_PURPOSE.md` — alles wat
+  eindgebruikers, de projecteigenaar of juridische/compliance-lezers
+  rechtstreeks raakt.
+- Engels: `docs/TODO.md`, `docs/PROJECT_CONTEXT.md`, `docs/ARCHITECTURE.md`,
+  `docs/DECISIONS.md`, `docs/MIGRATIONS.md` — de interne
+  engineering-/handoverdocumenten.
+- Commit messages en pull-requestsamenvattingen: Nederlands.
+
+Houd een bestand in de taal die hierboven voor dat bestand geldt; wissel niet
+halverwege een document van taal, ook niet voor een nieuwe sectie of een
+losse toevoeging.
+
 ## Hotstringmodel en uitvoer
 
 - Persoonlijke hotstrings gebruiken één `Replacement`-veld. Introduceer geen
