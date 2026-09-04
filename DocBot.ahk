@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-ultra-quick-retry-6x.1"
+global AppVersion := "2.4-ultra-quick-retry-6x.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -344,15 +344,25 @@ global UserDataDirIsPreexisting := false
 ; (D-027/D-028): enkele snelle pogingen, daarna uursgewijs, zonder bovengrens.
 ; "Gebruikersmap" staat altijd eerst: de overige vijf laders lezen/schrijven
 ; allemaal binnen UserDataDir en kunnen pas slagen zodra die map er echt is.
+; "Notified": zie ReportStorageError()/StorageRetry_AttemptLoader() — houdt
+; per lader bij of de gebruiker al een toast heeft gezien voor de huidige
+; degraded-episode, zodat elke mislukte herpoging niet opnieuw een toast
+; toont (wel altijd gewoon gelogd via DebugLog()).
 global StorageRetryLoaders := [
-    Map("Name", "Gebruikersmap", "Fn", InitializeUserStorage, "Ready", false),
-    Map("Name", "Instellingen", "Fn", LoadAppSettings, "Ready", false),
-    Map("Name", "Hotstrings", "Fn", InitializeHotstringStorage, "Ready", false),
-    Map("Name", "Pakketkeuzes", "Fn", InitializePackageSettings, "Ready", false),
-    Map("Name", "Snelkiesnummers", "Fn", InitializeSpeedDialStorage, "Ready", false),
-    Map("Name", "SMS-standaardteksten", "Fn", InitializeSmsDefaultTextStorage, "Ready", false)
+    Map("Name", "Gebruikersmap", "Fn", InitializeUserStorage, "Ready", false, "Notified", false),
+    Map("Name", "Instellingen", "Fn", LoadAppSettings, "Ready", false, "Notified", false),
+    Map("Name", "Hotstrings", "Fn", InitializeHotstringStorage, "Ready", false, "Notified", false),
+    Map("Name", "Pakketkeuzes", "Fn", InitializePackageSettings, "Ready", false, "Notified", false),
+    Map("Name", "Snelkiesnummers", "Fn", InitializeSpeedDialStorage, "Ready", false, "Notified", false),
+    Map("Name", "SMS-standaardteksten", "Fn", InitializeSmsDefaultTextStorage, "Ready", false, "Notified", false)
 ]
 global StorageRetryAttempts := 0
+; Naam van de lader die op dit moment via StorageRetry_AttemptLoader()
+; wordt geprobeerd, alleen gezet tijdens Fn.Call(). ReportStorageError()
+; leest dit om te weten of een fout uit de achtergrondretry komt (en dus
+; welke lader zijn "Notified"-vlag geldt) zonder dat elke aanroep van
+; ReportStorageError() zelf een lader-parameter hoeft door te geven.
+global StorageRetryCurrentLoaderName := ""
 ; Eerste, kortste cyclus: vangt het veelvoorkomende geval op waarin storage
 ; maar heel even niet beschikbaar was (bijv. OneDrive dat net klaar is met
 ; mounten) veel sneller op dan de eerste 60s af te wachten.
@@ -8440,6 +8450,8 @@ AutoSaveHotstrings(*) {
 }
 
 ReportStorageError(message, showMessage := false) {
+    global StorageRetryLoaders, StorageRetryCurrentLoaderName
+
     ; Iedere opslagfout moet terug te vinden zijn in het standaardlog, ook
     ; wanneer de gebruiker de melding zelf nooit ziet (bijv. stille
     ; achtergrondacties) of wegklikt.
@@ -8448,6 +8460,24 @@ ReportStorageError(message, showMessage := false) {
     if showMessage {
         MsgBox(message, "DocBot - JSON", "Icon!")
         return
+    }
+
+    ; Komt deze fout uit een achtergrond-herpoging van StorageRetryLoaders
+    ; (D-063), toon dan hooguit één toast per lader per degraded-episode in
+    ; plaats van bij iedere mislukte herpoging opnieuw dezelfde melding —
+    ; de eerste keer is nuttig, elke herhaling daarna niet. Blijft altijd
+    ; wel gewoon gelogd (hierboven). Geldt niet voor opslagfouten buiten de
+    ; achtergrondretry om (bijv. een mislukte handmatige opslag tijdens
+    ; gewoon gebruik) — die blijven bij elke keer melden.
+    if StorageRetryCurrentLoaderName != "" {
+        for loaderEntry in StorageRetryLoaders {
+            if loaderEntry["Name"] = StorageRetryCurrentLoaderName {
+                if loaderEntry["Notified"]
+                    return
+                loaderEntry["Notified"] := true
+                break
+            }
+        }
     }
 
     ; Automatisch laden/opslaan mag de gebruiker niet met modale vensters
@@ -8485,10 +8515,13 @@ RefreshSpeedDialListIfReady() {
 ; roepen). Geeft de staat vóór deze poging terug, zodat de aanroeper kan
 ; zien of dit een verse overgang naar "klaar" is.
 StorageRetry_AttemptLoader(loader) {
+    global StorageRetryCurrentLoaderName
+
     wasReady := loader["Ready"]
     if wasReady
         return wasReady
 
+    StorageRetryCurrentLoaderName := loader["Name"]
     try {
         loader["Ready"] := !!loader["Fn"].Call()
     } catch as error {
@@ -8499,6 +8532,7 @@ StorageRetry_AttemptLoader(loader) {
             loader["Name"] " gaf een onverwachte fout: " error.Message
         )
     }
+    StorageRetryCurrentLoaderName := ""
 
     return wasReady
 }
