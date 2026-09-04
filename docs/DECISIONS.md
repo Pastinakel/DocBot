@@ -2589,8 +2589,9 @@ minutes. Added `StorageRetryUltraQuickMs`/`StorageRetryUltraQuickCount`
 (`DocBot.ahk`) and the mirrored `TelemetryUltraQuickRetryMs`/
 `TelemetryUltraQuickRetryCount` (`Telemetry.ahk`, shared by the
 installation-ID and usage-counter retries, same as the existing "Quick"
-globals): **3 attempts at 10-second intervals**, before falling through to
-the existing cadence (quick: 60s × a few more attempts; then hourly,
+globals): originally 3 attempts at 10-second intervals (raised to 6, see
+follow-up below), before falling through to the existing cadence (quick:
+60s × a few more attempts; then hourly,
 unbounded) unchanged. All three retry-scheduling call sites
 (`StorageRetry_ScheduleIfNeeded()`, `Telemetry_TryLoadCounters()`,
 `Telemetry_ScheduleInstallationIdRetry()`) now select the delay from three
@@ -2599,6 +2600,18 @@ shape as before — no new timer mechanism, just an extra threshold. A
 genuinely slow recovery (still not ready after the ultra-quick and quick
 tiers) is unaffected: it still falls back to the same bounded 60s cadence
 and then hourly as before this change.
+
+**Follow-up (2026-09-04, project-owner request): raised the ultra-quick
+tier from 3 to 6 attempts.** After walking through the actual timeline on a
+real degraded-mode run (retries at 10s/20s/30s, nothing at 60s, recovery at
+90s — the ultra-quick tier's 3×10s exhausts at t=30s, then the *next*
+scheduled tick is 60s after that, at t=90s, not at a fixed t=60s), the
+project owner asked for more ultra-quick attempts before falling through to
+the 60s tier. `StorageRetryUltraQuickCount` (`DocBot.ahk`) and
+`TelemetryUltraQuickRetryCount` (`Telemetry.ahk`) both changed from 3 to 6
+— still 10s apart, so the ultra-quick tier now covers t=10s through t=60s
+(60 seconds of coverage instead of 30) before the existing quick/slow
+cadence takes over unchanged.
 
 ---
 

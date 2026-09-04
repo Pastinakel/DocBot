@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-rc.7"
+global AppVersion := "2.4-ultra-quick-retry-6x.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -357,7 +357,7 @@ global StorageRetryAttempts := 0
 ; maar heel even niet beschikbaar was (bijv. OneDrive dat net klaar is met
 ; mounten) veel sneller op dan de eerste 60s af te wachten.
 global StorageRetryUltraQuickMs := 10000
-global StorageRetryUltraQuickCount := 3
+global StorageRetryUltraQuickCount := 6
 global StorageRetryQuickMs := 60000
 global StorageRetryQuickCount := 5
 global StorageRetrySlowMs := 3600000
