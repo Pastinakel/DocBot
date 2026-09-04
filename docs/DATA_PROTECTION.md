@@ -4,11 +4,21 @@ _Status: technisch concept met openstaande organisatorische invulpunten._
 
 _Opgesteld: 2026-08-09._
 
-_Onderzochte basis: `main`, tag `v2.3` (commit `dbe4c52`), DocBot `2.3`
-(stabiele release). De feitelijke gegevensstromen waren al bijgewerkt voor
-de 2.3-functionaliteit (onder meer §2.2/§3.3 voor `sms-default-texts.json`
-en de HTTPS-afdwinging in §3.2/§3.3); alleen dit versieanker volgde nog
-niet._
+_Onderzochte basis: `release/2.4-rc` (`AppVersion 2.4-rc.8`), uitgebracht als
+DocBot `2.4` (stabiele release). Deze update verwerkt de sinds 2.3
+doorgevoerde wijzigingen: een derde telemetrieveld `smsActions` (§3.8,
+reeds aanwezig, ongewijzigd qua inhoud), de leesbevestiging-vóór-schrijven-
+discipline voor de drie cumulatieve tellers (`docs/DECISIONS.md` D-063) en
+de zichtbare, tijdelijke opslag-opnieuw-proberen/degraded-modus tijdens het
+opstarten (D-063/D-064, zie §2/§9): zolang instellingen, hotstrings,
+pakketkeuzes, snelkiesnummers of sms-standaardteksten nog niet zijn geladen,
+is de bijbehorende functionaliteit zichtbaar en echt niet beschikbaar in
+plaats van stilzwijgend op standaardwaarden te draaien — er wordt geen
+nieuwe categorie persoonsgegevens verwerkt of verzameld. Een tijdens de
+veldtest gevonden klembordleesfout (D-066, zie §3.1) is een technische
+betrouwbaarheidsfix zonder wijziging aan welke klembordinhoud wordt gelezen
+of verwerkt. De sidebar-logo-wijziging (D-065) en de startup-onboardingtips
+zijn zuiver cosmetisch/UI en raken geen gegevensstroom.
 
 _Dit document is geen juridisch advies, verwerkingsregister, goedgekeurde DPIA
 of vervanging van het privacy- en informatiebeveiligingsdossier van de
@@ -96,10 +106,11 @@ Windows-klembord
 ```
 
 DocBot controleert eerst het wijzigingsnummer van het Windows-klembord en
-leest bij een wijziging de inhoud om te bepalen of deze een ondersteund
-telefoonnummer is. Daardoor wordt technisch kortstondig ook klembordtekst
-gelezen die uiteindelijk geen telefoonnummer blijkt te zijn. DocBot slaat die
-niet-herkende inhoud niet bewust op of extern door.
+leest bij een wijziging de inhoud, sinds 2.4 met een korte vertraging en
+enkele herpogingen (`docs/DECISIONS.md` D-066), om te bepalen of deze een
+ondersteund telefoonnummer is. Daardoor wordt technisch kortstondig ook
+klembordtekst gelezen die uiteindelijk geen telefoonnummer blijkt te zijn.
+DocBot slaat die niet-herkende inhoud niet bewust op of extern door.
 
 **Gegevens:** Nederlandse externe telefoonnummers, interne viercijferige
 nummers en kortstondig de onderzochte klembordinhoud.
@@ -160,7 +171,7 @@ logging kunnen oorspronkelijke waarden in het tijdelijke log komen.
 | --- | --- | --- |
 | Ontvanger | Lokaal geconfigureerde interne telefonieserver | Juridische entiteit, beheerder en eventuele verwerker |
 | Transport | Protocol volgt `IPTConfig["URL"]`; `ValidateLocalConfiguration()` weigert sinds `docs/DECISIONS.md` D-043 een niet-HTTPS `Telephony.BaseUrl` bij het opstarten | Productie-TLS-versie, certificaatcontrole en netwerksegmentatie op de beheerde werkplek nog bevestigen |
-| Authenticatie | Geen applicatie-eigen gebruikersauthenticatie zichtbaar; technisch `sid`-veld wordt gebruikt | Serverauthenticatie, autorisatiemodel en misbruikbeveiliging |
+| Authenticatie | Geen applicatie-eigen credential (geen API-key/token/certificaat); technisch `sid`-veld wordt gebruikt. Bevestigd door de serverbeheerder (`docs/DECISIONS.md` D-059, 2026-08-26): netwerksegmentatie (ziekenhuis-LAN/VPN) is de bedoelde authenticatiegrens, geen aanvullende credential vereist, geen reverse proxy met extra afdwinging | Misbruikbeveiliging/monitoring aan serverzijde binnen dat segmentatiemodel blijft een organisatorisch (niet-DocBot-code) vraagstuk |
 | Serverlogging | Niet zichtbaar in repository | Inhoud, toegang, bewaartermijn en verwijdering |
 | Doorgifte buiten EER | Niet zichtbaar | Bevestigen dat geen doorgifte plaatsvindt, of grondslag/waarborgen vastleggen |
 

@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-08-25. Repository facts refer to stable DocBot 2.3 (`main`, tag `v2.3`) and the start of the 2.4 development line unless noted otherwise._
+_Last updated: 2026-09-04. Repository facts refer to `release/2.4-rc` (`AppVersion 2.4-rc.8`), shipping as stable DocBot 2.4, and the start of the 2.5 development line unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -11,6 +11,12 @@ DocBot is a Windows desktop application written in AutoHotkey v2. The architectu
 - third-party libraries are included directly from `ThirdParty/`;
 - local environment/secrets are injected through ignored `DocBot.local.ahk`;
 - bundled content is stored as JSON under `packages/`;
+- app icon/logo assets live under `images/` (`DocBot.png`, `DocBot.ico`,
+  `DocBot-slim.png`), loaded at runtime for the sidebar branding and
+  embedded at compile time for the executable icon;
+- `tools/` holds PowerShell build/CI helpers (`Invoke-WithTimeout.ps1`,
+  `Read-YesNoAnswer.ps1`) used by `Build-EPD_Machine.bat` and the
+  AHK-syntax-check CI workflow, not by the running application itself;
 - persistent user state is stored as INI/JSON files outside the repository.
 
 The main script is large, but it is organized by subsystem and uses explicit global maps/controls as the primary shared-state mechanism. Refactoring it into many modules may be desirable eventually, but should not be attempted casually because startup order, global initialization, GUI control references, hotstring callbacks, AutoHotkey event binding, and compiled `FileInstall` behavior are tightly coupled.
@@ -106,13 +112,17 @@ The current startup flow in `DocBot.ahk` is approximately:
 10. build the main GUI and tray menu — `StorageAllReady` (§7.4) is already
     known by this point, so degraded-mode visibility (D-064) is correct
     from the first paint, not something applied afterward;
-11. register Windows messages and exit handler;
-12. show GUI and apply custom visual rendering;
-13. start clipboard polling (suppressed while degraded — §7.4/D-064);
-14. start registration-button countdown timer;
-15. request telephony registration and start chained event polling —
+11. evaluate and select the Overzicht onboarding-tip banner
+    (`EvaluateStartupTip()`, gated on `StorageAllReady`) — re-run once more
+    when `StorageRetry_OnAllReady()` fires later, so a tip eligible only
+    once storage finishes loading can still appear that session;
+12. register Windows messages and exit handler;
+13. show GUI and apply custom visual rendering;
+14. start clipboard polling (suppressed while degraded — §7.4/D-064);
+15. start registration-button countdown timer;
+16. request telephony registration and start chained event polling —
     unaffected by user-data availability throughout;
-16. start/check `signal.txt` update/shutdown coordination.
+17. start/check `signal.txt` update/shutdown coordination.
 
 Changing this order can have user-data, UI, or network side effects. Treat initialization order as behavior, not formatting.
 
@@ -150,7 +160,9 @@ The application keeps many control references globally because event callbacks a
 - sidebar status indicators;
 - custom-notification GUI;
 - debug window controls;
-- call/SMS dialog keyboard state.
+- call/SMS dialog keyboard state;
+- onboarding-tip banner controls and per-session selection state
+  (`TipBannerActive`, `TipBannerSelected`, `CurrentTipKey`).
 
 This is one reason an aggressive module split would require care.
 
@@ -428,9 +440,20 @@ Clipboard-triggered dialing is a separate entry path into the same call gate:
 ```text
 ClipBoardPoller()
   -> detect a clipboard sequence-number change
+  -> read the clipboard content with a short delay and a few retries
+       (ReadClipboardTextSafely(); reading immediately on the raw sequence-
+       number change could make another application's own multi-step
+       clipboard write fail, observed as a clipboard error in HiX —
+       docs/DECISIONS.md D-066)
+  -> if the sequence number changed again during that wait/read, discard
+       the result as stale rather than act on it; the next poll picks up
+       the by-then-settled content in a clean round
   -> normalize (external Dutch number / internal four-digit number)
   -> no match: ignore
-  -> match: SetClipBoardNumber() then
+  -> a dialog is already open for this exact number: ignore as a duplicate
+       detection (e.g. Windows Clipboard History re-touching the clipboard,
+       or a source that writes the clipboard in more than one step)
+  -> otherwise: SetClipBoardNumber() then
        HandleClipboardNumberDetected() / HandleInternalClipboardNumberDetected()
 
 Handle...ClipboardNumberDetected()
@@ -447,9 +470,12 @@ Handle...ClipboardNumberDetected()
 At most one call-action dialog (confirmation, or the cancel/SMS/call choice)
 may be open at a time; a newer clipboard detection always resolves — by
 closing — whatever an older detection left open, regardless of which action
-the new detection then takes. Manual dial paths (speed dial, right-click,
-linking call) call `IPT_callNumber()` directly and do not go through this
-close step, so they intentionally leave an open dialog untouched.
+the new detection then takes — unless the new detection is for the exact
+same number as the dialog that is already open, which is treated as a
+duplicate and ignored rather than reopening an identical dialog. Manual dial
+paths (speed dial, right-click, linking call) call `IPT_callNumber()`
+directly and do not go through this close step, so they intentionally leave
+an open dialog untouched.
 
 ### 11.3 Number normalization
 
@@ -575,13 +601,15 @@ README disclosure is part of the architecture contract: payload changes and docu
 
 The normal application maintains a bounded/buffered background debug log and flush scheduling. It is intended to provide useful troubleshooting context without enabling highly detailed/sensitive tracing all the time.
 
+`LogActivityCheckpoint(label, tekst)` is the one exception to the buffered write path: it calls `DebugLog()` and then `FlushDebugLog()` immediately, used at a handful of points in the call-window/call-action flow so the last point reached survives a hung main process instead of being lost in a not-yet-flushed buffer.
+
 The developer-only debug UI is gated by Windows account in current code.
 
 Retention is enforced per log entry, not per file: `RunDiagnosticsMaintenance()` runs once at startup and then on a repeating 24-hour timer, and `PruneExpiredDebugLogEntries()` removes individual entries older than seven days from both the active `debug.log` and the rotated `debug.log.oud`, based on each entry's own leading timestamp rather than file modification time (see `docs/DECISIONS.md` D-044). This exists independently of, and does not change, the ~2 MB size-based rotation in `FlushDebugLog()`.
 
 ### 15.2 Integrated problem reporting and extended logging
 
-The current DocBot 2.3 code contains the `Probleem melden...`
+The current DocBot 2.4 code contains the `Probleem melden...`
 flow. Help and the tray menu open the same reporting GUI and session state.
 `ProblemReportSession` is held in memory and tracks the phase, consented logging
 state, start time, user description, temporary log path, and finalization lock.

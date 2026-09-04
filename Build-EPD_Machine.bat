@@ -12,7 +12,7 @@ cd /d "%~dp0"
 set "AHK2EXE=C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe"
 set "SOURCE=%~dp0DocBot.ahk"
 set "OUTPUT=%~dp0DocBot.exe"
-set "ICON=%~dp0DocBot.ico"
+set "ICON=%~dp0images\DocBot.ico"
 set "BASE=C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
 
 rem De uitvoernaam wordt afgeleid van de bovenliggende applicatiemap.

@@ -1,6 +1,6 @@
 # DocBot — Decisions
 
-_Last updated: 2026-08-25. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
+_Last updated: 2026-09-03. This is a compact decision log reconstructed from repository history and project conversations. When code and this file disagree, verify whether a decision has subsequently been superseded._
 
 ## How to read this file
 
@@ -77,17 +77,25 @@ Only an explicitly requested production hotfix starts from `main`.
 
 **Status:** Accepted
 
-Current scheme, after the DocBot 2.3 release (tag `v2.3` on `main`):
+Current scheme, after the DocBot 2.4 release (tag `v2.4` on `main`):
 
 ```text
-main                 2.3 (stable)
-develop              2.4-dev.N
-feature/fix          2.4-<short-branch-name>.N
-release candidate    2.4-rc
-stable release       2.4
+main                 2.4 (stable)
+develop              2.5-dev.N
+feature/fix          2.5-<short-branch-name>.N
+release candidate    2.5-rc
+stable release       2.5
 ```
 
-The same numeric scheme applied to the 2.3 cycle that just shipped: `main`
+The same numeric scheme applied to the 2.4 cycle that just shipped: `main`
+carried `2.3` until the final `2.4` release; `develop` used `2.4-dev.N`;
+feature/fix branches used `2.4-<short-branch-name>.N`; the release candidate
+used `2.4-rc.N` (`release/2.4-rc`, merged into `main` via PR #70, tagged
+`v2.4`). The release-only fixes were then merged back into `develop`, which
+started the next development line at `2.5-dev.1` (direct commit on
+`develop`, mirroring how `2.4-dev.1` started after the 2.3 release).
+
+The same numeric scheme applied to the 2.3 cycle before that: `main`
 carried `2.2` until the final `2.3` release; `develop` used `2.3-dev.N`;
 feature/fix branches used `2.3-<short-branch-name>.N`; the release candidate
 used `2.3-rc.N` (`release/2.3-rc`, merged into `main` via PR #51, tagged
@@ -2486,6 +2494,155 @@ standard AHK idiom for this. Left as a concrete example, in this project's
 own record, of exactly the kind of mistake D-037 exists to catch — source
 review alone did not.
 
+**Validation note (2026-08-31, `release/2.4-rc.1`):** the project owner
+found a real bug in the merged, RC-tested build itself: right as degraded
+mode cleared, the Overzicht usage counters (Belacties/Lange hotstrings/
+SMS-acties) showed 0, and the next telemetry heartbeat sent 0 for all
+three to the configured webhook (installation ID still correct) — self-
+healing only on a full restart, never during the running session.
+
+Root cause: `Telemetry_ReadCounter()` read via
+`IniRead(TelemetryConfigFile, "Usage", name, 0)`. Unlike `FileRead()` (used
+by every other loader in this file and in `DocBot.ahk`), `IniRead()` with
+an explicit default never throws when the file can't actually be read
+right now (e.g. still momentarily locked in the narrow window right as the
+other `StorageRetryLoaders` finish recovering) — it silently returns that
+default instead. So a transient access failure was indistinguishable from
+a genuinely-zero counter and got reported as `true`/0, which
+`Telemetry_TryLoadCounters()` then took as real confirmation:
+`TelemetryCountersConfirmed` latched `true` on the false 0 and its retry
+loop stopped for the rest of the session — exactly the class of bug this
+decision's own counter-confirmation mechanism was built to prevent, just
+one layer further down, in the read primitive itself rather than in the
+confirm/retry logic wrapped around it.
+
+Fixed in `Telemetry_ReadCounter()`: a missing file is still treated as a
+genuine first run (`FileExist()` false → confirmed 0, no retry, matching
+`LoadAppSettings()`'s convention); but when the file exists, a `FileRead()`
+probe now runs first specifically because it *does* throw on a locked/
+inaccessible file, so that case is correctly reported as a failure and
+retried instead of silently confirmed at 0. Also closed a related,
+smaller display gap while fixing this: `Telemetry_TryLoadCounters()`'s
+success path now calls `RefreshUsageStatistics()` directly, since
+confirmation runs on its own independent retry timer (not gated by
+`StorageAllReady`) and could otherwise land after
+`StorageRetry_OnAllReady()`'s one-time Overzicht refresh already ran with
+the pre-confirmation values, leaving the Gebruik card stuck on 0 until the
+next recorded action or a restart even once the counters were correctly
+confirmed in memory.
+
+**Follow-up (2026-08-31, same session):** asked to audit for the same
+bug pattern elsewhere before shipping the counter fix. Every `IniRead()`/
+`IniWrite()`/`RegRead()` call site in `DocBot.ahk` and `Telemetry.ahk` was
+checked. Extracted the fix into a shared `IniReadOrThrow(path, section,
+key, default)` (`DocBot.ahk`, next to `LoadAppSettings()`) — a missing
+file still returns `default` without probing (a genuine "not created yet"
+case), but an existing, unreadable file now runs a `FileRead()` probe
+first so that case throws instead of silently returning `default`. Two
+more real call sites shared the exact same class of bug and were fixed
+to use it:
+
+- **`Telemetry_TryEnsureInstallationId()`** (`Telemetry.ahk`) — worse than
+  the counter bug: on a masked read failure, the function did not just
+  freeze at a stale value, it proceeded to *generate a brand-new
+  installation ID* and write it. If that write then happened to succeed
+  (a plausible, narrower but real timing window — e.g. a lock or AV scan
+  window that blocks reads but not writes), it would silently overwrite a
+  real, existing installation ID with a fresh one, breaking the "one
+  stable ID per device" invariant D-027/D-028 exists for, with no error
+  surfaced anywhere. Fixing `IniReadOrThrow()` to throw was only half the
+  fix — the surrounding `catch` block still treated *any* failure the
+  same as "no ID yet" and fell through to creating one regardless; that
+  had to be corrected too, so a genuine read failure now retries
+  (`Telemetry_ScheduleInstallationIdRetry()`) exactly like a write failure
+  already did, instead of falling through. The post-write reread (used to
+  detect a multi-instance race) was already safe by construction — any
+  wrong value there, masked-failure or not, fails the equality check
+  against the pending ID and correctly retries — but was switched to the
+  same helper anyway for defense in depth rather than relying on that
+  incidental safety.
+- **`LoadAppSettings()`** (`DocBot.ahk`) — `AutoSave`, `HotstringFile`,
+  `CallAction` (and its legacy `AutoCall`/`DirectCall` fallback),
+  `SmsCallActionTitle`, `TextReplacement`: all five/seven reads shared the
+  bug, each falling back to whatever `State` already held (i.e. the code
+  default on a first attempt) and reporting success, latching
+  `StorageRetryLoaders`'s "Instellingen" entry `Ready := true` on
+  unconfirmed defaults for the rest of the session — the user's own
+  `Belactie`/`Tekstvervanging` choice silently ignored until restart.
+- **`Tips_ReadShownCount()`/`Tips_ReadLastShownAt()`** (`DocBot.ahk`) —
+  same pattern, included for completeness at the project owner's request;
+  low severity (a one-off repeated onboarding tip at worst) and not part
+  of the `StorageRetryLoaders` retry/confirmation system at all, since
+  these are read live on demand rather than cached.
+- **Reviewed and left as out of scope**: `RebaseCopiedHotstringPath()`
+  and the legacy `DocBot.ini`→`settings.ini` migration read (both
+  `DocBot.ahk`), each a one-shot read immediately after a `FileCopy()`
+  that just synchronously succeeded moments earlier during bootstrap, not
+  part of the ongoing background retry contract — same bare-`IniRead()`
+  pattern, negligible risk window.
+
+**Follow-up (2026-09-01, project-owner request): added a third, ultra-quick
+retry tier ahead of the existing two.** Waiting a full 60 seconds for the
+*first* background retry felt long for the common case — storage was only
+unavailable for a few seconds (e.g. OneDrive finishing its mount), not
+minutes. Added `StorageRetryUltraQuickMs`/`StorageRetryUltraQuickCount`
+(`DocBot.ahk`) and the mirrored `TelemetryUltraQuickRetryMs`/
+`TelemetryUltraQuickRetryCount` (`Telemetry.ahk`, shared by the
+installation-ID and usage-counter retries, same as the existing "Quick"
+globals): originally 3 attempts at 10-second intervals (raised to 6, see
+follow-up below), before falling through to the existing cadence (quick:
+60s × a few more attempts; then hourly,
+unbounded) unchanged. All three retry-scheduling call sites
+(`StorageRetry_ScheduleIfNeeded()`, `Telemetry_TryLoadCounters()`,
+`Telemetry_ScheduleInstallationIdRetry()`) now select the delay from three
+tiers instead of two, using the same `SetTimer -delay` one-shot-reschedule
+shape as before — no new timer mechanism, just an extra threshold. A
+genuinely slow recovery (still not ready after the ultra-quick and quick
+tiers) is unaffected: it still falls back to the same bounded 60s cadence
+and then hourly as before this change.
+
+**Follow-up (2026-09-04, project-owner request): raised the ultra-quick
+tier from 3 to 6 attempts.** After walking through the actual timeline on a
+real degraded-mode run (retries at 10s/20s/30s, nothing at 60s, recovery at
+90s — the ultra-quick tier's 3×10s exhausts at t=30s, then the *next*
+scheduled tick is 60s after that, at t=90s, not at a fixed t=60s), the
+project owner asked for more ultra-quick attempts before falling through to
+the 60s tier. `StorageRetryUltraQuickCount` (`DocBot.ahk`) and
+`TelemetryUltraQuickRetryCount` (`Telemetry.ahk`) both changed from 3 to 6
+— still 10s apart, so the ultra-quick tier now covers t=10s through t=60s
+(60 seconds of coverage instead of 30) before the existing quick/slow
+cadence takes over unchanged.
+
+**Follow-up (2026-09-04, project-owner request): a `ShowNotification()`
+toast per failed loader per degraded episode, not per failed attempt.**
+With the ultra-quick tier now retrying 6 times before even reaching the
+first quick-tier attempt, a loader stuck in degraded mode could produce
+several near-identical toasts in the first minute alone. The first toast
+is useful (something is wrong, right now); every repeat while the same
+loader keeps failing is not — the user already knows, and `DebugLog()`
+already records every attempt in the standard log regardless.
+
+Added a `"Notified"` flag to each `StorageRetryLoaders` entry (default
+`false`) and a new `StorageRetryCurrentLoaderName` global, set only for
+the duration of `StorageRetry_AttemptLoader()`'s `loader["Fn"].Call()`.
+`ReportStorageError()` checks this: if the error came from a loader's
+background-retry attempt (name is set) and that loader has already shown
+its one toast this session, the `ShowNotification()` call is skipped —
+`DebugLog()` still runs unconditionally, first line in the function, so
+every attempt remains in the standard log either way. No loader-name
+parameter was added to `ReportStorageError()`'s signature or threaded
+through its ~20 call sites: `StorageRetryCurrentLoaderName` is only
+non-empty while genuinely inside a `StorageRetry_AttemptLoader()` call,
+so a storage error from outside the startup retry loop (an explicit
+"Bestand laden" menu action, a failed autosave during normal use) is
+unaffected and keeps notifying every time, exactly as before — only the
+six loaders' own automatic background retries are throttled.
+
+No reset path is needed: once a loader succeeds it is marked `Ready` and
+`StorageRetry_AttemptLoader()` never calls its `Fn` again this session, so
+"has this loader already notified" only matters for as long as it keeps
+failing, and a fresh app start always begins with `Notified := false`.
+
 ---
 
 ## D-064 — Degraded mode: hide unready content behind a persistent banner, all-or-nothing across the five storage loaders
@@ -2649,3 +2806,151 @@ after a real degraded-to-ready transition. This was missed in the original
 D-064 pass because the tray menu build only explicitly reasoned about the
 two items that write to `State`/`settings.ini`; the speed-dial section's
 own dependency on unloaded storage was not considered.
+
+---
+
+## D-065 — Sidebar branding: replace the title/subtitle text with a logo + title/slogan chip
+
+**Status:** Accepted, implemented (PR #71, `claude/sidebar-logo-slogan`,
+merged into `release/2.4-rc`)
+
+Filed by the project owner as a broader follow-up to the original P3
+"change the sidebar slogan" text-only request (`docs/TODO.md`): replace the
+plain "DocBot" title and "Telefonie voor de werkplek" subtitle text in the
+sidebar with the DocBot robot logo next to a rounded chip carrying the
+title "DocBot" and the slogan "een handje extra :)" in the existing accent
+orange, without shifting the nav buttons below it.
+
+**Root cause of the first Windows regression**
+
+The first compiled-Windows test showed a fully blank sidebar area — no
+logo, no slogan, no fallback text. `DocBot.png` carried a non-standard
+private PNG chunk (`caBX`, ~29KB, immediately after `IHDR`) that GDI+'s
+PNG decoder (`GdipCreateBitmapFromFile`) failed to load silently, while
+ordinary image viewers and browsers ignored the chunk and rendered the
+file fine. Fixed by re-saving `DocBot.png` with that chunk stripped
+(pixel data verified byte-identical) and moving the source images into
+`images/` (`DocBot.png`, `DocBot.ico`, `DocBot-slim.png`).
+
+**Decision**
+
+`CreateSidebarBrandBitmap()` composites the logo and chip into one bitmap
+at startup (`DocBot.ahk`); `BuildMainGui()` uses it in place of the old
+`appTitle`/`appSub` `AddText()` controls. If image loading or bitmap
+creation fails for any reason, it logs a `DebugLog` line and falls back to
+the original title/subtitle text instead of rendering nothing — the
+original blank-sidebar failure mode is no longer possible even if a future
+image regresses the same way.
+
+**Reasoning**
+
+- A silent, hard-to-diagnose GDI+ decode failure on a seemingly-valid PNG
+  is exactly the kind of runtime-only failure D-040/`docs/PROJECT_CONTEXT.md`
+  §8 already warns is invisible to source review and the `/Validate`-based
+  syntax check — only caught by actually running the compiled build on
+  Windows.
+- A silent fallback to the old text, rather than a blocking error, matches
+  the project's general pattern of degrading a cosmetic feature gracefully
+  instead of failing startup over it.
+- This is purely a UI/branding change: no new data flow, no new personal
+  data, no telemetry impact — not regulatory-assessment-relevant beyond a
+  cosmetic-change note (`docs/REGULATORY_ASSESSMENT.md`).
+
+**Consequences**
+
+- `images/` is now a real top-level content directory (moved out of the
+  repository root), referenced from `DocBot.ahk` and embedded via
+  `FileInstall`/Ahk2Exe at compile time like the rest of the app's assets.
+- The literal strings "DocBot" (title) and "Telefonie voor de werkplek"
+  (old subtitle) remain in `DocBot.ahk` only as the fallback path's text,
+  not as the primary rendered UI.
+- Final layout (logo size, chip width/margins, text scale) was hand-tuned
+  against the project owner's feedback over several iterations; see the
+  `claude/sidebar-logo-slogan` branch history for the intermediate steps
+  if the exact geometry ever needs revisiting.
+
+---
+
+## D-066 — Clipboard reading hardening: delay/retry against other apps, ignore stale/duplicate detections
+
+**Status:** Accepted, implemented (PR #72, `claude/klembord-race-hix`, merged
+into `release/2.4-rc`)
+
+Reported from the field test: HiX (and potentially other applications that
+open the clipboard multiple times during a single copy) intermittently
+showed a clipboard error to the user when copying a number, and DocBot's
+call-confirmation window sometimes opened twice for a single copy action —
+the second window immediately closed the first with a "previous window
+closed" notice, even though the user had only copied once.
+
+**Root causes**
+
+1. `ClipBoardPoller()` read `A_ClipBoard` synchronously and immediately on
+   every clipboard-sequence-number change, with no tolerance for another
+   process still being mid-write. If DocBot's read landed between two of
+   that other application's own `OpenClipboard()` calls for the same copy,
+   the other application could see its own access fail
+   (`CLIPBRD_E_CANT_OPEN`) — a DocBot-caused side effect on a completely
+   unrelated application.
+2. Some clipboard sources (Windows Clipboard History/Cloud Clipboard, or a
+   web page that writes the clipboard in more than one step) can increment
+   `GetClipboardSequenceNumber()` twice for what is, to the user, a single
+   copy — with identical resulting content. `ClipBoardPoller()` treated
+   every sequence-number change as a brand-new detection, so the second,
+   content-identical change opened a second dialog and closed the first
+   one via the existing `CloseExistingPhoneActionDialog()` path.
+
+**Decision**
+
+- `ReadClipboardTextSafely()`: waits 75ms, then reads `A_ClipBoard` inside
+  a `try`, retrying up to 3 times (50ms apart) on failure; returns `""` if
+  still unreadable after all attempts. `ClipBoardPoller()` uses this
+  instead of a direct `A_ClipBoard` read.
+- After that delay/retry window, `ClipBoardPoller()` re-checks
+  `GetClipboardSequenceNumber()` against the value seen at the start of
+  the poll. If it changed again while waiting/reading, the just-read
+  content is already stale — bail out without acting (without advancing
+  the poller's own `lastSeq`), so the next poll tick picks up the actually
+  current content in a clean pass, instead of DocBot acting on outdated
+  content or generating a spurious "previous window closed" notice.
+- If a call/SMS dialog is already open for exactly the same number
+  (`State["IPT"]["ClipBoardNumber"]` unchanged), a new detection is a
+  no-op instead of closing and reopening an identical dialog.
+- `IPT_DialResponse()`/`IPT_RegisterResponse()` wrapped their
+  `.status`/`.ResponseText` COM access in `try`/`catch`, matching
+  `IPT_PollResponse()`'s existing pattern — an async COM callback must
+  never crash unhandled on a failed property access (e.g. a dropped
+  connection).
+- `LogActivityCheckpoint(label, tekst)` added: an immediate-flush variant
+  of `DebugLog()` (see `docs/ARCHITECTURE.md` §15.1), called at a handful
+  of points in the call-window/call-action flow so the last point reached
+  is visible in `debug.log` even after a hang, instead of possibly lost in
+  `FlushDebugLog()`'s normal buffering.
+
+**Reasoning**
+
+- Fixing DocBot's own read timing is the correct target, not something to
+  ask every other application on the workplace to change — DocBot is the
+  guest reading a clipboard another application is actively writing.
+- The stale-content re-check avoids a subtler failure mode a naive
+  delay-then-read fix would still have: content read correctly but no
+  longer current by the time it's acted on.
+- Suppressing an identical-number redetection while a dialog is already
+  open is a narrower, more targeted fix than deduplicating on the sequence
+  number itself, since a genuinely new copy of the same number (e.g. the
+  user copies it again on purpose) should still be allowed to matter once
+  the first dialog is resolved.
+- Mirrors `IPT_PollResponse()`'s existing try/catch precedent rather than
+  inventing a new error-handling shape for the two sibling response
+  handlers.
+
+**Consequences**
+
+- No DocBot.ahk-caused clipboard contention with other applications during
+  a copy, as observed with HiX.
+- A single user copy action can no longer produce two call/SMS dialogs.
+- `debug.log` now carries checkpoint lines for the call-window/call-action
+  flow that survive a hang, aiding any future diagnosis of a stuck or
+  unresponsive call flow.
+- See the README `### 2.4` changelog for the user-facing summary of this
+  fix.

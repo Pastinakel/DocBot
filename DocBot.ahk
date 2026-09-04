@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4-dev.5"
+global AppVersion := "2.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -344,15 +344,30 @@ global UserDataDirIsPreexisting := false
 ; (D-027/D-028): enkele snelle pogingen, daarna uursgewijs, zonder bovengrens.
 ; "Gebruikersmap" staat altijd eerst: de overige vijf laders lezen/schrijven
 ; allemaal binnen UserDataDir en kunnen pas slagen zodra die map er echt is.
+; "Notified": zie ReportStorageError()/StorageRetry_AttemptLoader() — houdt
+; per lader bij of de gebruiker al een toast heeft gezien voor de huidige
+; degraded-episode, zodat elke mislukte herpoging niet opnieuw een toast
+; toont (wel altijd gewoon gelogd via DebugLog()).
 global StorageRetryLoaders := [
-    Map("Name", "Gebruikersmap", "Fn", InitializeUserStorage, "Ready", false),
-    Map("Name", "Instellingen", "Fn", LoadAppSettings, "Ready", false),
-    Map("Name", "Hotstrings", "Fn", InitializeHotstringStorage, "Ready", false),
-    Map("Name", "Pakketkeuzes", "Fn", InitializePackageSettings, "Ready", false),
-    Map("Name", "Snelkiesnummers", "Fn", InitializeSpeedDialStorage, "Ready", false),
-    Map("Name", "SMS-standaardteksten", "Fn", InitializeSmsDefaultTextStorage, "Ready", false)
+    Map("Name", "Gebruikersmap", "Fn", InitializeUserStorage, "Ready", false, "Notified", false),
+    Map("Name", "Instellingen", "Fn", LoadAppSettings, "Ready", false, "Notified", false),
+    Map("Name", "Hotstrings", "Fn", InitializeHotstringStorage, "Ready", false, "Notified", false),
+    Map("Name", "Pakketkeuzes", "Fn", InitializePackageSettings, "Ready", false, "Notified", false),
+    Map("Name", "Snelkiesnummers", "Fn", InitializeSpeedDialStorage, "Ready", false, "Notified", false),
+    Map("Name", "SMS-standaardteksten", "Fn", InitializeSmsDefaultTextStorage, "Ready", false, "Notified", false)
 ]
 global StorageRetryAttempts := 0
+; Naam van de lader die op dit moment via StorageRetry_AttemptLoader()
+; wordt geprobeerd, alleen gezet tijdens Fn.Call(). ReportStorageError()
+; leest dit om te weten of een fout uit de achtergrondretry komt (en dus
+; welke lader zijn "Notified"-vlag geldt) zonder dat elke aanroep van
+; ReportStorageError() zelf een lader-parameter hoeft door te geven.
+global StorageRetryCurrentLoaderName := ""
+; Eerste, kortste cyclus: vangt het veelvoorkomende geval op waarin storage
+; maar heel even niet beschikbaar was (bijv. OneDrive dat net klaar is met
+; mounten) veel sneller op dan de eerste 60s af te wachten.
+global StorageRetryUltraQuickMs := 10000
+global StorageRetryUltraQuickCount := 6
 global StorageRetryQuickMs := 60000
 global StorageRetryQuickCount := 5
 global StorageRetrySlowMs := 3600000
@@ -449,11 +464,43 @@ BuildMainGui() {
     ; Sidebar
     MainGui.AddText("x0 y0 w210 h700 Background" C["Sidebar"], "")
 
-    appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
-    appTitle.SetFont("s18 bold c" C["Text"], "Segoe UI")
-
-    appSub := MainGui.AddText("x28 y52 w170 h18 Background" C["Sidebar"], "Telefonie voor de werkplek")
-    appSub.SetFont("s9 c" C["Muted"], "Segoe UI")
+    ; Logo naast een afgeronde chip met titel + motto, i.p.v. de vroegere
+    ; losse titel/subtitle-tekst. De hoogte blijft binnen de ruimte boven de
+    ; "Overzicht"-knop (y110), zodat de navigatieknoppen niet naar onderen
+    ; verschuiven. Bij een probleem met het GDI+-tekenpad (bijvoorbeeld een
+    ; logo-PNG die de PNG-decoder van GDI+ niet aan de praat krijgt) valt de
+    ; sidebar terug op de vroegere titel/subtitle-tekst in plaats van stil
+    ; leeg te blijven.
+    try {
+        brandBitmap := CreateSidebarBrandBitmap(
+            210, 104,
+            GetSidebarBrandImagePath(),
+            C["Sidebar"],
+            C["PrimarySoft"],
+            C["Text"],
+            "F08200", ; zelfde oranje als de bestaande tip-/waarschuwingsbanners
+            "DocBot",
+            "een handje extra :)"
+        )
+        ; Geen WS_CLIPSIBLINGS (0x4000000) hier, in tegenstelling tot
+        ; AddCard(): dat control leeft in het contentvlak waar niets anders
+        ; die ruimte vult, dus de vlag is daar een no-op. Dit control ligt
+        ; wél bovenop een overlappende sibling — de sidebar-achtergrond
+        ; hierboven, x0 y0 w210 h700 — en WS_CLIPSIBLINGS sluit precies dat
+        ; overlappende gebied uit van het eigen tekenoppervlak. Bij exact
+        ; dezelfde positie/grootte als die achtergrond betekende dat: 100%
+        ; geklipt, dus onzichtbaar (bevestigd door het 20px-verschoven-testje
+        ; hiervoor, dat wél een 20px reepje liet zien — precies het stukje
+        ; dat níét overlapte). Dit control moet júist over die achtergrond
+        ; heen tekenen, dus de vlag blijft weg.
+        MainGui.AddPicture("x0 y0 w210 h104", "HBITMAP:*" brandBitmap)
+    } catch as brandError {
+        DebugLog("✕", "Sidebar-logo", "Kon logo/slogan niet tekenen (" brandError.Message "); terugval op titel/subtitle.")
+        appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
+        appTitle.SetFont("s18 bold c" C["Text"], "Segoe UI")
+        appSub := MainGui.AddText("x28 y52 w170 h18 Background" C["Sidebar"], "Telefonie voor de werkplek")
+        appSub.SetFont("s9 c" C["Muted"], "Segoe UI")
+    }
 
     AddNavButton("overzicht", Chr(0xE80F), "Overzicht", 110)
     AddNavButton("telefonie", Chr(0xE717), "Telefonie", 162)
@@ -1787,6 +1834,151 @@ CreateToggleBitmap(isOn, primaryColor, offColor, surfaceColor) {
     return UiFinishBitmap(pBitmap, graphics)
 }
 
+; Tekent het logo (images\DocBot-slim.png) links, vierkant en passend geschaald,
+; met daarnaast een afgeronde "chip" met daarin de titel en het motto.
+; surfaceColor is de sidebarkleur eromheen, zodat de bitmap naadloos
+; aansluit op de rest van het paneel (zie CreateCardBitmap). Elke
+; Gdip*-aanroep hier geeft een statuscode terug in plaats van een
+; AHK-uitzondering te gooien bij een probleem; zonder controle tekent een
+; mislukte stap gewoon niets, stil, zonder spoor in debug.log. GdipCheck()
+; logt en gooit alsnog bij een niet-Ok status, zodat CreateSidebarBrandBitmap()
+; ofwel volledig lukt, ofwel duidelijk faalt (en BuildMainGui() terugvalt op
+; titel/subtitle) met de exacte GDI+-statuscode in debug.log.
+GdipCheck(status, stap) {
+    if status != 0 {
+        DebugLog("✕", "Sidebar-logo", stap " gaf status " status ".")
+        throw Error(stap " gaf GDI+-status " status ".")
+    }
+}
+
+; Links uitgelijnde tekst binnen (x, y, w, h), gebruikt voor zowel de titel
+; als het motto in de chip — scheelt het dupliceren van de font/format/
+; brush-boilerplate.
+DrawSidebarBrandText(graphics, text, x, y, w, h, fontSize, bold, color, alpha) {
+    fontFamily := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateFontFamilyFromName", "str", "Segoe UI", "ptr", 0, "ptr*", &fontFamily), "GdipCreateFontFamilyFromName")
+    font := 0
+    ; UnitPoint (3), niet UnitPixel: fontSize komt hier binnen als hetzelfde
+    ; puntenformaat als AHK's eigen SetFont("sXX ..."), zodat "18" hier ook
+    ; echt even groot rendert als het vroegere SetFont("s18 bold ...").
+    GdipCheck(DllCall("gdiplus\GdipCreateFont", "ptr", fontFamily, "float", fontSize, "int", bold ? 1 : 0, "int", 3, "ptr*", &font), "GdipCreateFont")
+
+    format := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "int", 0, "ptr*", &format), "GdipCreateStringFormat")
+    GdipCheck(DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", format, "int", 0), "GdipSetStringFormatAlign") ; Near (links)
+    GdipCheck(DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", format, "int", 0x1000), "GdipSetStringFormatFlags") ; NoWrap
+
+    brush := 0
+    GdipCheck(DllCall("gdiplus\GdipCreateSolidFill", "uint", UiArgb(color, alpha), "ptr*", &brush), "GdipCreateSolidFill")
+
+    layoutRect := Buffer(16, 0)
+    NumPut("float", x, layoutRect, 0)
+    NumPut("float", y, layoutRect, 4)
+    NumPut("float", w, layoutRect, 8)
+    NumPut("float", h, layoutRect, 12)
+
+    GdipCheck(
+        DllCall(
+            "gdiplus\GdipDrawString",
+            "ptr", graphics,
+            "str", text,
+            "int", -1,
+            "ptr", font,
+            "ptr", layoutRect,
+            "ptr", format,
+            "ptr", brush
+        ),
+        "GdipDrawString"
+    )
+
+    DllCall("gdiplus\GdipDeleteBrush", "ptr", brush)
+    DllCall("gdiplus\GdipDeleteStringFormat", "ptr", format)
+    DllCall("gdiplus\GdipDeleteFont", "ptr", font)
+    DllCall("gdiplus\GdipDeleteFontFamily", "ptr", fontFamily)
+}
+
+CreateSidebarBrandBitmap(width, height, imagePath, surfaceColor, chipColor, textColor, accentColor, titleText, sloganText) {
+    pBitmap := UiCreateBitmap(width, height, &graphics)
+    GdipCheck(DllCall("gdiplus\GdipGraphicsClear", "ptr", graphics, "uint", UiArgb(surfaceColor)), "GdipGraphicsClear")
+    GdipCheck(DllCall("gdiplus\GdipSetInterpolationMode", "ptr", graphics, "int", 7), "GdipSetInterpolationMode") ; HighQualityBicubic
+
+    ; Chip eerst (achtergrond), dan het logo erover — het logo blijft binnen
+    ; zijn eigen linkerkolom en overlapt de chip niet, dus de volgorde doet
+    ; er niet toe, maar dit houdt de layoutgetallen bij elkaar.
+    chipX := 80
+    chipY := 28
+    chipW := width - chipX - 10
+    chipH := 54
+    UiFillRoundedRect(graphics, chipX, chipY, chipW, chipH, 14, UiArgb(chipColor))
+
+    pImage := 0
+    loadStatus := DllCall("gdiplus\GdipCreateBitmapFromFile", "str", imagePath, "ptr*", &pImage)
+    if loadStatus != 0 || !pImage {
+        DebugLog("✕", "Sidebar-logo", "GdipCreateBitmapFromFile gaf status " loadStatus " voor " imagePath " (logo blijft weg, titel/motto worden wel getekend).")
+    } else {
+        imgW := 0, imgH := 0
+        GdipCheck(DllCall("gdiplus\GdipGetImageWidth", "ptr", pImage, "uint*", &imgW), "GdipGetImageWidth")
+        GdipCheck(DllCall("gdiplus\GdipGetImageHeight", "ptr", pImage, "uint*", &imgH), "GdipGetImageHeight")
+        DebugLog("i", "Sidebar-logo", "Afbeelding geladen: " imgW "x" imgH " uit " imagePath ".")
+
+        if imgW > 0 && imgH > 0 {
+            ; Meer marge links/boven/onder dan voorheen (was 8). Het logo-vak
+            ; raakt nu de chip zonder kloof, zodat logo en chip echt tegen
+            ; elkaar aan staan, zoals in de mockup.
+            logoBoxX := 14
+            logoBoxY := 14
+            logoBoxW := chipX - logoBoxX
+            logoBoxH := height - logoBoxY * 2
+            scale := Min(logoBoxW / imgW, logoBoxH / imgH)
+            drawW := imgW * scale
+            drawH := imgH * scale
+            logoX := logoBoxX + (logoBoxW - drawW) / 2
+            logoY := logoBoxY + (logoBoxH - drawH) / 2
+
+            ; images\DocBot-slim.png heeft nu een echt alfakanaal (colortype
+            ; 6, RGBA), dus een gewone GdipDrawImageRect volstaat — geen
+            ; colorkey-benadering meer nodig voor de doorzichtige achtergrond.
+            GdipCheck(
+                DllCall(
+                    "gdiplus\GdipDrawImageRect",
+                    "ptr", graphics,
+                    "ptr", pImage,
+                    "float", logoX,
+                    "float", logoY,
+                    "float", drawW,
+                    "float", drawH
+                ),
+                "GdipDrawImageRect"
+            )
+        }
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pImage)
+    }
+
+    ; Titel op dezelfde grootte als de vroegere losse titel (s18 bold);
+    ; motto op dezelfde grootte als de statusindicatoren onderaan de sidebar
+    ; ("Telefonie: Actief" e.d., s9). DrawSidebarBrandText() gebruikt nu
+    ; UnitPoint, dus deze getallen zijn punten, net als SetFont("sXX ...").
+    textPad := 6
+    DrawSidebarBrandText(graphics, titleText, chipX + textPad, chipY + 0, chipW - textPad * 2, 36, 18, true, textColor, 255)
+    DrawSidebarBrandText(graphics, sloganText, chipX + textPad, chipY + 30, chipW - textPad * 2, 22, 9, false, accentColor, 255)
+    DebugLog("i", "Sidebar-logo", "Titel en motto getekend.")
+
+    return UiFinishBitmap(pBitmap, graphics)
+}
+
+; Ongecompileerd wordt images\DocBot-slim.png rechtstreeks naast het script
+; gelezen. Gecompileerd bestaat die map niet met losse bestanden, dus moet
+; het bestand letterlijk genoemd worden zodat Ahk2Exe het als resource
+; opneemt (zelfde patroon als LoadReadmeChangelog() voor README.md).
+GetSidebarBrandImagePath() {
+    imagePath := A_ScriptDir "\images\DocBot-slim.png"
+    if A_IsCompiled {
+        imagePath := A_Temp "\DocBot-brand.png"
+        FileInstall "images\DocBot-slim.png", imagePath, true
+    }
+    return imagePath
+}
+
 UiCreateBitmap(width, height, &graphics) {
     static PixelFormat32bppPARGB := 0x26200A
     static gdipToken := 0
@@ -2014,7 +2206,7 @@ Tips_ReadShownCount(key) {
     global ConfigFile
 
     try
-        return Max(0, Integer(IniRead(ConfigFile, "Tips", key "ShownCount", 0)))
+        return Max(0, Integer(IniReadOrThrow(ConfigFile, "Tips", key "ShownCount", 0)))
     catch
         return 0
 }
@@ -2028,7 +2220,7 @@ Tips_ReadLastShownAt(key) {
     global ConfigFile
 
     try
-        return IniRead(ConfigFile, "Tips", key "LastShownAt", "")
+        return IniReadOrThrow(ConfigFile, "Tips", key "LastShownAt", "")
     catch
         return ""
 }
@@ -2700,17 +2892,24 @@ IPT_callNumber(telNummer := "", isRegistrationCall := false) {
 }
 
 ; Simpele ERROR-check, net als bij IPT_RegisterResponse — DialNumber geeft
-; geen event-XML terug.
+; geen event-XML terug. De COM-aanroepen naar .status/.ResponseText in een
+; try/catch, net als bij IPT_PollResponse: een falende toegang (bijv. een
+; afgebroken verbinding) mag deze asynchrone COM-callback nooit onafgevangen
+; laten crashen.
 IPT_DialResponse() {
     global IPTConfig, IPTDialRequest
 
     if IPTDialRequest.readyState != 4
         return
 
-    DebugLog("←", IPTConfig["DialPage"] . " status " . IPTDialRequest.status, IPTDialRequest.ResponseText)
+    try {
+        DebugLog("←", IPTConfig["DialPage"] . " status " . IPTDialRequest.status, IPTDialRequest.ResponseText)
 
-    if InStr(IPTDialRequest.ResponseText, "ERROR")
-        ShowNotification("Er is een fout opgetreden bij het bellen.", 4000, "error")
+        if InStr(IPTDialRequest.ResponseText, "ERROR")
+            ShowNotification("Er is een fout opgetreden bij het bellen.", 4000, "error")
+    } catch as err {
+        DebugLog("←", IPTConfig["DialPage"] . " PARSE-FOUT: " . err.Message, "")
+    }
 }
 
 ; startCooldown := false bij de automatische aanvraag tijdens opstarten,
@@ -2748,17 +2947,24 @@ IPT_register(startCooldown := true) {
 }
 
 ; Simpele ERROR-check, geen XML-parsing — de server geeft hier geen
-; event-XML terug (dat gebeurt uitsluitend via IPT_poller/GetEvent).
+; event-XML terug (dat gebeurt uitsluitend via IPT_poller/GetEvent). De
+; COM-aanroepen naar .status/.ResponseText in een try/catch, net als bij
+; IPT_PollResponse: een falende toegang (bijv. een afgebroken verbinding)
+; mag deze asynchrone COM-callback nooit onafgevangen laten crashen.
 IPT_RegisterResponse() {
     global IPTConfig, IPTRegisterRequest
 
     if IPTRegisterRequest.readyState != 4
         return
 
-    DebugLog("←", IPTConfig["AllocatePage"] . " status " . IPTRegisterRequest.status, IPTRegisterRequest.ResponseText)
+    try {
+        DebugLog("←", IPTConfig["AllocatePage"] . " status " . IPTRegisterRequest.status, IPTRegisterRequest.ResponseText)
 
-    if InStr(IPTRegisterRequest.ResponseText, "ERROR")
-        ShowNotification("Aanmelden bij de telefonieserver is mislukt.", 4000, "error")
+        if InStr(IPTRegisterRequest.ResponseText, "ERROR")
+            ShowNotification("Aanmelden bij de telefonieserver is mislukt.", 4000, "error")
+    } catch as err {
+        DebugLog("←", IPTConfig["AllocatePage"] . " PARSE-FOUT: " . err.Message, "")
+    }
 }
 
 ; Voorkomt dat de Verversen-knop bij elke klik een nieuw koppelnummer aanvraagt.
@@ -3191,6 +3397,17 @@ DebugLog(richting, label, tekst := "") {
             : tekst
         ExtendedDebugLog(richting, label, extendedText)
     }
+}
+
+; Schrijft, anders dan de normale DebugLog() (die tot 2 seconden gebufferd
+; blijft vóór FlushDebugLog() die regel wegschrijft), een checkpointregel
+; meteen naar schijf. Gebruikt op een klein aantal plekken in de
+; belvenster-/belactieflow, zodat bij een vastlopend hoofdproces het laatst
+; bereikte punt toch zichtbaar is in debug.log in plaats van verloren te
+; gaan in een nooit weggeschreven buffer.
+LogActivityCheckpoint(label, tekst := "") {
+    DebugLog("•", label, tekst)
+    FlushDebugLog()
 }
 
 ExtendedDebugLog(richting, label, tekst := "") {
@@ -4559,8 +4776,33 @@ ResetProblemReportAfterCompletion() {
     )
 }
 
+; Een andere applicatie (bijv. HiX) kan het kopiëren van een nummer in
+; meerdere stappen uitvoeren, elk met een eigen OpenClipboard-aanroep. Valt
+; DocBot's eigen klembordlezing precies tussen die stappen, dan kan dat bij
+; die andere applicatie een "OpenClipboard is mislukt (CLIPBRD_E_CANT_OPEN)"
+; veroorzaken. De korte vertraging geeft de schrijvende applicatie de kans
+; om af te ronden vóórdat DocBot leest; de herpogingen vangen een
+; resterende botsing op zonder de poller te laten crashen. Geeft "" terug
+; als lezen na de pogingen nog steeds niet lukt.
+ReadClipboardTextSafely() {
+    Sleep(75)
+
+    Loop 3 {
+        try
+            return A_ClipBoard
+        catch as clipError {
+            if A_Index = 3 {
+                DebugLog("✕", "Klembord lezen", "Mislukt na 3 pogingen: " clipError.Message)
+                return ""
+            }
+            Sleep(50)
+        }
+    }
+    return ""
+}
+
 ClipBoardPoller() {
-    global State, StorageAllReady
+    global State, StorageAllReady, PhoneActionDialogState
     static lastSeq := DllCall("GetClipboardSequenceNumber")  ; voorkomt dat de klembordinhoud bij opstarten al wordt opgepakt
 
     seq := DllCall("GetClipboardSequenceNumber")
@@ -4569,8 +4811,25 @@ ClipBoardPoller() {
 
     lastSeq := seq
 
-    externalTel := NormalizePhoneNumberExternal(A_ClipBoard)
-    internalTel := externalTel = "" ? NormalizePhoneNumberInternal(A_ClipBoard) : ""
+    clipboardText := ReadClipboardTextSafely()
+
+    ; Is de klembordinhoud tijdens het wachten/lezen hierboven ondertussen
+    ; wéér gewijzigd (de gebruiker kopieerde iets nieuws terwijl DocBot nog
+    ; bezig was), dan is clipboardText alweer achterhaald. lastSeq bewust
+    ; niet verder bijwerken: de eerstvolgende poll ziet dan zelf een
+    ; afwijkende teller (lastSeq staat nog op de oude waarde seq) en
+    ; verwerkt de daadwerkelijk actuele inhoud in een eigen, schone ronde —
+    ; in plaats van hier alsnog een gedateerd belvenster te openen dat
+    ; meteen weer als "vorig venster" wordt gesloten door die volgende
+    ; ronde.
+    if DllCall("GetClipboardSequenceNumber") != seq
+        return
+
+    if clipboardText = ""
+        return
+
+    externalTel := NormalizePhoneNumberExternal(clipboardText)
+    internalTel := externalTel = "" ? NormalizePhoneNumberInternal(clipboardText) : ""
 
     if externalTel = "" && internalTel = ""
         return
@@ -4589,6 +4848,19 @@ ClipBoardPoller() {
         )
         return
     }
+
+    telNummer := externalTel != "" ? externalTel : internalTel
+
+    ; Sommige klembordbronnen (Windows Klembordgeschiedenis/Cloud Klembord,
+    ; of een webpagina die het klembord in meerdere stappen beschrijft)
+    ; laten de klembordteller soms twee keer oplopen voor wat voor de
+    ; gebruiker één kopieeractie is, met exact dezelfde inhoud. Staat er al
+    ; een venster open voor precies dit nummer, dan is dit geen nieuwe
+    ; kopieeractie: doe niets, in plaats van het bestaande venster te
+    ; vervangen door een identiek nieuw venster (met de "vorig venster
+    ; gesloten"-melding tot gevolg).
+    if IsObject(PhoneActionDialogState) && State["IPT"]["ClipBoardNumber"] = telNummer
+        return
 
     if externalTel != "" {
         SetClipBoardNumber(externalTel)
@@ -4682,6 +4954,7 @@ HandleClipboardNumberDetected() {
     CloseExistingPhoneActionDialog()
 
     action := State["CallAction"]
+    LogActivityCheckpoint("Belactie bepaald", "Actie " action " voor extern nummer.")
     switch action {
         case 0:
             ClearClipBoardNumber("geen belactie geconfigureerd")
@@ -4704,6 +4977,7 @@ HandleInternalClipboardNumberDetected() {
     CloseExistingPhoneActionDialog()
 
     action := State["CallAction"]
+    LogActivityCheckpoint("Belactie bepaald", "Actie " action " voor intern nummer.")
     switch action {
         case 0:
             ClearClipBoardNumber("geen belactie geconfigureerd")
@@ -4771,6 +5045,7 @@ ShowCallConfirmationDialog() {
         "Selected", 2
     )
 
+    LogActivityCheckpoint("Belvenster", "Bevestigingsvenster (bellen) wordt getoond.")
     dlg.Show("w360 h224 Center")
 
     SetPhoneActionDialogSelection(2)
@@ -4841,6 +5116,7 @@ ShowCallOrSmsChoiceDialog() {
         "Selected", 3
     )
 
+    LogActivityCheckpoint("Belvenster", "Keuzevenster (bellen/sms) wordt getoond.")
     dlg.Show("w500 h224 Center")
 
     ; SetColor vóór Show() is niet voldoende: Windows toont dan eerst kort de
@@ -4962,6 +5238,8 @@ CloseExistingPhoneActionDialog() {
 ClosePhoneActionDialog(dialog, *) {
     global PhoneActionDialogState
 
+    LogActivityCheckpoint("Belvenster", "Venster wordt gesloten en klembordstatus opgeruimd.")
+
     if IsObject(PhoneActionDialogState)
         && PhoneActionDialogState["DialogHwnd"] = dialog.Hwnd {
         PhoneActionDialogState := 0
@@ -4972,11 +5250,13 @@ ClosePhoneActionDialog(dialog, *) {
 }
 
 ExecutePhoneActionCallChoice(dialog, number, *) {
+    LogActivityCheckpoint("Belvenster", "Bellen-knop gekozen; venster wordt gesloten.")
     ClosePhoneActionDialog(dialog)
     IPT_callNumber(number)
 }
 
 StartSmsCallAction(dialog, number, *) {
+    LogActivityCheckpoint("Belvenster", "SMS-knop gekozen; venster wordt gesloten.")
     ClosePhoneActionDialog(dialog)
     DebugLog("→", "SMS actie", "SMS-route gestart.")
 
@@ -8170,6 +8450,8 @@ AutoSaveHotstrings(*) {
 }
 
 ReportStorageError(message, showMessage := false) {
+    global StorageRetryLoaders, StorageRetryCurrentLoaderName
+
     ; Iedere opslagfout moet terug te vinden zijn in het standaardlog, ook
     ; wanneer de gebruiker de melding zelf nooit ziet (bijv. stille
     ; achtergrondacties) of wegklikt.
@@ -8178,6 +8460,24 @@ ReportStorageError(message, showMessage := false) {
     if showMessage {
         MsgBox(message, "DocBot - JSON", "Icon!")
         return
+    }
+
+    ; Komt deze fout uit een achtergrond-herpoging van StorageRetryLoaders
+    ; (D-063), toon dan hooguit één toast per lader per degraded-episode in
+    ; plaats van bij iedere mislukte herpoging opnieuw dezelfde melding —
+    ; de eerste keer is nuttig, elke herhaling daarna niet. Blijft altijd
+    ; wel gewoon gelogd (hierboven). Geldt niet voor opslagfouten buiten de
+    ; achtergrondretry om (bijv. een mislukte handmatige opslag tijdens
+    ; gewoon gebruik) — die blijven bij elke keer melden.
+    if StorageRetryCurrentLoaderName != "" {
+        for loaderEntry in StorageRetryLoaders {
+            if loaderEntry["Name"] = StorageRetryCurrentLoaderName {
+                if loaderEntry["Notified"]
+                    return
+                loaderEntry["Notified"] := true
+                break
+            }
+        }
     }
 
     ; Automatisch laden/opslaan mag de gebruiker niet met modale vensters
@@ -8215,10 +8515,13 @@ RefreshSpeedDialListIfReady() {
 ; roepen). Geeft de staat vóór deze poging terug, zodat de aanroeper kan
 ; zien of dit een verse overgang naar "klaar" is.
 StorageRetry_AttemptLoader(loader) {
+    global StorageRetryCurrentLoaderName
+
     wasReady := loader["Ready"]
     if wasReady
         return wasReady
 
+    StorageRetryCurrentLoaderName := loader["Name"]
     try {
         loader["Ready"] := !!loader["Fn"].Call()
     } catch as error {
@@ -8229,6 +8532,7 @@ StorageRetry_AttemptLoader(loader) {
             loader["Name"] " gaf een onverwachte fout: " error.Message
         )
     }
+    StorageRetryCurrentLoaderName := ""
 
     return wasReady
 }
@@ -8271,13 +8575,19 @@ StorageRetry_AllLoadersReady() {
 
 StorageRetry_ScheduleIfNeeded() {
     global StorageRetryLoaders, StorageRetryAttempts, StorageAllReady
+    global StorageRetryUltraQuickMs, StorageRetryUltraQuickCount
     global StorageRetryQuickMs, StorageRetryQuickCount, StorageRetrySlowMs
 
     if !StorageRetry_AllLoadersReady() {
         StorageRetryAttempts += 1
-        delay := StorageRetryAttempts < StorageRetryQuickCount
-            ? StorageRetryQuickMs
-            : StorageRetrySlowMs
+        ; Drie cycli: eerst StorageRetryUltraQuickCount pogingen om de
+        ; StorageRetryUltraQuickMs, dan StorageRetryQuickCount pogingen om
+        ; de StorageRetryQuickMs, daarna onbeperkt StorageRetrySlowMs.
+        delay := StorageRetryAttempts <= StorageRetryUltraQuickCount
+            ? StorageRetryUltraQuickMs
+            : (StorageRetryAttempts <= StorageRetryUltraQuickCount + StorageRetryQuickCount
+                ? StorageRetryQuickMs
+                : StorageRetrySlowMs)
         SetTimer StorageRetry_Tick, -delay
         return
     }
@@ -9287,6 +9597,26 @@ RebaseCopiedHotstringPath(sourceDir) {
     )
 }
 
+; IniRead() with an explicit default never throws for a file that exists but
+; can't actually be read right now (locked, still hydrating, an antivirus
+; scan window) — it silently returns that default instead, masking a
+; transient failure as a confirmed value. That is dangerous wherever the
+; caller then treats "read succeeded" as license to stop retrying, or worse,
+; to write a freshly generated value over what may still be a real one
+; (see Telemetry_TryEnsureInstallationId()). Probe with a real FileRead()
+; first, which does throw on that condition, before delegating to IniRead()
+; for the actual value. A missing file returns `default` without probing —
+; that is a genuine "not created yet" case (e.g. a real first run), not a
+; failure; callers needing to tell that apart from "exists but stale"
+; already check FileExist()/UserDataDirIsPreexisting themselves where it
+; matters (see LoadAppSettings() below).
+IniReadOrThrow(path, section, key, default) {
+    if !FileExist(path)
+        return default
+    FileRead(path, "UTF-8")
+    return IniRead(path, section, key, default)
+}
+
 LoadAppSettings() {
     global State, ConfigFile, UserDataDirIsPreexisting
 
@@ -9310,16 +9640,16 @@ LoadAppSettings() {
 
     try {
         State["AutoSave"] := ParseBooleanSetting(
-            IniRead(ConfigFile, "Hotstrings", "AutoSave", State["AutoSave"])
+            IniReadOrThrow(ConfigFile, "Hotstrings", "AutoSave", State["AutoSave"])
         )
-        State["HotstringFile"] := IniRead(
+        State["HotstringFile"] := IniReadOrThrow(
             ConfigFile,
             "Hotstrings",
             "File",
             State["HotstringFile"]
         )
         storedCallAction := Trim(
-            IniRead(ConfigFile, "Features", "CallAction", "")
+            IniReadOrThrow(ConfigFile, "Features", "CallAction", "")
         )
         if storedCallAction != "" {
             State["CallAction"] := ParseCallActionSetting(
@@ -9328,17 +9658,17 @@ LoadAppSettings() {
             )
         } else {
             legacyAutoCall := ParseBooleanSetting(
-                IniRead(ConfigFile, "Features", "AutoCall", 1)
+                IniReadOrThrow(ConfigFile, "Features", "AutoCall", 1)
             )
             legacyDirectCall := ParseBooleanSetting(
-                IniRead(ConfigFile, "Features", "DirectCall", 0)
+                IniReadOrThrow(ConfigFile, "Features", "DirectCall", 0)
             )
             State["CallAction"] := !legacyAutoCall
                 ? 0
                 : (legacyDirectCall ? 2 : 1)
         }
         State["SmsCallActionTitle"] := ResolveSmsCallActionTitle(
-            IniRead(
+            IniReadOrThrow(
                 ConfigFile,
                 "Features",
                 "SmsCallActionTitle",
@@ -9347,7 +9677,7 @@ LoadAppSettings() {
         )
         State["CallAction"] := NormalizeCallAction(State["CallAction"])
         State["TextReplacement"] := ParseBooleanSetting(
-            IniRead(
+            IniReadOrThrow(
                 ConfigFile,
                 "Features",
                 "TextReplacement",

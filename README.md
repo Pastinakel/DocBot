@@ -17,11 +17,11 @@ ook toegepast. De software heeft geen beoogd medisch doel: zij verricht geen
 medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft
 geen diagnose-, behandel-, doserings- of monitoringsadvies.
 
-Deze README beschrijft de stabiele release 2.3 op `main`.
+Deze README beschrijft de stabiele release 2.4 op `main`.
 
 Bestanden
 ---------
-- `DocBot.ahk` — stabiele release 2.3 met de huidige GUI,
+- `DocBot.ahk` — stabiele release 2.4 met de huidige GUI,
   telefoniefunctionaliteit, hotstrings, snelkiesnummers en pakketbeheer.
 - `packages/` — versieerbare ingebouwde hotstringpakketten plus manifest.
 - `ThirdParty/ColorButton/` — custom-draw ondersteuning voor de moderne
@@ -497,7 +497,12 @@ risicoanalyse.
 Changelog
 ---------
 
-### 2.4 — In ontwikkeling
+### 2.4 — Huidige stabiele release
+- De sidebar toont niet langer de titel "DocBot" en de ondertitel
+  "Telefonie voor de werkplek" als platte tekst, maar het DocBot-robotlogo
+  naast een afgeronde chip met de titel "DocBot" en de slogan "een handje
+  extra :)" in het bestaande accentoranje. Dit past binnen dezelfde ruimte
+  zonder dat de menuknoppen eronder verschuiven.
 - Overzicht toont soms bij het opstarten een gele tip die wijst op een nog
   ongebruikte functie, zoals telefonie koppelen of hotstrings aanmaken, of
   over het sluiten van DocBot naar het systeemvak. Hooguit één tip per
@@ -547,8 +552,20 @@ Changelog
   `NormalizeSmsPhoneNumber`): 4-cijferige interne nummers, externe
   NL-nummers in +31-/0031-/kale-0-vorm met spaties/streepjes genegeerd, de
   06-only-eis voor de SMS-variant, en te korte/ongeldige invoer.
+- DocBot leest het klembord bij een herkende wijziging voortaan met een
+  korte vertraging en enkele herpogingen in plaats van meteen. Een andere
+  applicatie die tijdens het kopiëren zelf meerdere keren het klembord
+  opent — waargenomen bij HiX — kon daardoor soms zelf een klembordfout
+  krijgen. Dezelfde aanpassing voorkomt ook dat het belvenster soms dubbel
+  opende, met de melding dat het vorige venster alsnog werd gesloten,
+  terwijl er maar één keer was gekopieerd (`docs/DECISIONS.md` D-066).
+- DocBot toont tijdens het herstellen van tijdelijk niet-beschikbare opslag
+  (zie hierboven) voortaan hooguit één melding per onderdeel, in plaats van
+  bij elke achtergrond-herpoging opnieuw. De eerdere serie bijna-identieke
+  meldingen in de eerste minuut was niet nuttig; elke poging blijft gewoon
+  zichtbaar in het diagnostieklog (`docs/DECISIONS.md` D-064).
 
-### 2.3 — Huidige stabiele release
+### 2.3 — Vorige stabiele release
 - DocBot probeert de gebruikersdatamap bij het opstarten niet langer lokaal
   te pinnen tegen OneDrive Files On-Demand (`MarkUserStorageAlwaysAvailable()`
   is verwijderd, samen met de aanroep ervan). Op een werkplek met

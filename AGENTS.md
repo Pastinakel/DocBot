@@ -64,6 +64,21 @@ kwalificatie niet stilzwijgend toe op nieuwe medische functionaliteit: voer bij
 een genoemde herbeoordelingstrigger eerst een nieuwe kwalificatie- en
 risicoanalyse uit.
 
+## Taalgebruik in documentatie en commits
+
+- Nederlands: `README.md`, `CLAUDE.md`/`AGENTS.md`, `docs/DATA_PROTECTION.md`,
+  `docs/REGULATORY_ASSESSMENT.md`, `docs/INTENDED_PURPOSE.md` — alles wat
+  eindgebruikers, de projecteigenaar of juridische/compliance-lezers
+  rechtstreeks raakt.
+- Engels: `docs/TODO.md`, `docs/PROJECT_CONTEXT.md`, `docs/ARCHITECTURE.md`,
+  `docs/DECISIONS.md`, `docs/MIGRATIONS.md` — de interne
+  engineering-/handoverdocumenten.
+- Commit messages en pull-requestsamenvattingen: Nederlands.
+
+Houd een bestand in de taal die hierboven voor dat bestand geldt; wissel niet
+halverwege een document van taal, ook niet voor een nieuwe sectie of een
+losse toevoeging.
+
 ## Hotstringmodel en uitvoer
 
 - Persoonlijke hotstrings gebruiken één `Replacement`-veld. Introduceer geen
@@ -226,27 +241,27 @@ is gevalideerd (zie `docs/DECISIONS.md` D-037).
 Gebruik in de huidige ontwikkelcyclus deze versies:
 
 ```text
-main:              2.3
-develop:           2.4-dev.N
-features/fixes:    2.4-<korte-branchnaam>.N
-release candidate: 2.4-rc.N
-release:           2.4
+main:              2.4
+develop:           2.5-dev.N
+features/fixes:    2.5-<korte-branchnaam>.N
+release candidate: 2.5-rc.N
+release:           2.5
 ```
 
 Dezelfde structuur geldt voor latere releases: `main` bevat altijd de laatst
 uitgebrachte stabiele versie; `develop` gebruikt de volgende beoogde release
 met `-dev.N`; iedere feature- of fixbranch gebruikt een korte
 branchspecifieke prerelease-naam met een eigen lokale teller; een releasebranch
-gebruikt `-rc.N`; bij de stabiele release vervalt de prerelease-suffix.
+gebruikt `-rc`; bij de stabiele release vervalt de prerelease-suffix.
 
 Maak een releasecandidate vanaf een actuele `develop` op een branch zoals
-`release/2.4-rc.1`. Voeg daar uitsluitend bugfixes, documentatie en
+`release/2.5-rc`. Voeg daar uitsluitend bugfixes, documentatie en
 releasevoorbereidingen aan toe. Nieuwe functionaliteit wacht op de volgende
 ontwikkelcyclus. Iedere commit op de releasebranch die `DocBot.ahk` wijzigt,
 verhoogt `rc.N` met één.
 
-Voorbeelden zijn `2.4-dev.7`, `2.4-ronde-kaarten.3`,
-`2.4-import.5` en `2.4-rc.1`. Houd branchspecifieke prerelease-namen
+Voorbeelden zijn `2.5-dev.7`, `2.5-ronde-kaarten.3`,
+`2.5-import.5` en `2.5-rc.1`. Houd branchspecifieke prerelease-namen
 geschikt voor SemVer: uitsluitend ASCII-letters, cijfers en koppeltekens.
 
 Iedere commit die `DocBot.ahk` wijzigt, moet in dezelfde commit ook
@@ -271,8 +286,8 @@ releasetag.
 ## Releases, versiegeschiedenis en tags
 
 De releasebranch wordt via een pull request naar `main` gemerged. Zet
-`AppVersion` pas voor de definitieve releasecommit van `2.4-rc.N` naar
-de stabiele versie `2.4`.
+`AppVersion` pas voor de definitieve releasecommit van `2.5-rc.N` naar
+de stabiele versie `2.5`.
 
 Bij een stabiele release moet in dezelfde commit-cyclus:
 
@@ -282,7 +297,7 @@ Bij een stabiele release moet in dezelfde commit-cyclus:
 2. Een annotated tag met `v`-prefix worden aangemaakt op de stabiele
    versiecommit, bijvoorbeeld:
    ```bash
-   git tag -a v2.3 -m "2.3"
+   git tag -a v2.4 -m "2.4"
    ```
 3. De tag worden gepusht:
    ```bash
@@ -295,6 +310,22 @@ Ontwikkel-, feature-, fix- en RC-versies krijgen geen stabiele releasetag.
 Meld het expliciet als een tag niet naar `origin` kan worden gepusht. Een
 tag telt pas als gereed wanneer die op `origin` zichtbaar is.
 
+### Verantwoording bij versie- en tagwijzigingen
+
+Benoem bij iedere wijziging van `global AppVersion` expliciet, in dezelfde
+boodschap aan de gebruiker, op welk branchtype dit gebeurt (main, develop,
+releasebranch of feature-/fixbranch) en welke tellerregel daarbij hoort — dus
+niet alleen de nieuwe versiestring tonen. Een feature- of fixbranch die via
+een pull request naar een releasebranch gaat, is en blijft een feature-/
+fixbranch voor deze regel, ook als de gebruiker toestemming heeft gegeven om
+"op" of "voor" die releasebranch te werken: dat is geen toestemming om de
+gedeelde `rc.N`- of `dev.N`-teller van de doelbranch te gebruiken.
+
+Behandel het aanmaken en pushen van een tag niet als vanzelfsprekend
+onderdeel van een reeds goedgekeurde taak. Vraag daar apart expliciete
+toestemming voor, ook wanneer de gebruiker net al voor de rest van het werk
+"ga door" heeft gezegd — een tag is, net als een force-push, moeilijker
+terug te draaien dan een gewone commit.
 
 ## Lokale configuratie
 
