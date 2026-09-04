@@ -2589,8 +2589,9 @@ minutes. Added `StorageRetryUltraQuickMs`/`StorageRetryUltraQuickCount`
 (`DocBot.ahk`) and the mirrored `TelemetryUltraQuickRetryMs`/
 `TelemetryUltraQuickRetryCount` (`Telemetry.ahk`, shared by the
 installation-ID and usage-counter retries, same as the existing "Quick"
-globals): **3 attempts at 10-second intervals**, before falling through to
-the existing cadence (quick: 60s × a few more attempts; then hourly,
+globals): originally 3 attempts at 10-second intervals (raised to 6, see
+follow-up below), before falling through to the existing cadence (quick:
+60s × a few more attempts; then hourly,
 unbounded) unchanged. All three retry-scheduling call sites
 (`StorageRetry_ScheduleIfNeeded()`, `Telemetry_TryLoadCounters()`,
 `Telemetry_ScheduleInstallationIdRetry()`) now select the delay from three
@@ -2599,6 +2600,48 @@ shape as before — no new timer mechanism, just an extra threshold. A
 genuinely slow recovery (still not ready after the ultra-quick and quick
 tiers) is unaffected: it still falls back to the same bounded 60s cadence
 and then hourly as before this change.
+
+**Follow-up (2026-09-04, project-owner request): raised the ultra-quick
+tier from 3 to 6 attempts.** After walking through the actual timeline on a
+real degraded-mode run (retries at 10s/20s/30s, nothing at 60s, recovery at
+90s — the ultra-quick tier's 3×10s exhausts at t=30s, then the *next*
+scheduled tick is 60s after that, at t=90s, not at a fixed t=60s), the
+project owner asked for more ultra-quick attempts before falling through to
+the 60s tier. `StorageRetryUltraQuickCount` (`DocBot.ahk`) and
+`TelemetryUltraQuickRetryCount` (`Telemetry.ahk`) both changed from 3 to 6
+— still 10s apart, so the ultra-quick tier now covers t=10s through t=60s
+(60 seconds of coverage instead of 30) before the existing quick/slow
+cadence takes over unchanged.
+
+**Follow-up (2026-09-04, project-owner request): a `ShowNotification()`
+toast per failed loader per degraded episode, not per failed attempt.**
+With the ultra-quick tier now retrying 6 times before even reaching the
+first quick-tier attempt, a loader stuck in degraded mode could produce
+several near-identical toasts in the first minute alone. The first toast
+is useful (something is wrong, right now); every repeat while the same
+loader keeps failing is not — the user already knows, and `DebugLog()`
+already records every attempt in the standard log regardless.
+
+Added a `"Notified"` flag to each `StorageRetryLoaders` entry (default
+`false`) and a new `StorageRetryCurrentLoaderName` global, set only for
+the duration of `StorageRetry_AttemptLoader()`'s `loader["Fn"].Call()`.
+`ReportStorageError()` checks this: if the error came from a loader's
+background-retry attempt (name is set) and that loader has already shown
+its one toast this session, the `ShowNotification()` call is skipped —
+`DebugLog()` still runs unconditionally, first line in the function, so
+every attempt remains in the standard log either way. No loader-name
+parameter was added to `ReportStorageError()`'s signature or threaded
+through its ~20 call sites: `StorageRetryCurrentLoaderName` is only
+non-empty while genuinely inside a `StorageRetry_AttemptLoader()` call,
+so a storage error from outside the startup retry loop (an explicit
+"Bestand laden" menu action, a failed autosave during normal use) is
+unaffected and keeps notifying every time, exactly as before — only the
+six loaders' own automatic background retries are throttled.
+
+No reset path is needed: once a loader succeeds it is marked `Ready` and
+`StorageRetry_AttemptLoader()` never calls its `Fn` again this session, so
+"has this loader already notified" only matters for as long as it keeps
+failing, and a fresh app start always begins with `Notified := false`.
 
 ---
 

@@ -16,7 +16,7 @@ global TelemetryInstallationIdPersistenceAttempts := 0
 ; (DocBot.ahk) — gedeeld tussen het installatie-ID en de gebruikstellers,
 ; net als de bestaande Quick-globals hieronder al zijn.
 global TelemetryUltraQuickRetryMs := 10000
-global TelemetryUltraQuickRetryCount := 3
+global TelemetryUltraQuickRetryCount := 6
 global TelemetryInstallationIdQuickRetryMs := 60000
 global TelemetryInstallationIdQuickRetryCount := 5
 global TelemetryInstallationIdSlowRetryMs := 3600000
