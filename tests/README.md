@@ -19,7 +19,14 @@ logica zonder bestands-I/O, GUI of netwerk:
   voegt niets dubbel toe, en een bestaande afkorting/naam/nummer wordt niet
   overschreven;
 - normalisatiegedrag van `NormalizeHotstringItem()`, inclusief het
-  uitschakelen van oude `ActionType=execute`-items.
+  uitschakelen van oude `ActionType=execute`-items;
+- telefoonnummernormalisatie: `NormalizePhoneNumber()` (de combinatiefunctie
+  achter de klemborddetectie), `NormalizePhoneNumberInternal()`/
+  `NormalizePhoneNumberExternal()` en `NormalizeSmsPhoneNumber()`, inclusief
+  +31/0031-varianten en te korte/ongeldige invoer;
+- de standaardlog-opschoonclassificatie `ClassifyDebugLogChunk()` (huidig
+  formaat binnen/buiten de bewaartermijn, het bekende pre-v2-legacyformaat en
+  onherkende inhoud), zie `docs/DECISIONS.md` D-062.
 
 Zie `docs/MIGRATIONS.md` voor het volledige migratieoverzicht per
 opslagformaat en de betekenis van "idempotent" in deze context.
@@ -67,6 +74,38 @@ Na `WaitForExit` leest de stap `%TEMP%\docbot-selftest-results.txt` voor de
 leesbare CI-log en gebruikt de procesexitcode voor slagen/falen; ontbreekt
 het logbestand, dan toont de stap alleen een waarschuwing in plaats van te
 falen — het echte resultaat blijft de exitcode.
+
+## Bij het compileren (`Build-EPD_Machine.bat`)
+
+`Build-EPD_Machine.bat` draait, direct na een geslaagde compilatie en vóór
+enige `:deploy`-aanroep, `--selftest` tegen de zojuist gecompileerde
+`DocBot.exe` zelf — niet tegen een reeds uitgerolde doelkopie en niet tegen
+het interpreteerde bronscript. Dit is dezelfde controle als bij de eerdere
+handmatige verificatie tijdens de 2.3-release (D-053), nu geautomatiseerd.
+
+Omdat `cmd.exe` een GUI-subsysteem-executable niet vanzelf synchroon afwacht
+zoals bij een console-executable, en omdat een blokkerend dialoogvenster de
+batch anders voor onbepaalde tijd zou laten hangen, gebruikt de batch
+hiervoor `tools/Invoke-WithTimeout.ps1` — een klein PowerShell-hulpscript dat
+hetzelfde `Start-Process`/`WaitForExit`/`Stop-Process -Force`-patroon
+toepast als de CI-stap hierboven (zestig seconden timeout, daarna geforceerd
+afbreken) en de exitcode van het kindproces doorgeeft. De batch toont
+`%TEMP%\docbot-selftest-results.txt` in de console ongeacht het resultaat en
+breekt af zonder iets uit te rollen zodra de exitcode niet `0` is (inclusief
+een time-out) of het logbestand ontbreekt met een waarschuwing in plaats van
+een harde fout, op dezelfde manier als de CI-stap.
+
+De batch voert dit hulpscript uit door de inhoud via stdin naar
+`powershell -Command -` te pipen (`type tools\Invoke-WithTimeout.ps1 | powershell ...`),
+niet met `-File`: op een beheerde werkplek met een via Group Policy
+afgedwongen AllSigned-uitvoeringsbeleid weigert Windows een los, ongetekend
+`.ps1`-bestand en negeert daarbij ook `-ExecutionPolicy Bypass` (bevestigd op
+een echte beheerde werkplek — zie `docs/DECISIONS.md` D-060). Parameters
+komen daarom via omgevingsvariabelen (`INVOKE_WITH_TIMEOUT_*`) binnen in
+plaats van via een `param()`-blok.
+
+De CI-workflow zelf gebruikt dit hulpscript vooralsnog niet en blijft zijn
+eigen, functioneel identieke `pwsh`-fragment gebruiken.
 
 ## Een nieuwe test toevoegen
 

@@ -17,11 +17,11 @@ ook toegepast. De software heeft geen beoogd medisch doel: zij verricht geen
 medische analyse van patiëntgegevens, trekt geen klinische conclusies en geeft
 geen diagnose-, behandel-, doserings- of monitoringsadvies.
 
-Deze README beschrijft de stabiele release 2.3 op `main`.
+Deze README beschrijft de stabiele release 2.4 op `main`.
 
 Bestanden
 ---------
-- `DocBot.ahk` — stabiele release 2.3 met de huidige GUI,
+- `DocBot.ahk` — stabiele release 2.4 met de huidige GUI,
   telefoniefunctionaliteit, hotstrings, snelkiesnummers en pakketbeheer.
 - `packages/` — versieerbare ingebouwde hotstringpakketten plus manifest.
 - `ThirdParty/ColorButton/` — custom-draw ondersteuning voor de moderne
@@ -65,10 +65,19 @@ te configureren.
 
 `Build-EPD_Machine.bat` stelt eerst al zijn interactieve vragen — inclusief
 die over de `packages`-submap hieronder — en doorloopt daarna zonder verdere
-onderbrekingen het compileren en uitrollen. Enter zonder tekst registreert
-telkens Ja; alleen een expliciete "N" telt als Nee. De batch compileert in de
-bronmap eerst `DocBot.exe` en plaatst vervolgens een kopie in de bovenliggende
-applicatiemap, met de naam van die map. Wanneer het script een centrale
+onderbrekingen het compileren en uitrollen. Bij elke vraag registreren `J`
+of `j` direct Ja en `N` of `n` direct Nee, zonder dat Enter nodig is; Enter
+zonder voorafgaande letter geldt als Ja. De batch compileert in de
+bronmap eerst `DocBot.exe`. Direct daarna draait de batch automatisch
+`DocBot.exe --selftest` tegen die zojuist gecompileerde executable en toont
+de inhoud van `%TEMP%\docbot-selftest-results.txt` in de console — dit is de
+betrouwbare uitvoer, niet de (typisch lege) stdout van een GUI-subsysteem-
+executable (`docs/DECISIONS.md` D-053). Reageert de zelftest niet binnen
+zestig seconden (bijvoorbeeld door een blokkerend dialoogvenster) of faalt
+er een test, dan breekt de batch af zonder iets uit te rollen; zie
+`tools/Invoke-WithTimeout.ps1` en `tests/README.md`. Slaagt de zelftest, dan
+plaatst de batch vervolgens een kopie in de bovenliggende applicatiemap, met
+de naam van die map. Wanneer het script een centrale
 `-dev`-versie bevat en de batch vanuit een directe submap van `DocBot`
 draait, kan optioneel ook `EPD_Machine.exe` in de naastgelegen
 applicatiemap worden bijgewerkt. Voor
@@ -186,9 +195,9 @@ zichtbaar bij hun eerstvolgende DocBot-herstart, zonder dat `DocBot.ahk`
 hoeft te worden aangepast of opnieuw gecompileerd. Is de bron niet
 bereikbaar, dan laadt DocBot die sessie bewust gewoon geen pakketten in
 plaats van de hele opstart te blokkeren; persoonlijke hotstrings blijven
-altijd werken. Deze laag valideert manifest, schema, pakket-ID's,
-itemaantallen en dubbele triggers, en logt per pakketbestand of het laden
-is gelukt (`docs/DECISIONS.md` D-046, D-048, D-049, D-052).
+altijd werken. Deze laag valideert manifest, schema, pakket-ID's en
+dubbele triggers, en logt per pakketbestand of het laden is gelukt
+(`docs/DECISIONS.md` D-046, D-048, D-049, D-052).
 
 Het standaardlog schermt lokale en netwerkpaden altijd af (zie
 "Probleem melden en diagnostiek" hieronder) — een gelogde pakketbron toont
@@ -376,6 +385,14 @@ zijn gelukt. Bij een tijdelijk niet-beschikbare OneDrive-map probeert DocBot
 dit in totaal vijf keer tijdens de eerste minuten en daarna ieder uur opnieuw;
 de overige functies van DocBot blijven intussen beschikbaar.
 
+De drie cumulatieve gebruikstellers hieronder volgen dezelfde
+lees-en-bevestig-voordat-er-geschreven-wordt-aanpak: bij een tijdelijk
+niet-beschikbare opslag telt DocBot een actie tijdens die sessie gewoon
+mee, maar schrijft dat aantal pas naar `settings.ini` zodra de echte,
+eerder opgeslagen stand bevestigd is uitgelezen. Zo kan een sessie die met
+een nog niet bevestigde tellerstand start nooit de eerder opgebouwde
+telling overschrijven.
+
 Iedere heartbeat bevat:
 
 - een willekeurig, lokaal bewaard installatie-ID;
@@ -384,7 +401,12 @@ Iedere heartbeat bevat:
 - de applicatieversie, starttijd en laatst-gezien-tijd;
 - of een telefoon gekoppeld en tekstvervanging ingeschakeld is;
 - het cumulatieve aantal gestarte belacties;
-- het cumulatieve aantal uitgevoerde lange of meerregelige hotstrings.
+- het cumulatieve aantal uitgevoerde lange of meerregelige hotstrings;
+- het cumulatieve aantal geslaagde sms-acties (`smsActions`): DocBot telt een
+  sms-actie alleen als geslaagd zodra de sms-pagina of -tab daadwerkelijk is
+  gevonden en het telefoonnummerveld is gevuld, nooit alleen omdat de
+  sms-optie is aangeboden of gekozen. DocBot verstuurt de sms zelf niet en
+  meet dus ook niet of de gebruiker de sms daadwerkelijk verzendt.
 
 Korte hotstrings worden rechtstreeks door AutoHotkey uitgevoerd en tellen
 niet mee in `hotstringActions`. De tellers worden lokaal in
@@ -475,7 +497,75 @@ risicoanalyse.
 Changelog
 ---------
 
-### 2.3 — Huidige stabiele release
+### 2.4 — Huidige stabiele release
+- De sidebar toont niet langer de titel "DocBot" en de ondertitel
+  "Telefonie voor de werkplek" als platte tekst, maar het DocBot-robotlogo
+  naast een afgeronde chip met de titel "DocBot" en de slogan "een handje
+  extra :)" in het bestaande accentoranje. Dit past binnen dezelfde ruimte
+  zonder dat de menuknoppen eronder verschuiven.
+- Overzicht toont soms bij het opstarten een gele tip die wijst op een nog
+  ongebruikte functie, zoals telefonie koppelen of hotstrings aanmaken, of
+  over het sluiten van DocBot naar het systeemvak. Hooguit één tip per
+  opstartsessie, steeds minder vaak naarmate hij al is getoond, tot de
+  gebruiker de functie gebruikt of de tip zelf sluit.
+- De privacyhint op Tekstvervanging ("Zet geen patiëntgegevens in
+  hotstrings...") heeft dezelfde gele stijl gekregen als de nieuwe
+  onboardingtips, maar blijft — anders dan die tips — altijd zichtbaar en
+  heeft geen sluitkruisje: het is een blijvende regel, geen aan/uit-tip.
+- DocBot herkent nu actief wanneer Documents/OneDrive bij het opstarten
+  (bijvoorbeeld via autostart) nog niet beschikbaar is, in plaats van de
+  sessie stil op standaardwaarden te laten draaien. Instellingen,
+  hotstrings, pakketten, snelkiesnummers en sms-teksten worden op de
+  achtergrond automatisch herprobeerd tot het lukt. Zolang dat niet is
+  gelukt toont DocBot een blijvende melding en is die functionaliteit
+  echt niet beschikbaar in plaats van onopgemerkt onjuist; telefonie-
+  koppeling blijft altijd werken (`docs/DECISIONS.md` D-063/D-064).
+- Overzicht toont nu een derde gebruiksteller, "SMS-acties", naast
+  "Belacties" en "Lange hotstrings". Geteld wordt alleen een geslaagde
+  sms-actie (telefoonnummer daadwerkelijk ingevuld), niet elke aangeboden
+  sms-optie. De teller wordt ook meegestuurd in de telemetrie-heartbeat,
+  net als de bestaande twee tellers — zie Telemetrie hierboven.
+- Een gebundeld pakket hoeft geen `itemCount`-veld meer te bevatten dat
+  precies overeenkomt met het aantal items. Dit moest tot nu toe handmatig
+  in sync worden gehouden en kon een verder geldig pakket laten weigeren
+  zodra dat vergeten werd — het daadwerkelijke aantal items was al de
+  enige echte bron van waarheid.
+- `packages/anest.json` bevatte enkele meerregelige `replacement`-teksten met
+  letterlijke regeleinden binnen een JSON-tekenreeks — geldig genoeg voor de
+  lenient parser die DocBot gebruikt, maar geen geldige JSON volgens de spec
+  en onleesbaar voor strikte JSON-tools. Die regeleinden zijn vervangen door
+  `\n`-escapes; de daadwerkelijke vervangingstekst (en daarmee het
+  DocBot-gedrag) is ongewijzigd.
+- De opschoning van het standaardlog herkent nu uitputtend welk formaat
+  een regel heeft: het huidige formaat, een bekend ouder formaat, of geen
+  van beide. Een regel met een onbekend formaat vervalt voortaan
+  onvoorwaardelijk in plaats van voor altijd bewaard te blijven, zodat
+  niet-geschoonde inhoud niet ongemerkt kan blijven staan
+  (`docs/DECISIONS.md` D-062).
+- `DocBot.exe --selftest` schrijft de testresultaten niet langer met een
+  UTF-8 BOM. Dit veroorzaakte geen echte testfout, maar liet de eerste
+  regel er in een console zonder UTF-8-codepage onleesbaar uitzien
+  wanneer die werd getoond, zoals `Build-EPD_Machine.bat` nu automatisch
+  doet na het compileren.
+- `DocBot.exe --selftest` dekt nu ook de telefoonnummernormalisatie
+  (`NormalizePhoneNumber` en de interne/externe varianten,
+  `NormalizeSmsPhoneNumber`): 4-cijferige interne nummers, externe
+  NL-nummers in +31-/0031-/kale-0-vorm met spaties/streepjes genegeerd, de
+  06-only-eis voor de SMS-variant, en te korte/ongeldige invoer.
+- DocBot leest het klembord bij een herkende wijziging voortaan met een
+  korte vertraging en enkele herpogingen in plaats van meteen. Een andere
+  applicatie die tijdens het kopiëren zelf meerdere keren het klembord
+  opent — waargenomen bij HiX — kon daardoor soms zelf een klembordfout
+  krijgen. Dezelfde aanpassing voorkomt ook dat het belvenster soms dubbel
+  opende, met de melding dat het vorige venster alsnog werd gesloten,
+  terwijl er maar één keer was gekopieerd (`docs/DECISIONS.md` D-066).
+- DocBot toont tijdens het herstellen van tijdelijk niet-beschikbare opslag
+  (zie hierboven) voortaan hooguit één melding per onderdeel, in plaats van
+  bij elke achtergrond-herpoging opnieuw. De eerdere serie bijna-identieke
+  meldingen in de eerste minuut was niet nuttig; elke poging blijft gewoon
+  zichtbaar in het diagnostieklog (`docs/DECISIONS.md` D-064).
+
+### 2.3 — Vorige stabiele release
 - DocBot probeert de gebruikersdatamap bij het opstarten niet langer lokaal
   te pinnen tegen OneDrive Files On-Demand (`MarkUserStorageAlwaysAvailable()`
   is verwijderd, samen met de aanroep ervan). Op een werkplek met

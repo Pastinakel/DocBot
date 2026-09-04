@@ -12,6 +12,11 @@ global TelemetryConfig := Map(
 global TelemetryInstallationId := ""
 global TelemetryPendingInstallationId := ""
 global TelemetryInstallationIdPersistenceAttempts := 0
+; Zelfde derde, ultra-korte cyclus als StorageRetryUltraQuickMs/Count
+; (DocBot.ahk) — gedeeld tussen het installatie-ID en de gebruikstellers,
+; net als de bestaande Quick-globals hieronder al zijn.
+global TelemetryUltraQuickRetryMs := 10000
+global TelemetryUltraQuickRetryCount := 6
 global TelemetryInstallationIdQuickRetryMs := 60000
 global TelemetryInstallationIdQuickRetryCount := 5
 global TelemetryInstallationIdSlowRetryMs := 3600000
@@ -20,6 +25,14 @@ global TelemetryStartedAt := ""
 global TelemetryRequest := 0
 global TelemetryPhoneActions := 0
 global TelemetryLongHotstringActions := 0
+global TelemetrySmsActions := 0
+; Wordt pas true nadat de drie gebruikstellers hierboven succesvol uit
+; settings.ini zijn gelezen. Vóór die bevestiging schrijft
+; Telemetry_RecordPhoneAction() e.a. bewust niets weg: een sessie die door
+; een leesfout met een niet-bevestigde 0 begint, mag de echte cumulatieve
+; telling nooit overschrijven (zie Telemetry_TryLoadCounters()).
+global TelemetryCountersConfirmed := false
+global TelemetryCounterRetryAttempts := 0
 global TelemetryConfigFile := ""
 global TelemetryAppVersion := ""
 global TelemetryStatusProvider := 0
@@ -71,7 +84,8 @@ Telemetry_BuildConfig() {
 Telemetry_Initialize(configFile, appVersion, statusProvider) {
     global TelemetryConfig, TelemetryInstallationId, TelemetryStartedAt
     global TelemetryConfigFile, TelemetryAppVersion, TelemetryStatusProvider
-    global TelemetryPhoneActions, TelemetryLongHotstringActions
+    global TelemetryPhoneActions, TelemetryLongHotstringActions, TelemetrySmsActions
+    global TelemetryCountersConfirmed, TelemetryCounterRetryAttempts
     global TelemetryPendingInstallationId
     global TelemetryInstallationIdPersistenceAttempts, TelemetryIsRunning
 
@@ -80,12 +94,19 @@ Telemetry_Initialize(configFile, appVersion, statusProvider) {
     TelemetryStatusProvider := statusProvider
     TelemetryConfig := Telemetry_BuildConfig()
 
-    TelemetryPhoneActions := Telemetry_ReadCounter("PhoneActions")
-    TelemetryLongHotstringActions := Telemetry_ReadCounter("LongHotstringActions")
+    TelemetryPhoneActions := 0
+    TelemetryLongHotstringActions := 0
+    TelemetrySmsActions := 0
+    TelemetryCountersConfirmed := false
+    TelemetryCounterRetryAttempts := 0
     TelemetryInstallationId := ""
     TelemetryPendingInstallationId := ""
     TelemetryInstallationIdPersistenceAttempts := 0
     TelemetryIsRunning := false
+
+    ; Onafhankelijk van of telemetrie zelf aan staat: de tellers voeden ook
+    ; de lokale "Gebruik"-kaart op de Overzicht-pagina.
+    Telemetry_TryLoadCounters()
 
     if !TelemetryConfig["Enabled"]
         return
@@ -94,6 +115,66 @@ Telemetry_Initialize(configFile, appVersion, statusProvider) {
     ; beschikbaar maakt.
     TelemetryStartedAt := Telemetry_UtcTimestamp()
     Telemetry_TryEnsureInstallationId()
+}
+
+Telemetry_TryLoadCounters(*) {
+    global TelemetryConfigFile, TelemetryCountersConfirmed
+    global TelemetryPhoneActions, TelemetryLongHotstringActions, TelemetrySmsActions
+    global TelemetryCounterRetryAttempts
+    global TelemetryUltraQuickRetryMs, TelemetryUltraQuickRetryCount
+    global TelemetryInstallationIdQuickRetryMs, TelemetryInstallationIdQuickRetryCount
+    global TelemetryInstallationIdSlowRetryMs
+
+    if TelemetryCountersConfirmed
+        return
+
+    okPhone := Telemetry_ReadCounter("PhoneActions", &phoneValue)
+    okHotstring := Telemetry_ReadCounter("LongHotstringActions", &hotstringValue)
+    okSms := Telemetry_ReadCounter("SmsActions", &smsValue)
+
+    if !okPhone || !okHotstring || !okSms {
+        Telemetry_LogError(
+            "Gebruikstellers konden niet worden gelezen uit " TelemetryConfigFile
+        )
+        ; Hergebruikt bewust dezelfde drietraps-cadans als de
+        ; installatie-ID-retry hierboven: beide races op dezelfde
+        ; Documents/OneDrive-map, geen reden voor een tweede eigen klok.
+        TelemetryCounterRetryAttempts += 1
+        delay := TelemetryCounterRetryAttempts <= TelemetryUltraQuickRetryCount
+            ? TelemetryUltraQuickRetryMs
+            : (TelemetryCounterRetryAttempts <= TelemetryUltraQuickRetryCount + TelemetryInstallationIdQuickRetryCount
+                ? TelemetryInstallationIdQuickRetryMs
+                : TelemetryInstallationIdSlowRetryMs)
+        SetTimer Telemetry_TryLoadCounters, -delay
+        return
+    }
+
+    ; Tel acties die tijdens het wachten al in het geheugen zijn bijgehouden
+    ; (Telemetry_RecordPhoneAction() e.a., die vóór bevestiging bewust niet
+    ; naar schijf schrijven) op bij de nu bevestigde, echte cumulatieve
+    ; waarde, bevestig de tellers, en schrijf het samengevoegde resultaat
+    ; direct één keer weg in plaats van te wachten op de volgende actie.
+    TelemetryPhoneActions += phoneValue
+    TelemetryLongHotstringActions += hotstringValue
+    TelemetrySmsActions += smsValue
+    TelemetryCountersConfirmed := true
+    SetTimer Telemetry_TryLoadCounters, 0
+
+    if TelemetryPhoneActions != phoneValue
+        Telemetry_WriteCounter("PhoneActions", TelemetryPhoneActions)
+    if TelemetryLongHotstringActions != hotstringValue
+        Telemetry_WriteCounter("LongHotstringActions", TelemetryLongHotstringActions)
+    if TelemetrySmsActions != smsValue
+        Telemetry_WriteCounter("SmsActions", TelemetrySmsActions)
+
+    ; Confirmation can land after StorageRetry_OnAllReady()'s one-time
+    ; Overzicht refresh already ran with the pre-confirmation (0) values —
+    ; this is on its own independent retry cadence, not gated by
+    ; StorageAllReady. Without this, the Gebruik card would stay stuck on 0
+    ; until the next recorded action or a restart. Guarded like every other
+    ; DocBot.ahk call from this file (see Telemetry_LogError()): harmless if
+    ; the GUI isn't built yet.
+    try RefreshUsageStatistics()
 }
 
 Telemetry_TryEnsureInstallationId(*) {
@@ -109,18 +190,28 @@ Telemetry_TryEnsureInstallationId(*) {
 
     ; Lees vóór iedere schrijfpoging opnieuw. Een andere DocBot-instantie kan
     ; het ID inmiddels al hebben opgeslagen; die bestaande waarde is leidend.
+    ; IniReadOrThrow() (DocBot.ahk), niet kale IniRead(): een bestand dat op
+    ; dit moment even niet leesbaar is (bijv. vlak vóór degraded mode echt
+    ; opheft) gaf anders stilzwijgend "" terug, ononderscheidbaar van "nog
+    ; geen ID opgeslagen". Een échte leesfout hier mag daarna ook niet
+    ; alsnog als "nog geen ID" worden behandeld — dat zou hieronder alsnog
+    ; een gloednieuw ID aanmaken en, als de daaropvolgende schrijfactie wél
+    ; lukte, een bestaand, echt installatie-ID stilzwijgend overschrijven.
+    ; Een echte fout herprobeert dus, net als een mislukte schrijfactie
+    ; verderop, in plaats van door te vallen naar "ID aanmaken".
     try {
         storedInstallationId := Trim(
-            IniRead(TelemetryConfigFile, "Telemetry", "InstallationId", "")
+            IniReadOrThrow(TelemetryConfigFile, "Telemetry", "InstallationId", "")
         )
     } catch as readError {
-        storedInstallationId := ""
         Telemetry_LogError(
             "Installatie-ID kon niet worden gelezen uit "
             . TelemetryConfigFile
             . ": "
             . readError.Message
         )
+        Telemetry_ScheduleInstallationIdRetry()
+        return
     }
 
     if storedInstallationId != "" {
@@ -152,7 +243,7 @@ Telemetry_TryEnsureInstallationId(*) {
         ; Controleer dat precies hetzelfde ID ook teruggelezen kan worden
         ; voordat telemetrie het als permanente identiteit gebruikt.
         persistedInstallationId := Trim(
-            IniRead(TelemetryConfigFile, "Telemetry", "InstallationId", "")
+            IniReadOrThrow(TelemetryConfigFile, "Telemetry", "InstallationId", "")
         )
         if persistedInstallationId != TelemetryPendingInstallationId
             throw Error("Het opgeslagen installatie-ID kon niet worden bevestigd.")
@@ -175,14 +266,17 @@ Telemetry_TryEnsureInstallationId(*) {
 
 Telemetry_ScheduleInstallationIdRetry() {
     global TelemetryInstallationIdPersistenceAttempts
+    global TelemetryUltraQuickRetryMs, TelemetryUltraQuickRetryCount
     global TelemetryInstallationIdQuickRetryMs
     global TelemetryInstallationIdQuickRetryCount
     global TelemetryInstallationIdSlowRetryMs
 
     TelemetryInstallationIdPersistenceAttempts += 1
-    delay := TelemetryInstallationIdPersistenceAttempts < TelemetryInstallationIdQuickRetryCount
-        ? TelemetryInstallationIdQuickRetryMs
-        : TelemetryInstallationIdSlowRetryMs
+    delay := TelemetryInstallationIdPersistenceAttempts <= TelemetryUltraQuickRetryCount
+        ? TelemetryUltraQuickRetryMs
+        : (TelemetryInstallationIdPersistenceAttempts <= TelemetryUltraQuickRetryCount + TelemetryInstallationIdQuickRetryCount
+            ? TelemetryInstallationIdQuickRetryMs
+            : TelemetryInstallationIdSlowRetryMs)
 
     SetTimer Telemetry_TryEnsureInstallationId, -delay
 }
@@ -208,6 +302,7 @@ Telemetry_Shutdown() {
     global TelemetryRequest, TelemetryIsRunning
 
     SetTimer Telemetry_TryEnsureInstallationId, 0
+    SetTimer Telemetry_TryLoadCounters, 0
     SetTimer Telemetry_SendStartupHeartbeat, 0
     SetTimer Telemetry_SendHeartbeat, 0
     TelemetryIsRunning := false
@@ -217,16 +312,21 @@ Telemetry_Shutdown() {
 }
 
 Telemetry_RecordPhoneAction() {
-    global TelemetryPhoneActions
+    global TelemetryPhoneActions, TelemetryCountersConfirmed
     TelemetryPhoneActions += 1
-    Telemetry_WriteCounter("PhoneActions", TelemetryPhoneActions)
+    ; Vóór bevestiging (zie Telemetry_TryLoadCounters()) nog niet wegschrijven:
+    ; de echte cumulatieve waarde is dan nog niet bekend, en schrijven zou
+    ; die overschrijven met een sessie die bij een niet-bevestigde 0 begon.
+    if TelemetryCountersConfirmed
+        Telemetry_WriteCounter("PhoneActions", TelemetryPhoneActions)
     return TelemetryPhoneActions
 }
 
 Telemetry_RecordLongHotstring() {
-    global TelemetryLongHotstringActions
+    global TelemetryLongHotstringActions, TelemetryCountersConfirmed
     TelemetryLongHotstringActions += 1
-    Telemetry_WriteCounter("LongHotstringActions", TelemetryLongHotstringActions)
+    if TelemetryCountersConfirmed
+        Telemetry_WriteCounter("LongHotstringActions", TelemetryLongHotstringActions)
     return TelemetryLongHotstringActions
 }
 
@@ -240,12 +340,35 @@ Telemetry_GetLongHotstringActions() {
     return TelemetryLongHotstringActions
 }
 
-Telemetry_ReadCounter(name) {
+Telemetry_RecordSmsAction() {
+    global TelemetrySmsActions, TelemetryCountersConfirmed
+    TelemetrySmsActions += 1
+    if TelemetryCountersConfirmed
+        Telemetry_WriteCounter("SmsActions", TelemetrySmsActions)
+    return TelemetrySmsActions
+}
+
+Telemetry_GetSmsActions() {
+    global TelemetrySmsActions
+    return TelemetrySmsActions
+}
+
+Telemetry_ReadCounter(name, &value) {
     global TelemetryConfigFile
 
-    try return Max(0, Integer(IniRead(TelemetryConfigFile, "Usage", name, 0)))
-    catch
-        return 0
+    ; IniReadOrThrow() (DocBot.ahk): a missing file confirms 0 (genuine
+    ; first run), but a file that exists and can't actually be read right
+    ; now (e.g. still locked right as degraded mode is clearing) throws
+    ; instead of silently returning 0 — unlike bare IniRead(), which would
+    ; report that transient failure as a confirmed, genuinely-zero counter
+    ; and permanently stop Telemetry_TryLoadCounters()'s retry.
+    try {
+        value := Max(0, Integer(IniReadOrThrow(TelemetryConfigFile, "Usage", name, 0)))
+        return true
+    } catch {
+        value := 0
+        return false
+    }
 }
 
 Telemetry_WriteCounter(name, value) {
@@ -294,6 +417,7 @@ Telemetry_SendStartupHeartbeat(*) {
 Telemetry_SendHeartbeat(*) {
     global TelemetryConfig, TelemetryInstallationId, TelemetryStartedAt
     global TelemetryRequest, TelemetryPhoneActions, TelemetryLongHotstringActions
+    global TelemetrySmsActions
     global TelemetryStatusProvider, TelemetryAppVersion
 
     if !TelemetryConfig["Enabled"] || TelemetryInstallationId = ""
@@ -322,7 +446,8 @@ Telemetry_SendHeartbeat(*) {
         . Telemetry_JsonRawProperty(
             "hotstringActions",
             TelemetryLongHotstringActions
-        )
+        ) ","
+        . Telemetry_JsonRawProperty("smsActions", TelemetrySmsActions)
         . "}"
 
     payload := "{"

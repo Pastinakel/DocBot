@@ -2,18 +2,24 @@
 
 _Status: voorlopige repositoryanalyse, geen juridisch advies of formeel conformiteitsoordeel._
 
-_Beoordelingsdatum: 2026-08-25._
+_Beoordelingsdatum: 2026-09-04._
 
-_Onderzochte basis: `main`, tag `v2.3` (commit `dbe4c52`), `AppVersion = 2.3`
-(stabiele release). Deze update volgt op de vorige beoordeling (commit
-`a156dfe`, `2.2`) en verwerkt de sindsdien voor 2.3 doorgevoerde
-functionele wijzigingen: de optionele SMS-standaardtekst-autofill (D-055,
-zie §5.4 en §7) en de in-product gebruikersinstructie voor veilige
-hotstring-inhoud (D-045, zie §5.3, §11 en §12). De HTTPS-afdwinging voor
-telefonie/SMS (D-043) en de overige 2.3-wijzigingen (profielselectie op
-buildvorm, pakket-share-dir, diagnostiek-/rapportretentie,
-zelftests) zijn technisch/organisatorisch van aard en regulatoir niet
-opnieuw beoordelingsplichtig bovenop wat al in §6, §11 en §12 stond._
+_Onderzochte basis: `release/2.4-rc` (`AppVersion 2.4-rc.8`), uitgebracht als
+DocBot `2.4` (stabiele release). Deze update volgt op de vorige beoordeling
+(commit `dbe4c52`, `2.3`) en verwerkt de sindsdien doorgevoerde
+functionele wijzigingen: de opslag-opnieuw-proberen/degraded-modus bij het
+opstarten (D-063/D-064, zie §5.5 en §9) — zichtbaar maken van tijdelijk
+niet-beschikbare functionaliteit in plaats van stilzwijgend op
+standaardwaarden draaien, geen nieuwe patiëntgegevensverwerking; een derde
+telemetrieteller voor sms-acties (reeds verwerkt in §5.5); de
+standaardlog-formaatherkenning (D-062, reeds afgehandeld in §11/§12); en
+een tijdens de veldtest gevonden klembordleesfout die soms een dubbel
+belvenster opende en bij HiX een klembordfout kon veroorzaken (D-066, zie
+§5.1) — een technische betrouwbaarheidsfix zonder nieuwe gegevensverwerking.
+De startup-onboardingtips en de sidebar-logo/chip-redesign (D-065) zijn
+zuiver cosmetisch/UI en niet regulatoir beoordelingsplichtig. Het
+telefonieserver-authenticatievraagstuk (§11 item 6) is inmiddels
+beantwoord en gesloten (D-059) — zie de bijgewerkte tekst daar._
 
 ## 1. Doel en status
 
@@ -129,17 +135,33 @@ De software:
   `DocBot.ahk:230-275`);
 - registreert dynamische hotstrings en voert tekst uit in de actieve
   applicatie (`DocBot.ahk:5234-5424`);
-- controleert het Windows-klembord iedere 100 ms op telefoonnummers
-  (`DocBot.ahk:3608-3629`);
+- controleert het Windows-klembord op telefoonnummers via de
+  `ClipBoardPoller`-timer (`DocBot.ahk:408`), sinds 2.4 met een korte
+  leesvertraging/herpogingen en een staleness-check (`docs/DECISIONS.md`
+  D-066);
 - communiceert via POST met registratie-, event- en bel-endpoints van de
-  interne telefonieserver (`DocBot.ahk:1979-2177`);
+  interne telefonieserver (zie o.a. `IPT_register()` `DocBot.ahk:2903` en
+  `IPT_callNumber()` `DocBot.ahk:2854`);
 - automatiseert Edge om een telefoonnummer in een SMS-pagina te plaatsen
   (`DocBot.ahk:4000-4281`);
 - kan na een gericht signaalbestand afsluiten, herladen of een updatepad
-  starten (`DocBot.ahk:2206-2397`).
+  starten (`DocBot.ahk:2206-2397`);
+- laadt sinds 2.4 vijf opslagbronnen (instellingen, hotstrings,
+  pakketkeuzes, snelkiesnummers, sms-standaardteksten) via een gedeelde
+  achtergrond-hersteltimer in plaats van één synchrone poging: zolang een
+  bron nog niet is geladen, is de bijbehorende functionaliteit zichtbaar en
+  daadwerkelijk niet beschikbaar (blijvende melding, verborgen inhoud) in
+  plaats van stilzwijgend op standaardwaarden te draaien; telefonie-
+  koppeling blijft altijd beschikbaar (`docs/DECISIONS.md` D-063/D-064).
 
 Dit is ondubbelzinnig software: een samenstel van instructies dat invoer
 verwerkt en uitvoer en acties produceert.
+
+_Regel-/functieverwijzingen in deze paragraaf en elders in §5 zijn
+steekproefsgewijs op deze basis geverifieerd, niet uitputtend; `DocBot.ahk`
+is groot en groeit iedere cyclus, dus een niet expliciet bijgewerkte
+regelciteert kan zijn opgeschoven. Verifieer een citaat tegen de actuele
+broncode vóór het als bewijs te gebruiken._
 
 ### 5.2 Hotstrings
 
@@ -252,7 +274,13 @@ op een gecompileerde testbuild bevestigd werkend.
 
 De optionele telemetrie bevat onder meer een installatie-ID,
 Windows-gebruikersnaam, applicatieversie, tijden, functionele status en
-gebruikstellers (`Telemetry.ahk:294-353`). De code en telemetriemelding in
+gebruikstellers, waaronder sinds 2.4 een derde teller `smsActions`
+(`Telemetry_SendHeartbeat()`, `Telemetry.ahk:417-451`). Sinds
+`docs/DECISIONS.md` D-063 bevestigen de drie cumulatieve tellers eerst een
+geslaagde lezing voordat een schrijving die waarde overschrijft
+(`Telemetry_TryLoadCounters()`), zodat een mislukte opstartlezing niet meer
+stilzwijgend als `0` kan worden weggeschreven over de echte cumulatieve
+waarde. De code en telemetriemelding in
 `README.md:272-322` beogen geen telefoonnummers, hotstringinhoud of
 klembordinhoud te verzenden. Het vastgelegde doel is inzicht in gebruik en
 omvang voor capaciteitsplanning van telefonie- en SMS-diensten. Het
@@ -543,9 +571,13 @@ conformiteit met een norm of de MDR.
    sinds `docs/DECISIONS.md` D-043 een niet-HTTPS `Telephony.BaseUrl` of
    `SmsCallAction.Url` al bij het opstarten. Dit is applicatieniveau-
    afdwinging; de feitelijke productiebeveiliging (TLS-versie, certificaat,
-   netwerksegmentatie, serverauthenticatie op de beheerde Windows-werkplek)
-   is niet uit de repository vast te stellen en blijft een openstaande
-   infrastructuurvraag (zie `docs/TODO.md`).
+   netwerksegmentatie op de beheerde Windows-werkplek) is niet uit de
+   repository vast te stellen en blijft in zoverre een organisatorische
+   vraag. De serverauthenticatievraag zelf is **opgelost**
+   (`docs/DECISIONS.md` D-059, bevestigd door de serverbeheerder op
+   2026-08-26): geen aanvullende credential vereist of verwacht, geen
+   reverse proxy met extra afdwinging — netwerksegmentatie is de bedoelde
+   authenticatiegrens, geen gat gevonden.
 7. Lokale INI/JSON/logbestanden hebben geen applicatie-eigen versleuteling of
    zichtbare ACL-inrichting; de feitelijke bescherming berust op Windows,
    OneDrive en organisatorisch werkplekbeheer en moet aantoonbaar worden
@@ -558,11 +590,20 @@ conformiteit met een norm of de MDR.
     productiehosting en -TLS, enkele concrete back-up-/verwijdertermijnen en
     het DPIA-besluit zijn nog niet organisatorisch vastgesteld of als bewijs
     aan de repository gekoppeld.
-11. `InitializeDiagnosticLogging()` beoordeelt bij opstart alleen de eerste
+11. ~~`InitializeDiagnosticLogging()` beoordeelt bij opstart alleen de eerste
     256 bytes van `debug.log` om te bepalen of het bestand een verouderd
     formaat heeft en moet worden gewist; een nog onbekend toekomstig
     logformaat zou zo alsnog langs de zeven-dagenopschoning van
-    `docs/DECISIONS.md` D-044 kunnen glippen (zie `docs/TODO.md` P2).
+    `docs/DECISIONS.md` D-044 kunnen glippen (zie `docs/TODO.md` P2).~~
+    **Opgelost** (`docs/DECISIONS.md` D-062): de per-regel classificatie in
+    `PruneExpiredDebugLogFile()` is uitputtend gemaakt — inhoud die bij geen
+    enkel bekend formaat (huidig of legacy) past, vervalt nu onvoorwaardelijk
+    in plaats van voor altijd te worden bewaard. De 256-byte-headercontrole
+    bij opstart zelf is ongewijzigd en blijft beperkt tot het beslissen of het
+    bestand meteen moet worden gewist. Functioneel gevalideerd op Windows
+    (D-037, 2026-08-26): een handmatig toegevoegde regel met een onherkend
+    formaat is bevestigd verwijderd uit een live `debug.log` bij de
+    eerstvolgende opschoonronde.
 12. De Windows-gebruikersnaam in telemetrie heeft een tijdelijk supportdoel
     tijdens de opstartfase, maar er is nog geen objectief eindcriterium of
     vastgelegde herbeoordelingsdatum voor verwijdering vastgesteld. Het
@@ -595,10 +636,12 @@ conformiteit met een norm of de MDR.
    vierogencontrole, versiebeheer en regressietests.
 7. Onderzoek doelapplicatie-/venstercontrole, extra bevestiging bij risicovolle
    acties en waar mogelijk een controle van de juiste patiëntcontext.
-8. Verhard de formatherkenning die bepaalt of `debug.log` bij opstart moet
+8. ~~Verhard de formatherkenning die bepaalt of `debug.log` bij opstart moet
    worden gewist (nu alleen de eerste 256 bytes) zodat een toekomstig,
    nog onbekend logformaat niet ongemerkt langs de zeven-dagenopschoning van
-   D-044 kan glippen (`docs/TODO.md` P2).
+   D-044 kan glippen (`docs/TODO.md` P2).~~ **Opgelost** (D-062): onherkende
+   regelinhoud vervalt nu onvoorwaardelijk via de bestaande
+   opschoonclassificatie in plaats van voor altijd te worden bewaard.
 9. ~~Stel de gebruikersinstructie voor veilige, niet-patiëntspecifieke
    hotstringinhoud op~~ — **opgelost in 2.3** (D-045). Nog open: wijs een
    eigenaar voor klinische pakketinhoud aan.

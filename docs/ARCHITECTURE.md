@@ -1,6 +1,6 @@
 # DocBot — Architecture
 
-_Last updated: 2026-08-25. Repository facts refer to stable DocBot 2.3 (`main`, tag `v2.3`) and the start of the 2.4 development line unless noted otherwise._
+_Last updated: 2026-09-04. Repository facts refer to `release/2.4-rc` (`AppVersion 2.4-rc.8`), shipping as stable DocBot 2.4, and the start of the 2.5 development line unless noted otherwise._
 
 ## 1. Architectural style
 
@@ -11,6 +11,12 @@ DocBot is a Windows desktop application written in AutoHotkey v2. The architectu
 - third-party libraries are included directly from `ThirdParty/`;
 - local environment/secrets are injected through ignored `DocBot.local.ahk`;
 - bundled content is stored as JSON under `packages/`;
+- app icon/logo assets live under `images/` (`DocBot.png`, `DocBot.ico`,
+  `DocBot-slim.png`), loaded at runtime for the sidebar branding and
+  embedded at compile time for the executable icon;
+- `tools/` holds PowerShell build/CI helpers (`Invoke-WithTimeout.ps1`,
+  `Read-YesNoAnswer.ps1`) used by `Build-EPD_Machine.bat` and the
+  AHK-syntax-check CI workflow, not by the running application itself;
 - persistent user state is stored as INI/JSON files outside the repository.
 
 The main script is large, but it is organized by subsystem and uses explicit global maps/controls as the primary shared-state mechanism. Refactoring it into many modules may be desirable eventually, but should not be attempted casually because startup order, global initialization, GUI control references, hotstring callbacks, AutoHotkey event binding, and compiled `FileInstall` behavior are tightly coupled.
@@ -88,24 +94,35 @@ The current startup flow in `DocBot.ahk` is approximately:
 
 1. validate local configuration;
 2. calculate `AppVersion` and choose user-data profile;
-3. initialize global UI/config/state objects;
-4. `InitializeUserStorage()`;
-5. initialize bundled package cache/data;
-6. load application settings;
-7. initialize personal hotstring storage/migrations;
-8. initialize package settings/migrations;
-9. initialize speed-dial storage/migrations;
-10. initialize SMS default-text storage (`sms-default-texts.json`);
-11. register/reload runtime hotstrings;
-12. initialize telemetry;
-13. process update-restart command-line state if present;
-14. build the main GUI and tray menu;
-15. register Windows messages and exit handler;
-16. show GUI and apply custom visual rendering;
-17. start clipboard polling;
-18. start registration-button countdown timer;
-19. request telephony registration and start chained event polling;
-20. start/check `signal.txt` update/shutdown coordination.
+3. initialize global UI/config/state objects, including the shared
+   `StorageRetryLoaders` array (D-063);
+4. one synchronous attempt at `InitializeUserStorage()` (a real write-probe
+   if the profile folder does not exist yet, not a hard exit on failure —
+   see §7.4);
+5. initialize bundled package cache/data (unaffected by user-data
+   availability — reads from the deployed package share, not Documents);
+6. one synchronous attempt each, together, at application settings,
+   personal hotstring storage, package settings, speed-dial storage, and
+   SMS default-text storage (`StorageRetry_RunInitialAttempt()`); any that
+   fail schedule a shared background retry (§7.4) rather than blocking;
+7. register/reload runtime hotstrings;
+8. initialize telemetry, including the same shared-cadence retry for the
+   installation ID (D-027/D-028) and the usage counters (D-063);
+9. process update-restart command-line state if present;
+10. build the main GUI and tray menu — `StorageAllReady` (§7.4) is already
+    known by this point, so degraded-mode visibility (D-064) is correct
+    from the first paint, not something applied afterward;
+11. evaluate and select the Overzicht onboarding-tip banner
+    (`EvaluateStartupTip()`, gated on `StorageAllReady`) — re-run once more
+    when `StorageRetry_OnAllReady()` fires later, so a tip eligible only
+    once storage finishes loading can still appear that session;
+12. register Windows messages and exit handler;
+13. show GUI and apply custom visual rendering;
+14. start clipboard polling (suppressed while degraded — §7.4/D-064);
+15. start registration-button countdown timer;
+16. request telephony registration and start chained event polling —
+    unaffected by user-data availability throughout;
+17. start/check `signal.txt` update/shutdown coordination.
 
 Changing this order can have user-data, UI, or network side effects. Treat initialization order as behavior, not formatting.
 
@@ -143,7 +160,9 @@ The application keeps many control references globally because event callbacks a
 - sidebar status indicators;
 - custom-notification GUI;
 - debug window controls;
-- call/SMS dialog keyboard state.
+- call/SMS dialog keyboard state;
+- onboarding-tip banner controls and per-session selection state
+  (`TipBannerActive`, `TipBannerSelected`, `CurrentTipKey`).
 
 This is one reason an aggressive module split would require care.
 
@@ -206,6 +225,54 @@ LocalAppData is used for machine-local/runtime artifacts, notably:
 - extracted/cached bundled packages.
 
 Development package extraction is separated from production package cache to avoid test builds overwriting production cache.
+
+### 7.4 Startup availability: write-probe and background retry (D-063/D-064)
+
+Documents/OneDrive may not be fully mounted yet at the moment autostart
+fires, so every loader in §7.2 can hit a transient access-denied error at
+startup. This is handled uniformly, not per-loader:
+
+- `StorageRetryLoaders` (a global array: user-data folder, settings,
+  hotstrings, package settings, speed dial, SMS default texts) drives one
+  shared background timer instead of five-plus independent ones, since
+  they sit on the same folder and fail/recover together in practice —
+  but each loader's own success/failure and log message stay fully
+  independent, so one loader's continued failure is never masked by its
+  siblings succeeding.
+- `InitializeUserStorage()` no longer decides "first run" from a single
+  `DirExist(UserDataDir)` check. If the folder does not exist,
+  `UserStorageProbe_TryBootstrap()`/`UserStorageProbe_ResolveAfterCreate()`
+  create a uniquely-named temporary folder under `A_MyDocuments` as a real
+  write test, then re-check whether the real folder appeared in the
+  meantime (OneDrive lag, not a first run) before claiming the probe
+  folder as `UserDataDir` via `DirMove()`. A directory-prep failure no
+  longer hard-exits the app; it retries on the shared timer like
+  everything else. `PruneAbandonedUserStorageProbeDirs()` (wired into the
+  existing daily `RunDiagnosticsMaintenance()`) sweeps an orphaned probe
+  folder left by a crash mid-sequence.
+- `StorageAllReady` is true once every entry in `StorageRetryLoaders` has
+  succeeded (all-or-nothing). It is computed before `BuildMainGui()` runs
+  (so the common case — nothing was ever unavailable — never shows
+  degraded UI), and re-derived after every background retry tick.
+  `StorageRetry_OnAllReady()` fires exactly once, the first time it
+  becomes true; when that happens after the GUI already exists, it
+  refreshes controls built with stale/default values and re-applies page
+  visibility, sidebar status, and the tray menu.
+- While `StorageAllReady` is false: the Overzicht page shows only a
+  persistent banner and the telephony registration card (registration
+  itself does not depend on any of these loaders); Telefonie/Hotstrings/
+  Instellingen show only the banner, with their entire normal content —
+  save buttons included — hidden rather than disabled; the sidebar's
+  "Telefonie:"/"Tekst vervangen:" dots show a neutral "Laden…" state; the
+  tray menu's "Belactie"/"Tekstvervanging" items are disabled; a
+  recognized clipboard number shows a one-off toast instead of acting on
+  not-yet-reliable settings. See D-064 for the full reasoning, including
+  why this is hide-not-dim and all-or-nothing rather than per-feature.
+- `ShowPage()` gained a per-control `_degradedGate` property so gated
+  controls stay hidden across page navigation — its pre-existing
+  visibility logic would otherwise unconditionally re-show every control
+  on the page being navigated to. `MarkDegradedGateStart()`/
+  `MarkDegradedGateEnd()` gate a whole range of `Pages[pageKey]` at once.
 
 ## 8. Migrations
 
@@ -373,9 +440,20 @@ Clipboard-triggered dialing is a separate entry path into the same call gate:
 ```text
 ClipBoardPoller()
   -> detect a clipboard sequence-number change
+  -> read the clipboard content with a short delay and a few retries
+       (ReadClipboardTextSafely(); reading immediately on the raw sequence-
+       number change could make another application's own multi-step
+       clipboard write fail, observed as a clipboard error in HiX —
+       docs/DECISIONS.md D-066)
+  -> if the sequence number changed again during that wait/read, discard
+       the result as stale rather than act on it; the next poll picks up
+       the by-then-settled content in a clean round
   -> normalize (external Dutch number / internal four-digit number)
   -> no match: ignore
-  -> match: SetClipBoardNumber() then
+  -> a dialog is already open for this exact number: ignore as a duplicate
+       detection (e.g. Windows Clipboard History re-touching the clipboard,
+       or a source that writes the clipboard in more than one step)
+  -> otherwise: SetClipBoardNumber() then
        HandleClipboardNumberDetected() / HandleInternalClipboardNumberDetected()
 
 Handle...ClipboardNumberDetected()
@@ -392,9 +470,12 @@ Handle...ClipboardNumberDetected()
 At most one call-action dialog (confirmation, or the cancel/SMS/call choice)
 may be open at a time; a newer clipboard detection always resolves — by
 closing — whatever an older detection left open, regardless of which action
-the new detection then takes. Manual dial paths (speed dial, right-click,
-linking call) call `IPT_callNumber()` directly and do not go through this
-close step, so they intentionally leave an open dialog untouched.
+the new detection then takes — unless the new detection is for the exact
+same number as the dialog that is already open, which is treated as a
+duplicate and ignored rather than reopening an identical dialog. Manual dial
+paths (speed dial, right-click, linking call) call `IPT_callNumber()`
+directly and do not go through this close step, so they intentionally leave
+an open dialog untouched.
 
 ### 11.3 Number normalization
 
@@ -466,7 +547,9 @@ Notable rendering behaviors:
 - custom colors are held in a shared color map;
 - rounded controls and flat/custom button rendering are applied after GUI creation/show;
 - some controls require an explicit redraw/repaint after show to avoid initial native Windows borders/styles;
-- the call/SMS choice dialog keeps explicit keyboard-selection state and receives `WM_KEYDOWN` centrally.
+- the call/SMS choice dialog keeps explicit keyboard-selection state and receives `WM_KEYDOWN` centrally;
+- `ShowPage()`'s per-control `_degradedGate` property layers degraded-mode
+  visibility (§7.4/D-064) on top of ordinary page-switch visibility.
 
 Managed Windows constraints matter: native shell notifications are not trusted for critical feedback because group policy can suppress them without an AutoHotkey error.
 
@@ -492,6 +575,16 @@ read existing InstallationId
 
 Retry behavior is intentionally asynchronous so temporary OneDrive failure does not block the entire application.
 
+The three usage counters (`PhoneActions`/`LongHotstringActions`/
+`SmsActions`) follow the same asynchronous-retry shape via
+`Telemetry_TryLoadCounters()` (D-063): a failed read no longer silently
+defaults to `0`. `TelemetryCountersConfirmed` gates
+`Telemetry_RecordXAction()`'s write until the real cumulative base has
+been read back successfully, so a session that starts before that read
+succeeds cannot persist an artificially-low count over the real one;
+actions recorded before confirmation are added to the real base once it
+loads.
+
 ### 14.2 Heartbeat scheduling
 
 Default interval is 15 minutes. Startup heartbeat is delayed briefly so telephony state has time to initialize.
@@ -508,13 +601,15 @@ README disclosure is part of the architecture contract: payload changes and docu
 
 The normal application maintains a bounded/buffered background debug log and flush scheduling. It is intended to provide useful troubleshooting context without enabling highly detailed/sensitive tracing all the time.
 
+`LogActivityCheckpoint(label, tekst)` is the one exception to the buffered write path: it calls `DebugLog()` and then `FlushDebugLog()` immediately, used at a handful of points in the call-window/call-action flow so the last point reached survives a hung main process instead of being lost in a not-yet-flushed buffer.
+
 The developer-only debug UI is gated by Windows account in current code.
 
 Retention is enforced per log entry, not per file: `RunDiagnosticsMaintenance()` runs once at startup and then on a repeating 24-hour timer, and `PruneExpiredDebugLogEntries()` removes individual entries older than seven days from both the active `debug.log` and the rotated `debug.log.oud`, based on each entry's own leading timestamp rather than file modification time (see `docs/DECISIONS.md` D-044). This exists independently of, and does not change, the ~2 MB size-based rotation in `FlushDebugLog()`.
 
 ### 15.2 Integrated problem reporting and extended logging
 
-The current DocBot 2.3 code contains the `Probleem melden...`
+The current DocBot 2.4 code contains the `Probleem melden...`
 flow. Help and the tray menu open the same reporting GUI and session state.
 `ProblemReportSession` is held in memory and tracks the phase, consented logging
 state, start time, user description, temporary log path, and finalization lock.

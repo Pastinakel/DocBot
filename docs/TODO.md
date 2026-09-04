@@ -1,12 +1,466 @@
 # DocBot — TODO
 
-_Last updated: 2026-08-25. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-09-03. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
 - **P0** — blocks the current release path or risks a broken build.
 - **P1** — should be completed before/around the current release or immediately afterwards.
 - **P2** — valuable engineering improvement; not a reason to destabilize the current release.
+- **P3** — low-priority polish; correct as filed, but narrow-impact or
+  cosmetic enough that it can sit indefinitely without hurting the
+  project. Pick up opportunistically, not on a schedule.
+
+---
+
+## P0 — Autostart race: user-data storage not yet available at DocBot startup (shipped in stable DocBot 2.4)
+
+Filed 2026-08-28 from a user-supplied standard log
+(`docs/uploads/0dbac3d9-standaardlog.txt`, redacted). DocBot was started via
+autostart at Windows logon; within the same ~0.1s window right after the
+bundled packages finished loading, four separate `Opslagfout` entries were
+logged in immediate succession:
+
+1. `Het JSON-bestand kon niet worden geladen.` — personal hotstrings
+   (`InitializeHotstringStorage()` / `LoadHotstringsFromJson()`).
+2. `De pakketkeuzes konden niet worden geladen. Standaard worden geen
+   pakketten geactiveerd.` — package selections
+   (`InitializePackageSettings()` / `LoadPackageSettingsFromJson()`).
+3. `Het JSON-bestand kon niet worden geladen.` — speed dial
+   (`InitializeSpeedDialStorage()`).
+4. `Het JSON-bestand kon niet worden geladen.` — SMS default texts
+   (`InitializeSmsDefaultTextStorage()`).
+
+All four report the same underlying Windows error, "Het systeem kan geen
+toegang verkrijgen tot het bestand" (access denied) — consistent with the
+Documents/OneDrive-backed user-data folder not being fully available yet at
+the moment autostart fires. One minute later, `Telemetry_TryEnsureInstallationId()`
+also failed to persist a new installation ID (`✕ Telemetrie — Installatie-ID
+kon niet worden opgeslagen`), retried again a minute after that (per its
+documented quick-retry cadence, D-027/D-028), and DocBot ran for roughly
+nine minutes with no packages active. A manual restart ~9 minutes later
+loaded every store cleanly on the first attempt, confirming this is a
+startup-timing race against storage availability, not a persistent storage
+problem.
+
+### Root cause
+
+`Telemetry_TryEnsureInstallationId()` is the *only* startup loader with a
+retry path (quick retries every `TelemetryInstallationIdQuickRetryMs`, then
+hourly — D-027/D-028). Every other startup loader called from the
+auto-execute section (`LoadAppSettings()`, `InitializeHotstringStorage()`,
+`InitializePackageSettings()`, `InitializeSpeedDialStorage()`,
+`InitializeSmsDefaultTextStorage()`) attempts exactly once, and on failure
+falls back to in-memory defaults/empty state for the rest of that running
+session — with no retry and no path back to the real stored data until the
+next full restart:
+
+- `LoadAppSettings()` (`settings.ini`) is the most silent case: it starts
+  with `if !FileExist(ConfigFile): return`, so if the same transient
+  access-denied condition makes `ConfigFile` appear not to exist yet, the
+  function returns with **no log line at all** — `State["AutoSave"]`,
+  `State["CallAction"]`, `State["SmsCallActionTitle"]` and
+  `State["TextReplacement"]` silently keep their code defaults for the
+  session, indistinguishable in the log from a genuine first run.
+- `Telemetry_ReadCounter()` (used for `PhoneActions`, `LongHotstringActions`,
+  `SmsActions`) reads once via `IniRead` wrapped in a bare `try`/`catch` that
+  returns `0` on any failure. If this same race zeroes the in-memory
+  counters for a session, a later `Telemetry_WriteCounter()` call during
+  that same run would persist the artificially-low count over the real
+  cumulative value — turning a transient read failure into a permanent loss
+  of usage history, not merely a delayed one.
+- The four JSON loaders above each log a single `Opslagfout` and then run
+  the rest of the session on defaults/empty data (no packages active,
+  personal hotstrings/speed dial/SMS default texts unavailable) with no
+  further attempt to reload once storage becomes available again.
+
+### Open question: telling "not yet available" apart from a genuine first run
+
+`InitializeUserStorage()` treats `!DirExist(UserDataDir)` as "first run" and
+immediately bootstraps (copies from a seed profile, or creates a fresh
+directory) — a single, synchronous, one-shot check that runs before any of
+the loaders above. This is a different, harder ambiguity than the four
+loader failures: a JSON loader failing with "kon niet worden geladen" (not
+"bestaat niet") already proves the file exists but is temporarily
+unreadable — that case is unambiguous and safe to retry as proposed below.
+But `DirExist(UserDataDir) = false` looks identical whether (a) the user has
+genuinely never run DocBot, or (b) OneDrive has not mounted far enough yet
+for even the folder structure/placeholders to be visible. Nothing in a
+single snapshot can tell these apart.
+
+Proposed resolution: do not try to classify intent from one passive
+measurement. Instead, actively probe writability, and let the probe double
+as the real bootstrap once it proves safe (suggested by the project owner):
+
+1. If the file can't be read: check whether it exists. If not, check
+   whether the folder exists. If neither exists, attempt to create a
+   uniquely-named temporary folder under `A_MyDocuments` (a real
+   `DirCreate`, not just a `DirExist` poll) — a write attempt is a strictly
+   stronger signal than re-polling `DirExist`, since a not-yet-mounted
+   OneDrive should fail an actual write, not just look empty.
+2. Once that temporary folder can be created, re-check whether `UserDataDir`
+   and the settings file are readable *now*:
+   - Yes → the real profile surfaced while the probe was running (pure
+     OneDrive-lag case); delete the temporary folder and proceed on the
+     real data. No bootstrap, no risk of treating an existing user as new.
+   - No → the temporary folder's successful creation just empirically
+     proved this location is writable and `UserDataDir` genuinely does not
+     exist — a high-confidence first run. Rename the temporary folder into
+     place as `UserDataDir` (reusing it rather than creating a second
+     folder) and bootstrap settings there as today.
+3. Retry the whole probe on the same bounded cadence as the other loaders
+   if the `DirCreate` itself fails — that failure is the "storage backend
+   not ready" signal and should log as such (distinct from a first-run
+   message).
+
+Two existing patterns in the codebase apply directly here and should be
+reused rather than re-invented:
+
+- **Multi-instance race on the rename step.** If autostart fires twice, or
+  a user launches DocBot manually while an autostart instance is still
+  probing, two instances could each create their own temporary folder and
+  both attempt to claim `UserDataDir`. `Telemetry_TryEnsureInstallationId()`
+  already solves the equivalent race for the installation ID by re-reading
+  immediately before use and letting an existing value win. Apply the same
+  rule here: immediately before renaming, re-check whether `UserDataDir`
+  now exists; if it does, discard the own temporary folder and use the
+  existing one instead of renaming over it.
+- **Cleanup of an orphaned probe folder.** If DocBot exits (crash, forced
+  kill, Windows restart) between creating the temporary folder and
+  renaming/deleting it, a stray folder is left in the user's Documents.
+  `PruneAbandonedProblemReportDirs()` (P1 "Remove temporary problem-report
+  artifacts") already sweeps a recognizable naming pattern older than seven
+  days on the existing daily cleanup timer — give the probe folder a
+  similarly recognizable name and fold it into that same sweep rather than
+  adding a new cleanup mechanism.
+
+**This must run asynchronously, after the GUI is already shown — not in the
+current synchronous auto-execute sequence.** `InitializeUserStorage()` is
+called before `BuildMainGui()`/`MainGui.Show()` today; if the probe/retry
+loop (or the earlier plain bounded-retry idea) stays there as written, a
+multi-minute retry window would delay the main window from appearing at
+all, which is exactly the blocking startup gate D-026 already rejected —
+only now scoped to one decision instead of everything. The probe must move
+to the same asynchronous, timer-driven shape the telemetry installation ID
+already uses: the GUI shows immediately on whatever data is available
+(exactly as it does today), and the probe/rename logic runs on the
+background retry timer afterward, refreshing the relevant in-memory
+state/GUI once it resolves either way.
+
+**Considered and dropped: a `DirExist(A_MyDocuments)` first gate.** An
+earlier draft of this proposal added a cheap pre-check on the Documents
+root itself, to let a high-confidence first run (existing OneDrive user,
+first DocBot launch) bootstrap immediately instead of waiting out the full
+retry window. Dropped (project-owner decision, 2026-08-28): it was a speed
+optimization only, never part of the actual safety net — the write-probe
+above is already correct and safe on its own regardless of whether this
+organization's Documents folder is itself OneDrive-redirected (Known
+Folder Move) or a plain local folder, so nothing about correctness depends
+on knowing that. The only cost of dropping it is that a genuine first run
+waits out the same bounded retry window (a few minutes, at most once per
+user, with the GUI already usable in degraded mode throughout) instead of
+bootstrapping promptly — not worth adding a dependency on confirming this
+organization's OneDrive/Documents configuration for. If a real complaint
+about first-run bootstrap latency ever surfaces, revisit this as a
+targeted follow-up rather than building it in now.
+
+This changes first-run bootstrap timing, not just retry-on-known-existing-
+data behavior, so it needs explicit project-owner sign-off separately from
+the rest of this proposal before implementation.
+
+### Degraded mode: block functionality visibly, not startup
+
+Project owner requirement (2026-08-28): silently running on defaults, as
+today, is not acceptable even once the retry mechanism above exists —
+retries can still take minutes. The user must be able to see that settings
+have not loaded yet, and most functionality must be genuinely unavailable
+during that window, not just quietly wrong. Telephony registration/linking
+is the one exception: it does not depend on any of the five stores above
+(it already succeeds independently today, per the log's `AllocNumber.xml`/
+`GetEvent.xml` exchanges completing while every other loader failed) and
+must keep working normally throughout.
+
+**Chosen granularity: all-or-nothing** (project-owner decision, not
+per-feature). A single readiness state covers the first-run probe above
+plus all five stores (`settings.ini`, hotstrings, package settings, speed
+dial, SMS default texts); functionality stays blocked until every one of
+them has succeeded, even if, say, only the SMS default texts are still
+retrying. This is simpler to build and to explain to the user than gating
+each feature independently, at the cost of sometimes blocking a feature
+whose own data actually already loaded fine.
+
+**What "largely blocked" means concretely**, while that combined readiness
+state is not yet true — finalized 2026-08-28 against a mockup (see below):
+data-dependent content is **hidden outright, not dimmed/disabled**. An
+earlier draft of this proposal showed disabled/grayed controls so their
+presence stayed visible; the project owner rejected that in favor of
+hiding, including every control that could trigger a write (save buttons
+included) — nothing partially-loaded should be reachable at all, not even
+in a visibly-inert state.
+
+- **Overzicht page:** the banner plus the registration card (top of the
+  page) are the only things shown. Belactie, Tekstvervanging, and Gebruik
+  — the three lower cards — are hidden entirely, not shown disabled.
+- **Telefonie, Hotstrings, and Instellingen pages:** each shows only the
+  banner plus a short centered message; the page's entire normal content
+  (speed-dial list/editor, hotstring list/editor, storage/import/SMS
+  settings) is hidden, **including every save button** — there is nothing
+  left on these pages that could write partially-loaded state.
+- The clipboard-number → call/SMS-action flow: suspended. This is the part
+  that depends on `CallAction`/`SmsCallActionTitle`/`TextReplacement` from
+  `settings.ini`, so acting on a detected number without knowing the real
+  setting would risk doing the wrong thing, not just nothing. Not silent,
+  though (project-owner decision, 2026-08-28): show a one-off
+  `ShowNotification()` toast when a number is recognized during degraded
+  mode (e.g. "Nummer herkend, maar instellingen laden nog") — otherwise the
+  suspension looks like DocBot failed to notice the number at all, which is
+  worse than an explained no-op.
+- The tray menu's "Tekstvervanging" checkbox item (`ToggleTraySetting.Bind
+  ("TextReplacement")`) reads/writes `State["TextReplacement"]` directly,
+  bypassing the main window entirely: disable it too during degraded mode
+  (project-owner decision, 2026-08-28), otherwise a toggle made there on the
+  not-yet-loaded in-memory default would itself get overwritten the moment
+  the real value loads, silently discarding what the user just set. Check
+  the tray menu for any other item reading/writing degraded-mode-affected
+  `State` the same direct way and apply the same rule.
+- Telephony registration, the link-code flow, and the long-poll event loop:
+  **unaffected, run exactly as today** — this is what stays on the
+  Overzicht page's registration card.
+- Help/Over and other static, non-data-dependent pages: **unaffected, not
+  touched by degraded mode at all** (project-owner decision, 2026-08-28) —
+  no mockup needed for them since nothing changes.
+- **Sidebar status indicators (bottom-left) — both "Telefonie:" and "Tekst
+  vervangen:" show a neutral, pulsing "Laden…" state**, not the normal
+  green/red Actief/Inactief. This corrects an earlier draft that left
+  "Telefonie:" green/"Actief" on the reasoning that registration is
+  unaffected — but `RefreshSidebarStatuses()` drives that particular
+  indicator from `CallAction`, not from registration status: it reports
+  whether DocBot currently knows what to do with a recognized phone number,
+  and until `settings.ini` has loaded, it genuinely does not know that yet.
+  Registration itself stays visible and correct in the Overzicht card
+  above; the sidebar dot is a different signal and must reflect its own
+  real uncertainty rather than borrowing telephony's "it still works" fact.
+
+**Making it visible, not silent:** the existing transient notification GUI
+(`ShowNotification()`, D-025) is built to auto-dismiss after a few seconds
+and is the wrong shape for a state that can last minutes. This needs a
+persistent indicator — a banner/status area in the main window that stays
+present for as long as degraded mode lasts and clears automatically the
+moment the combined readiness state becomes true (refreshing the
+now-unblocked page at the same time, consistent with how the shared retry
+timer already refreshes each loader's own state on success).
+
+**Mockup:** [DocBot Degraded Mode](https://claude.ai/code/artifact/defdebdf-87bd-4d38-8a2d-587eb8bbd896)
+shows the finalized design — the persistent warning-colored banner
+(spinner, non-dismissing), the Overzicht page with only the registration
+card left standing, the Telefonie/Hotstrings/Instellingen pages reduced to
+banner-plus-message, and both sidebar status dots on the neutral "Laden…"
+state, against a "Normaal" comparison artboard. Colors, sidebar, and card
+geometry are lifted directly from `DocBot.ahk`'s `C := Map(...)` palette
+and `BuildMainGui()` layout; exact pixel positions were compressed slightly
+to fit the banner into the fixed 700px-tall window and should be
+re-verified during implementation, not copied as final coordinates.
+
+The GUI shell itself must still appear immediately either way — this is
+about which content that shell shows, not about delaying `MainGui.Show()`
+(see the synchronous-vs-background-timer point above, which still applies
+in full).
+
+### Proposal (needs project-owner sign-off before implementation)
+
+- Do **not** reintroduce a blocking/global startup writeability gate — that
+  approach was deliberately rejected (D-026) because it makes unrelated
+  functionality unavailable whenever Documents/OneDrive is briefly slow.
+  This applies to the retry mechanism itself, not only to the original
+  gate: `InitializeUserStorage()`, `LoadAppSettings()`, and the four JSON
+  loaders all currently run synchronously *before*
+  `BuildMainGui()`/`MainGui.Show()`. The **first, single, fast attempt**
+  can stay exactly where it is (it fails fast today, in well under a
+  second, so it does not delay the GUI) — but every *retry*, on any of
+  these loaders or on the first-run probe below, must be moved to run on a
+  background timer *after* the GUI is already shown, the same shape
+  `Telemetry_TryEnsureInstallationId()` already uses. Leaving a multi-minute
+  retry loop in the current synchronous position would delay the main
+  window itself, which is the same blocking gate D-026 rejected, only
+  scoped to fewer call sites.
+- Generalize the existing telemetry installation-ID pattern (D-027/D-028),
+  but split *scheduling* from *error handling*: since all five loaders sit
+  on the same Documents/OneDrive-backed folder and the log shows them
+  failing and recovering together, use **one shared retry timer** (the same
+  quick/slow cadence already used for the installation ID) instead of five
+  independent timers duplicating the same schedule and logging the same
+  moment five times over. On each tick, the shared timer re-runs every
+  loader that has not yet succeeded and, per loader, refreshes only that
+  loader's in-memory state and any already-built GUI list/controls on
+  success — mirroring how `Telemetry_TryEnsureInstallationId()` calls
+  `Telemetry_Start()` once it succeeds.
+  Keep each loader's *own* success/failure and its own `Opslagfout` message
+  fully independent, though: coupling the retry trigger to a shared timer
+  must not couple the diagnosis. A loader that keeps failing for an
+  unrelated reason (a locked file, a corrupt document, antivirus scanning)
+  once its siblings have already recovered must still fail visibly and
+  distinctly on the next shared tick, not be silently carried along by
+  whichever loader succeeds first — do not collapse the five distinct
+  `Opslagfout` messages into one.
+- Close the silent gap in `LoadAppSettings()` specifically: log a baseline
+  `Opslagfout` (or equivalent) when `ConfigFile` does not resolve, rather
+  than returning with no diagnostic trace, so "not yet available" is
+  distinguishable from "first run" in the standard log.
+- Fold the `PhoneActions`/`LongHotstringActions`/`SmsActions` counter reads
+  into the same retry/confirmation discipline already used for the
+  installation ID, so a transient read failure can no longer cause
+  `Telemetry_WriteCounter()` to overwrite a real cumulative count with a
+  session that started from a false `0`.
+- This is a startup-timing race that only reproduces through the real
+  autostart trigger on a managed Windows workstation, not an interactively-
+  launched interpreted or compiled run (`docs/DECISIONS.md` D-037) — but
+  that validation is the **last** step, against the finished fix, not a
+  precondition for starting work. Waiting for the race to spontaneously
+  recur again on its own is not a reliable way to test it: the original log
+  is sufficient evidence the bug is real, and there is no way to force an
+  as-yet-unfixed build to hit the race on demand. Once there is a build to
+  test, deliberately simulate the delayed-storage condition instead of
+  waiting for a natural recurrence — e.g. briefly deny/delay access to the
+  profile folder (or the specific JSON files) at the exact moment autostart
+  fires — so the retry/probe/degraded-mode behavior can be exercised and
+  confirmed on demand rather than hoped for.
+- Record the generalized retry approach in `docs/DECISIONS.md` (mirroring
+  D-027/D-028) and update `docs/PROJECT_CONTEXT.md` §4.7 once implemented.
+
+### Implementation status (2026-08-31)
+
+Implemented on `claude/docbot-autostart-telemetry-s8bhu8`
+(`AppVersion 2.4-autostart-storage.1` through `.7`) and merged into
+`develop` via PR #63 (2026-08-31; the PR was initially opened against
+`main` by mistake and retargeted to `develop` before merging, matching the
+normal branch workflow). Recorded as `docs/DECISIONS.md` D-063 (shared
+retry + write-probe) and D-064 (degraded-mode UI), both now marked
+functionally validated on Windows. The `.5`/`.6`/`.7` commits are fixes
+from that validation pass, not new scope — see the last scope item below.
+
+### Scope
+
+- [x] Design and implement the shared-timer/per-loader-diagnosis retry
+  approach described above for `LoadAppSettings()`, hotstrings, package
+  settings/selections, speed dial, and SMS default texts.
+- [x] Fix the silent no-log early return in `LoadAppSettings()`.
+- [x] Get explicit project-owner sign-off on, then implement, the
+  write-probe approach for `InitializeUserStorage()` described above
+  (create a temporary folder under `A_MyDocuments`, re-check for a real
+  profile, then either discard the probe or rename it into place), so a
+  not-yet-mounted OneDrive is no longer indistinguishable from a genuine
+  first run.
+- [x] Reuse the existing "re-check immediately before use, let an existing
+  value win" pattern from `Telemetry_TryEnsureInstallationId()` for the
+  probe's rename step, to handle two DocBot instances racing to claim
+  `UserDataDir`.
+- [x] Reuse the existing `PruneAbandonedProblemReportDirs()`-style sweep
+  (P1 "Remove temporary problem-report artifacts") to clean up an orphaned
+  probe folder left behind by a crash between creation and rename/delete;
+  give the probe folder a similarly recognizable name rather than adding a
+  second cleanup mechanism.
+- [x] Ensure every retry loop (loaders and the first-run probe alike) is
+  wired to run on a background timer after `MainGui.Show()`, not left in
+  the current synchronous position before it.
+- [x] Address the counter-zeroing/overwrite risk in
+  `Telemetry_ReadCounter()`/`Telemetry_WriteCounter()`.
+- [x] Introduce a single combined readiness flag covering the first-run
+  probe and all five stores, and gate hotstring expansion, the
+  clipboard-number call/SMS-action flow, package manager, speed dial, and
+  SMS default-text settings on it (all-or-nothing, per project-owner
+  decision) — while leaving telephony registration/linking/event-polling
+  and the Help/Over pages unaffected.
+- [x] Implement the finalized "hide, don't dim" behavior per the mockup:
+  on Overzicht, render only the banner and the registration card while the
+  readiness flag is false (Belactie/Tekstvervanging/Gebruik not shown at
+  all); on Telefonie/Hotstrings/Instellingen, render only the banner plus a
+  short message (no list, no editor, no save button of any kind).
+- [x] Drive **both** sidebar status dots from the combined readiness flag,
+  not only their own setting — `RefreshSidebarStatuses()` sets
+  "Telefonie:" from `CallAction` and "Tekst vervangen:" from
+  `State["TextReplacement"]` the same way, so both currently risk showing
+  a stale/default green-or-red state while degraded rather than "Laden…".
+  Registration itself stays correctly visible in the Overzicht card
+  regardless — only these two sidebar dots need the neutral state.
+- [x] Show a one-off `ShowNotification()` toast when a clipboard phone
+  number is recognized while degraded mode is active, rather than
+  suspending the call/SMS-action flow silently.
+- [x] Disable the tray menu's "Tekstvervanging" checkbox item during
+  degraded mode (and audit the rest of the tray menu for any other item
+  that reads/writes `State` the same direct way), so a toggle made there
+  on a not-yet-loaded default can't be silently overwritten once the real
+  value loads. The audit found a second item needing the same gate: the
+  "Belactie" submenu (`SetTrayCallAction()`) writes `State["CallAction"]`
+  and calls `SaveAppSettings()` exactly like `ToggleTraySetting()` does —
+  both are now disabled while degraded.
+- [x] Design and implement a persistent (not auto-dismissing) in-GUI
+  banner for degraded mode, distinct from the existing transient
+  `ShowNotification()` toast, that clears automatically once the combined
+  readiness flag becomes true and the now-unblocked page refreshes. Match
+  the mockup's banner style (warning-colored, left accent bar, spinner)
+  as a starting point, re-verified on Windows. Implemented as a plain
+  warning-colored bar with a left accent, without the mockup's animated
+  spinner: a Segoe MDL2 icon glyph mixed into the same `AddText` string as
+  regular text does not render as an icon without `AddFlatButton()`'s
+  custom-draw machinery, and a dedicated animation timer for one static
+  status bar wasn't judged worth the added complexity.
+- [x] Update `docs/DECISIONS.md` and `docs/PROJECT_CONTEXT.md` §4.7.
+  Also updated `docs/ARCHITECTURE.md` §5/§7.4/§13/§14.1 (not originally
+  listed here, but the auto-execute sequence and user-data architecture
+  sections were now stale) and README's Telemetrie section (the installed
+  counters' read-confirm-before-write behavior changed, even though the
+  payload fields themselves did not — see `docs/DECISIONS.md` D-063).
+- [x] Update the README changelog; assess whether the telemetry
+  documentation needs changes (the payload/fields themselves should not
+  change, only when/how reliably the counters are read). Assessed: fields
+  unchanged, reliability behavior changed and is now documented (see above).
+- [x] **Last step, against the finished build:** validated on Windows
+  (2026-08-31) by deliberately simulating delayed/denied storage on demand,
+  exactly as proposed above, rather than waiting for the original autostart
+  race to recur naturally:
+  - `FileShare 'None'` exclusive read locks (via a short PowerShell script)
+    held across two background retry ticks on all five already-existing
+    `DocBot-test`/`DocBot-dev` profile files, confirming the retry cadence
+    (first background attempt at ~60s, then every ~60s through the fourth,
+    then hourly) and the expected non-blocking `ShowNotification()` toast
+    per failed retry (`ReportStorageError()`, D-063) — not a MsgBox, and
+    each retry reported independently as designed.
+  - `icacls ... /deny "user:(WD,AD)"` on `Documents` itself (no profile
+    folder yet), confirming `UserStorageProbe_TryBootstrap()`'s write-probe
+    retries without crashing or hard-exiting, and recovers cleanly once the
+    deny is lifted (`icacls ... /remove:d`).
+  - Page navigation to Hotstrings while degraded, and the degraded-to-ready
+    recovery transition, were both explicitly exercised this way and
+    **found two real regressions**, not caught by source review alone:
+    `ApplyHotReplacementEditorState()` re-showed the Hotstrings editor form
+    (input field + expand button) after `ShowPage()`'s degraded-gate loop
+    had already hidden it, because it recomputed visibility from
+    `CurrentPage` alone with no `StorageAllReady` check — the save button
+    itself stayed correctly hidden, so no partially-loaded state could
+    actually be written, but the visible field contradicted the banner.
+    Separately, `BuildTrayMenu()`'s "Snelkiesnummers" quick-call section
+    was never gated on `StorageAllReady` at all, so the tray menu showed
+    the code-default speed-dial numbers as clickable during degraded mode
+    and a click placed a real call (`CallSpeedDialEntry()` →
+    `IPT_callNumber()`) on unconfirmed data — more consequential than the
+    first finding since it reaches a real side effect, not just a visible
+    inconsistency. Both fixed and documented as validation notes on D-064
+    before merging (`AppVersion 2.4-autostart-storage.6`/`.7`).
+  - **Residual gap, not blocking:** the Instellingen SMS-default-text-field
+    refresh path (`RefreshInstellingenValuesAfterReady()` /
+    `ApplySmsDefaultTextFieldState()`) was not separately exercised in this
+    round, and no `debug.log` excerpt from this validation pass was
+    captured/attached for the record. Neither reopens this item — the core
+    race, retry cadence, degraded-mode gating, and recovery are now
+    confirmed working end-to-end with two real regressions caught and
+    fixed — but pick up the SMS-field path opportunistically if it is ever
+    touched again, and prefer capturing a `debug.log` excerpt the next time
+    this condition is deliberately reproduced.
+
+This changes `DocBot.ahk`/`Telemetry.ahk` behavior. Implement on a dedicated
+feature/fix branch from the then-current `develop`, update the
+branch-specific `AppVersion` in every commit that changes `DocBot.ahk`, and
+validate on the managed Windows workplace before merging.
 
 ---
 
@@ -359,7 +813,7 @@ baseline logging from the start.
 
 ---
 
-## P1 — Make HTTPS mandatory for telephony and SMS URLs
+## P1 — Make HTTPS mandatory for telephony and SMS URLs (done)
 
 An exploratory test on 2026-08-09 showed that changing the local telephony
 `BaseUrl` from `http://` to `https://` still delivered a registration/link
@@ -387,24 +841,20 @@ every managed Windows workstation.
   `docs/REGULATORY_ASSESSMENT.md` and `docs/DECISIONS.md`. Also updated
   `docs/DATA_PROTECTION.md` (not originally listed here, but it contained
   the same now-stale "code does not enforce HTTPS" wording in three places).
-- [ ] This is an infrastructure/organizational question, not a DocBot code
+- [x] This is an infrastructure/organizational question, not a DocBot code
   task, and not something resolvable from within this repository or by the
   project owner alone: DocBot's own requests (`IPT_callNumber()`,
   `IPT_register()`) send no application-level credential today — no API
   key, bearer token, or client certificate, only an `Accept-Language`
   header — so as far as the code shows, the only current "authentication"
-  is network reachability (hospital LAN/VPN). Escalate to whoever owns/
-  administers the internal telephony server (or the hospital network/
-  security team) and ask explicitly:
-  - Is the endpoint reachable only from within the hospital network/VPN,
-    i.e. is network segmentation the intended authentication boundary?
-  - Does the server expect an additional credential (API key, token,
-    client certificate/mTLS) that DocBot does not currently send?
-  - Is there a reverse proxy in front of it enforcing anything beyond TLS?
-  Record the answer in `docs/DECISIONS.md` once known. Only if the answer
-  reveals a real gap does this become a scoped `DocBot.ahk` implementation
-  task (e.g. sending a configured credential header); until then, do not
-  add speculative auth code with no confirmed server-side contract.
+  is network reachability (hospital LAN/VPN). Escalated to whoever owns/
+  administers the internal telephony server. **Answer confirmed
+  (2026-08-26):** no additional credential is required or expected, and
+  there is no reverse proxy in front of the endpoint enforcing anything
+  beyond TLS — network segmentation (hospital LAN/VPN reachability) is the
+  intended authentication boundary. Recorded in `docs/DECISIONS.md` D-059.
+  The answer does not reveal a gap, so no `DocBot.ahk` implementation task
+  follows from it; no speculative auth code was added.
 
 ### Acceptance evidence
 
@@ -428,11 +878,13 @@ Windows workplace / internal hospital network (2026-08-17).
   certificate validation result without recording the confidential hostname,
   endpoints, telephone numbers, or certificate private material in Git.
 
-The only remaining open item in this P1 entry is the "Application and
-documentation" server-authentication confirmation above. The project owner
-removed the separate "Infrastructure dependencies" checklist (certificate
-ownership, reverse-proxy timeouts, disabling the HTTP listener) as no
-longer tracked here.
+This P1 entry is now fully resolved. The last open item, the "Application
+and documentation" server-authentication confirmation, was answered by the
+project owner (2026-08-26, see `docs/DECISIONS.md` D-059): no additional
+credential is required and there is no reverse proxy in front of the
+telephony endpoint. The project owner removed the separate "Infrastructure
+dependencies" checklist (certificate ownership, reverse-proxy timeouts,
+disabling the HTTP listener) as no longer tracked here.
 
 This is a real `DocBot.ahk` behavior change. Implement it on a dedicated
 feature/fix branch from the then-current `develop`, update the branch-specific
@@ -620,6 +1072,189 @@ Do not copy end-user changelog content into these docs verbatim; link concepts a
 
 ---
 
+## P1 — Run `--selftest` automatically when compiling, with results visible on the console (done)
+
+Filed by the project owner (2026-08-25). Right now, confirming
+`tests/SelfTests.ahk` passes against a compiled build is a manual step: run
+`DocBot.exe --selftest` yourself, then go check
+`%TEMP%\docbot-selftest-results.txt` and/or the process exit code, because
+the console typically shows **no output at all** — `AutoHotkey64.exe`/
+`DocBot.exe` are GUI-subsystem executables, and whether `FileAppend(text,
+"*")` actually reaches a redirected stdout is unconfirmed in this codebase
+(`docs/DECISIONS.md` D-053, `tests/README.md`). This was reconfirmed during
+the 2.3 release: a compiled `--selftest` run produced empty console output,
+and only the results file made the outcome ("32 tests, 32 geslaagd, 0
+mislukt") actually visible.
+
+Goal: make `Build-EPD_Machine.bat` run the self-test itself, right after
+compiling `DocBot.exe` (`Build-EPD_Machine.bat` around the `Ahk2Exe`
+call/errorlevel check, before `:deploy` is called for any target — see
+`echo DocBot compileren naar DocBot.exe...`), and have the batch itself
+print the actual test results to the command prompt so a developer running
+the build sees them without a separate manual step.
+
+### Scope
+
+- [x] After a successful compile, run `"%OUTPUT%" --selftest` (the
+  just-built `DocBot.exe`, not the interpreted script) and wait for it to
+  exit — reuse the same `WaitForExit`/force-kill-style caution already
+  applied in `.github/workflows/ahk-syntax-check.yml` for a GUI-subsystem
+  AutoHotkey process that could otherwise show a blocking dialog instead of
+  exiting cleanly (`docs/DECISIONS.md` D-040). Implemented via a new
+  `tools/Invoke-WithTimeout.ps1` helper (kept out of the repository root
+  per project-owner request) invoked from `Build-EPD_Machine.bat`; it
+  applies the same `Start-Process -PassThru` / `WaitForExit(60000)` /
+  `Stop-Process -Force` pattern as the CI step and passes the child's exit
+  code through. Batch itself cannot do this directly: `cmd.exe` does not
+  wait synchronously on a GUI-subsystem executable the way it does on a
+  console executable, so a bare invocation would neither block correctly
+  nor allow a timeout/kill. **Deliberately left the CI workflow's own
+  inline `pwsh` fragment untouched** (project-owner decision) rather than
+  switching it to the same helper in this change.
+  **Windows validation surfaced a real problem (2026-08-26):** the initial
+  version invoked the helper with `powershell -ExecutionPolicy Bypass -File
+  tools\Invoke-WithTimeout.ps1 ...`, which failed on the project owner's
+  managed workstation — Windows refused to load the unsigned `.ps1` file
+  ("is not digitally signed") and ignored `-ExecutionPolicy Bypass`,
+  because a Group Policy-configured execution policy always overrides that
+  startup argument. Fixed by piping the script's content into
+  `powershell -Command -` via stdin instead of `-File` (a command-text
+  invocation is not subject to the script-file execution-policy check at
+  all), with inputs passed via `INVOKE_WITH_TIMEOUT_*` environment
+  variables instead of a `param()` block, since stdin-delivered content
+  isn't bound to one. Recorded in `docs/DECISIONS.md` D-060.
+  **A second Windows run (2026-08-26) confirmed the stdin fix itself
+  worked** (the zelftest ran and printed "32 test(s), 32 geslaagd, 0
+  mislukt" correctly), but then hit a second, unrelated bug: `cmd.exe`
+  reported `"was unexpected at this time."` right after. Cause: the
+  literal, unescaped `(pen)` in `echo Er is niets uitgerold naar de
+  doelmap(pen).` inside the `if not "%SELFTEST_RESULT%"=="0" ( ... )`
+  block — `cmd.exe` parses an entire `if (...)` block for balanced
+  parentheses before deciding whether to run it, including parentheses
+  inside plain `echo` text, so an unescaped `(`/`)` there breaks parsing
+  regardless of whether the branch actually executes. Fixed by rewording
+  to "Er is niets uitgerold naar de doelmap of doelmappen." (no
+  parentheses) rather than escaping them, since the other message in the
+  same block already needed `^(`/`^)` escaping for a literal exit-code
+  parenthetical.
+  **A third Windows run (2026-08-26) confirmed the selftest step itself
+  now runs correctly end to end** (pass path, including the parenthesis
+  fix), but surfaced a third, pre-existing bug unrelated to this TODO's
+  own scope: the project owner answered "nee" to all three interactive
+  questions, including "Ook een executable naar de naastgelegen map
+  EPD_Machine kopieren?", but the batch copied to `EPD_Machine` anyway.
+  Root cause: `:ask` (`Build-EPD_Machine.bat`) always writes the literal
+  string `"J"` or `"N"` into its output variable, never leaves it empty,
+  but the two downstream gates for `DO_EPD_COPY`
+  (the `OVERWRITE_EPD_PACKAGES` question and the `EPD_Machine.exe` deploy
+  itself) used `if defined DO_EPD_COPY`, which is true for *any* assigned
+  value including `"N"` — so once the first question was asked at all,
+  both were treated as "yes" regardless of the actual answer. Fixed by
+  changing both checks to `if /I "%DO_EPD_COPY%"=="J"`. This bug predates
+  this TODO entry's own changes (it sits in code this change never
+  touched) and was only found because this task's Windows validation
+  exercised the full interactive flow; not release-blocking by itself
+  (declining the question was simply not honored, it didn't silently
+  corrupt anything), but a real deploy-safety defect worth having fixed
+  regardless. **Confirmed on a fourth Windows run (2026-08-26) by the
+  project owner:** declining all three questions now genuinely skips the
+  `EPD_Machine` copy.
+  **A cosmetic issue was also reported (2026-08-26):** the console showed
+  garbled characters (BOM mojibake, e.g. "ï»¿"-style glyphs) right before
+  "ok" on the very first results line only; the 32/32 pass count itself
+  was always correct. Cause: `tests/SelfTests.ahk`'s
+  `FileAppend(logText, logPath, "UTF-8")` writes a UTF-8 byte-order mark
+  at the start of the freshly created results file, and `type` renders
+  that BOM as mojibake on a console whose active code page isn't UTF-8 —
+  only visible on the first line because a BOM appears exactly once, at
+  the very start of the file. Fixed by switching to `"UTF-8-RAW"`,
+  matching the no-BOM convention `DocBot.ahk` already uses elsewhere for
+  files that get read back (e.g. the JSON writers). Since this changes
+  `tests/SelfTests.ahk`, which is `#Include`d into `DocBot.ahk` and
+  affects the compiled build's `--selftest` output, `AppVersion` was
+  bumped in the same commit to `2.4-selftest-encoding.1` per the
+  branch-specific counter rule, and a `### 2.4 — In ontwikkeling` README
+  changelog section was opened (this is the first `DocBot.ahk`-affecting
+  change since the 2.3 release).
+- [x] Regardless of whether anything appeared on stdout, explicitly read
+  back `%TEMP%\docbot-selftest-results.txt` and `type` (or `echo`) its
+  contents to the console — this file, not stdout, is the reliable source
+  per D-053/`tests/README.md`. Implemented: the batch deletes any stale
+  results file before running, then `type`s it after, regardless of the
+  measured exit code.
+- [x] Use the process exit code (`0` = all tests passed, `1` = a failure or
+  unexpected error) as the authoritative pass/fail signal, matching how the
+  CI step already treats it. Decide and document explicitly what the batch
+  then does on a nonzero exit code — e.g. print a clear failure banner and
+  `goto :failed` before any `:deploy` call, so a broken build is never
+  rolled out to a target folder. Do not silently continue on failure.
+  Implemented: `SELFTEST_RESULT` is captured immediately after the
+  PowerShell call and checked explicitly; a nonzero value (including a
+  timeout/force-kill) prints a failure banner and jumps to `:failed` before
+  either `:deploy` call.
+- [x] Keep this self-test run local to the source build step; it must not
+  run against an already-deployed target copy of `DocBot.exe`, and must not
+  block or alter the existing interactive question-answering flow
+  (`docs/DECISIONS.md` D-052 and the pre-asked-questions change in the 2.3
+  changelog) — it runs after all questions are answered, alongside the
+  compile step itself. Implemented: it runs against `%OUTPUT%` (the
+  freshly compiled source-tree executable) only, placed right after the
+  compile step and before the first `call :deploy`, after all interactive
+  questions have already been asked.
+- [x] Handle a missing/unreadable results file the same way the CI step
+  does: warn clearly instead of crashing the batch, and still rely on the
+  exit code for pass/fail. Implemented with the same `if exist ... (type
+  ...) else (echo Waarschuwing: ...)` shape as the rest of the batch.
+- [x] Update `tests/README.md` and the `Build-EPD_Machine.bat` section of
+  `README.md` to document that a compile now also runs and displays the
+  self-test results, so this isn't a surprise the next time someone reads
+  either doc. Done in the same change.
+
+This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
+bump applies (`--selftest` already exists and works; this only invokes it
+automatically and surfaces its existing output). Implemented on
+`claude/next-5-todo-tasks-h6kn5k` (merged via PR #57/#58).
+**Fully validated on a real managed Windows workstation by the project
+owner (2026-08-26):** the automatic post-compile `--selftest` run, the
+readable results file output (including after the BOM fix), the
+single-keypress J/n prompts (D-061), and the `DO_EPD_COPY` decline fix all
+confirmed working end to end. This item is closed.
+
+---
+
+## P2 — Remove the optional `itemCount` package-manifest check (done)
+
+**Status: implemented** on branch `claude/remove-itemcount-controle-94h6jc`.
+
+Reported by the project owner (2026-08-25): the optional `itemCount` field
+on a bundled package (checked in `LoadBundledPackageFile()`, `DocBot.ahk`
+around line 6886) threw a loading error whenever it did not exactly match
+`package["items"].Length`:
+
+```
+Pakket {id} vermeldt {itemCount} items, maar bevat er {items.Length}.
+```
+
+`items.Length` is already the authoritative count; `itemCount` was a
+separately maintained manifest field that had to be kept in sync by hand
+whenever a package's item list changed on the network share. It added no
+value over just counting `items` and only created a way for an otherwise
+valid package to fail to load.
+
+- [x] Remove the `itemCount` consistency check from `LoadBundledPackageFile()`.
+  Nothing else in `DocBot.ahk` read or wrote the field, so there was no
+  further field handling to remove.
+- [x] Checked for other readers/writers (package authoring tooling, other
+  loaders, `docs/MIGRATIONS.md`) — only `docs/MIGRATIONS.md` documented the
+  check; updated it.
+- [x] `docs/ARCHITECTURE.md` never documented `itemCount`, so no change
+  needed there.
+- [x] Dropped the now-unused top-level `itemCount` field (and the
+  never-validated per-category `itemCount`) from the `packages/*.json` data
+  files, so nothing still implies it needs to be kept in sync by hand.
+
+---
+
 ## P2 — Change user-data profile selection to build mode (done)
 
 **Status: implemented and fully validated** (`docs/DECISIONS.md` D-056,
@@ -693,7 +1328,7 @@ This is a real `DocBot.ahk` behavior change, so implement it on its own feature/
 
 ---
 
-## P2 — Harden the standard-log format migration check beyond the first 256 bytes
+## P2 — Harden the standard-log format migration check beyond the first 256 bytes (done)
 
 Discovered 2026-08-17 (see `docs/DECISIONS.md` D-044) via a real
 compiled test build: `debug.log` is not channel-specific
@@ -714,18 +1349,29 @@ specifically recognizes that one known legacy format. This item is about
 the more general root cause, for whatever future format mismatch isn't
 already known/pattern-matched:
 
-- [ ] Decide on an approach: e.g. validate every line's format (not just the
+- [x] Decide on an approach: e.g. validate every line's format (not just the
   header) during `InitializeDiagnosticLogging()`, or make
   `PruneExpiredDebugLogFile()`'s "does this line match a known format"
   check exhaustive (current format + every known legacy format) with
   unconditional expiry for anything that matches no known format at all,
   rather than the current conservative "keep unknown content" default.
-- [ ] Weigh the tradeoff explicitly: the current conservative default
+  Chose the latter — see `docs/DECISIONS.md` D-062.
+- [x] Weigh the tradeoff explicitly: the current conservative default
   favors not deleting recent-but-corrupted entries; a stricter default
   favors not indefinitely retaining unredacted content. Record the decision
-  in `docs/DECISIONS.md`.
-- [ ] If changed, keep it consistent with the "malformed/legacy content must
-  not block startup" invariant from the seven-day-retention work.
+  in `docs/DECISIONS.md`. Recorded as D-062.
+- [x] If changed, keep it consistent with the "malformed/legacy content must
+  not block startup" invariant from the seven-day-retention work. The new
+  `ClassifyDebugLogChunk()` helper only drops the unrecognized entry itself
+  during the existing daily/startup maintenance pass; it never blocks or
+  interrupts startup (D-062).
+
+Implemented on `claude/standaardlog-format-validation-hez3ak`. Functionally
+validated on Windows (`docs/DECISIONS.md` D-037, 2026-08-26): `--selftest`
+is green (including `TestClassifyDebugLogChunk`, after fixing a `Trim()`
+empty-tail bug the test itself caught) and a manually-appended
+unrecognized-format line was confirmed pruned from a live `debug.log` on
+the next maintenance pass.
 
 This changes `DocBot.ahk` behavior. Implement it on a dedicated feature/fix
 branch from the then-current `develop` and update the branch-specific
@@ -739,8 +1385,17 @@ There is now a `tests/` directory, but only for what is practical without a
 live hospital environment or a code module split (see `docs/DECISIONS.md`
 D-053). High-value testable areas:
 
-- [ ] stable/non-stable + compiled/noncompiled -> user-profile selection;
-- [ ] telephone-number normalization;
+- [x] stable/non-stable + compiled/noncompiled -> user-profile selection.
+  Covered by `TestGetUserDataProfile` (see the "P2 — Change user-data
+  profile selection to build mode" entry above; this line was left
+  unchecked here by oversight when that work landed).
+- [x] telephone-number normalization. Covers `NormalizePhoneNumber()` (the
+  clipboard-detection combination function), `NormalizePhoneNumberInternal()`/
+  `NormalizePhoneNumberExternal()`, and `NormalizeSmsPhoneNumber()`:
+  4-digit internal numbers, +31/0031/kaal-`0` external NL numbers with
+  spaces/dashes ignored, the SMS-specific 06-only acceptance, and
+  too-short/invalid input for each. Implemented on
+  `claude/next-5-todo-tasks-h6kn5k` (`AppVersion 2.4-selftest-encoding.2`).
 - [ ] hotstring execution-mode selection;
 - [ ] dynamic token expansion;
 - [x] JSON migration/default-addition idempotency. Implemented as
@@ -829,6 +1484,79 @@ that on its own.
 
 ---
 
+## P2 — Add an SMS-action counter (GUI overview + telemetry)
+
+Filed by the project owner (2026-08-26). DocBot already tracks and shows
+two usage counters — "Belacties" (`TelemetryPhoneActions`) and "Lange
+hotstrings" (`TelemetryLongHotstringActions`) — on the Overzicht page's
+"Gebruik" card and in the telemetry heartbeat payload
+(`phoneActions`/`hotstringActions`). Add a third counter for SMS actions,
+in both places, following the exact same established pattern.
+
+### Scope
+
+- [x] Add a `TelemetrySmsActions` counter to `Telemetry.ahk`, mirroring
+  `TelemetryPhoneActions`/`TelemetryLongHotstringActions`:
+  `Telemetry_RecordSmsAction()`, `Telemetry_GetSmsActions()`, persisted via
+  the existing `Telemetry_ReadCounter("SmsActions")`/
+  `Telemetry_WriteCounter("SmsActions", ...)` helpers in the same `[Usage]`
+  section of `settings.ini` the other two counters already use — no new
+  storage mechanism needed. A missing key already defaults to `0` via
+  `Telemetry_ReadCounter()`, so existing installs need no migration.
+- [x] Call `Telemetry_RecordSmsAction()` where `RunSmsCallAction()`
+  genuinely succeeds (`DocBot.ahk`, the `else` branch around line 4469-4470
+  that logs "SMS-route afgerond."), not merely when the SMS option is
+  offered/selected — mirroring how `Telemetry_RecordPhoneAction()` fires
+  only after the dial request is actually sent (`DocBot.ahk` line 2244),
+  not merely when dialing is offered. Also call `RefreshUsageStatistics()`
+  there, matching the phone-action call site.
+- [x] Add a third stat block (icon + label "SMS-acties" + count) to the
+  existing "Gebruik" card on the Overzicht page, alongside "Belacties" and
+  "Lange hotstrings" (`DocBot.ahk`, `AddCard("overzicht", 236, 516, 736,
+  128)` and the `AddCardLabel`/icon blocks right after it). Implemented as
+  three columns on one row (project owner's choice over a second row); the
+  per-item "Lange en meerregelige vervangingen" caption that only existed
+  under the hotstring stat was dropped so all three columns get equal
+  treatment. Shipped as part of the `release/2.4-rc` field test; no
+  spacing/clipping issue reported.
+- [x] Update `RefreshUsageStatistics()` (`DocBot.ahk` around line 1981) to
+  also refresh the new label live, matching the existing two counters
+  (`OverviewPhoneActionsText`/`OverviewLongHotstringActionsText` pattern).
+- [x] Add an `smsActions` field to the telemetry heartbeat payload
+  (`Telemetry_SendHeartbeat()` in `Telemetry.ahk`), alongside the existing
+  `phoneActions`/`hotstringActions` raw JSON properties. Explicit
+  project-owner sign-off obtained 2026-08-26 for this payload addition
+  (both the counter/GUI part and this payload part approved together).
+- [x] Per `CLAUDE.md`/`AGENTS.md` ("Transparantie over telemetrie"): the
+  README `Telemetrie` section and `docs/DATA_PROTECTION.md` payload listing
+  were updated in the same change that adds the field, matching the
+  actually-sent payload.
+- [x] **Decided (2026-08-26):** the counter counts only genuinely
+  successful SMS actions, not every attempt — confirmed by the project
+  owner. "Successful" is determined the same way the caller already
+  decides success/failure for logging/notifications: the existing boolean
+  return value of `RunSmsCallAction()` (`DocBot.ahk` around line 4458),
+  which is `true` only once DocBot has actually found/opened the right
+  Edge page or tab and filled the phone number field — no new detection
+  logic needed, just hook the counter to that same `else` branch that
+  already logs "SMS-route afgerond." This mirrors the existing
+  `Telemetry_RecordPhoneAction()` semantics: "success" means DocBot
+  completed its own side of the action (the dial request was sent /
+  the SMS field was filled), never the human end-of-flow outcome (the
+  call was answered / the SMS was actually sent) — DocBot cannot observe
+  that and, by design, never sends the SMS itself.
+- [x] Update `README.md` (feature description and `Telemetrie` section) and
+  `docs/DATA_PROTECTION.md` if the new field changes what's described
+  there beyond the existing phone/hotstring counters' precedent.
+
+This changes `DocBot.ahk`/`Telemetry.ahk` behavior and the telemetry
+payload. Implemented on branch `claude/sms-actieteller-gui-telemetry-gv38n7`
+from `develop` (`2.4-dev.2`); `AppVersion` bumped to
+`2.4-sms-actieteller.1` in the same commit, later merged into `develop` and
+`release/2.4-rc`. Shipped as part of DocBot 2.4.
+
+---
+
 ## P2 — Reassess the telemetry username after the startup phase
 
 The Windows username currently supports targeted troubleshooting during the
@@ -882,6 +1610,171 @@ Before extracting a subsystem, account for:
 
 Prefer small behavior-preserving extractions with Windows regression tests over a rewrite.
 
+### Recommended first step (proposal, 2026-08-26)
+
+Start with **storage/migrations**, not telephony/SMS-UIA/GUI rendering. Reasons:
+
+- It is already the most decoupled seam in the file by a proven margin:
+  `tests/SelfTests.ahk` already calls `ReadSchemaVersion()`,
+  `RejectNewerSchemaVersion()`, `CreateHotstringItem()`,
+  `NormalizeHotstringItem()`, `AddMissingDefaultHotstrings()`,
+  `CreateSpeedDialEntry()`, `AddMissingDefaultSpeedDials()`, and
+  `GetUserDataProfile()` in isolation, with only a temporary
+  `global LocalConfig` substitution and no GUI/network/file-I/O
+  dependency. That is direct, already-passing evidence these functions
+  don't entangle with global GUI state the way telephony/SMS-UIA/GUI
+  rendering do.
+- D-053 already flagged this exact move — extracting these functions "into
+  their own included file (mirroring the existing `Telemetry.ahk` module
+  boundary)" — as the natural next step, and explicitly deferred it only
+  because it "cannot be validated by this agent (no Windows runtime
+  available, D-037)", not because of any doubt about the seam itself.
+- `Telemetry.ahk` is a live, working precedent for the target shape: a
+  `#Include`d file holding related globals + functions, no GUI, included
+  from `DocBot.ahk` without disturbing top-level init order.
+
+Concrete shape: a new `Storage.ahk` (or similar name) holding exactly the
+functions `tests/SelfTests.ahk` already covers, `#Include`d from
+`DocBot.ahk` at the same structural point `Telemetry.ahk` is included
+today. Validate with `--selftest` before and after the move (identical
+pass count and lines is the cheapest possible regression check for
+exactly this seam) plus a full manual Windows regression pass, on its own
+dedicated branch, not bundled with unrelated feature work. Explicitly do
+**not** start with telephony, SMS/UIA, or GUI rendering — those are the
+seams with heavy global-GUI-control-reference and callback-binding
+coupling this same section already warns about, and should only be
+attempted once the storage-helpers move has proven the `#Include`/
+`FileInstall`/top-level-init-order pattern works end to end without
+regressions.
+
+---
+
+## P2 — Consider folding the telemetry retry timer into `StorageRetryLoaders`
+
+Filed 2026-08-31, while fixing the `Telemetry_ReadCounter()`/
+`Telemetry_TryEnsureInstallationId()` read-race bugs (`docs/DECISIONS.md`
+D-063 validation notes).
+
+`StorageRetryLoaders` (D-063) already unified five originally-independent
+loaders onto one shared background timer because they "sit on the same
+Documents/OneDrive-backed folder... fail and recover together." Telemetry's
+installation ID and usage counters (`Telemetry_TryEnsureInstallationId()`/
+`Telemetry_TryLoadCounters()`, `Telemetry.ahk`) were deliberately left on
+their own separate timer at the time, reusing the *shape* of the existing
+D-027/D-028 retry pattern rather than joining the new shared array.
+
+That argument for staying separate looks weaker now than it did then:
+telemetry reads/writes the exact same file as `LoadAppSettings()`
+(`TelemetryConfigFile`/`ConfigFile` are both `settings.ini`) — a stronger
+case for sharing one timer than "same backing folder" ever was. The split
+already produced one real coordination bug that needed a direct patch:
+counter confirmation could land after `StorageRetry_OnAllReady()`'s
+one-time Overzicht refresh already ran, leaving the Gebruik card stuck on
+0 until a manually-added `RefreshUsageStatistics()` call in
+`Telemetry_TryLoadCounters()`'s success path fixed it (D-063 validation
+note, 2026-08-31) — a symptom of two independently-completing systems
+that a shared timer would remove structurally instead of papering over.
+
+What would need solving before folding this in, not blockers so much as
+shape mismatches with the existing `StorageRetryLoaders` `Fn`-returns-bool
+interface:
+
+- Telemetry is optional (`TelemetryConfig["Enabled"]`), but the usage
+  counters are loaded regardless of that setting (they feed the local
+  Overzicht "Gebruik" card independent of telemetry consent) — a folded-in
+  loader would need to report ready immediately when telemetry itself is
+  disabled, without also disabling the counter read.
+- The counter loader merges pending in-session actions
+  (`TelemetryPhoneActions` etc., accumulated in memory before
+  confirmation) with the freshly-confirmed disk baseline on success — the
+  five existing loaders don't have an analogous "reconcile with
+  in-flight state" step.
+- The installation-ID loader has its own extra write-then-reread
+  confirmation step for the multi-instance race (`Telemetry_
+  TryEnsureInstallationId()`), not present in any current loader.
+
+None of these look hard to adapt, just different enough from the existing
+five loaders that this is a real (if modest) refactor, not a drive-by
+change — deliberately not bundled into the read-race bugfix that surfaced
+it. Revisit as a P2 cleanup in a future development cycle, not as part of
+finishing 2.4.
+
+---
+
+## P3 — Also offer the EPD_Machine copy question for a stable release, not only `-dev`/`-rc`
+
+_Downgraded from P1 to P3 (2026-08-26, project-owner decision)._
+
+Filed by the project owner (2026-08-25). `Build-EPD_Machine.bat` only asks
+"Ook een executable naar de naastgelegen map EPD_Machine kopieren?" when
+`IS_DEVELOP` is set — and `IS_DEVELOP` is only set when `global AppVersion`
+in the source contains `-dev` or `-rc`:
+
+```bat
+rem Alleen de centrale developversie of een RC mag vanaf een directe submap
+rem van DocBot optioneel ook naar de naastgelegen applicatiemap EPD_Machine
+rem worden uitgerold.
+set "IS_DEVELOP="
+findstr /B /C:"global AppVersion" "%SOURCE%" | findstr /C:"-dev" /C:"-rc" >nul
+if not errorlevel 1 set "IS_DEVELOP=1"
+```
+
+A stable numeric `AppVersion` (e.g. `2.3`, no prerelease suffix) never
+matches `-dev`/`-rc`, so `IS_DEVELOP` stays unset and the EPD_Machine
+question — and therefore the whole `EPD_Machine.exe`/packages copy path
+below it — is silently skipped when placing a stable release, even though
+the co-located `EPD_Machine` folder may need the same update.
+
+### Scope
+
+- [ ] Extend the `IS_DEVELOP`-gated condition (or introduce a clearer,
+  separate flag) so a stable numeric `AppVersion` also triggers the
+  "Ook een executable naar de naastgelegen map EPD_Machine kopieren?"
+  question, alongside the existing `-dev`/`-rc` case — not only when a
+  development or release-candidate build is placed.
+- [ ] Decide explicitly, and document the decision here and in a code
+  comment: should this stay scoped to stable + `-dev`/`-rc` only (i.e.
+  still exclude a feature/fix branch's own prerelease build, matching the
+  existing rationale that only the central dev/RC line and now stable
+  releases are expected to also update `EPD_Machine`), or should every
+  `AppVersion` shape ask the question? Default assumption unless the
+  project owner says otherwise: keep feature/fix branch builds excluded,
+  only add stable to the existing `-dev`/`-rc` allowance.
+- [ ] Re-check the variable name `IS_DEVELOP` once the condition covers
+  stable releases too — it will no longer mean "is a development build",
+  so keep or rename it deliberately rather than leaving a now-misleading
+  name.
+- [ ] Verify the rest of the `DO_EPD_COPY` path (the `OVERWRITE_EPD_PACKAGES`
+  question and the `:deploy` call for `EPD_Machine.exe`) already behaves
+  correctly once triggered from a stable build — it should, since that path
+  does not itself branch on `IS_DEVELOP` again, only on `DO_EPD_COPY`.
+- [ ] Update the `Build-EPD_Machine.bat` description in `README.md` (and the
+  code comment above `IS_DEVELOP`) so it no longer says only a "centrale
+  developversie of een RC" gets this option.
+
+This changes `Build-EPD_Machine.bat`, not `DocBot.ahk` — no `AppVersion`
+bump applies.
+
+---
+
+## P3 — Change the sidebar slogan (done, shipped as a broader redesign in DocBot 2.4)
+
+Filed by the project owner (2026-08-26) as a narrow text swap: change the
+app subtitle shown under "DocBot" in the main window's sidebar from
+"Telefonie voor de werkplek" to "Een handje extra voor je werk".
+
+**Final outcome:** superseded on 2026-09-01 by a broader project-owner
+request (logo image + title/slogan chip, not a text swap), implemented on
+`claude/sidebar-logo-slogan` from `develop`. It briefly sat directly on
+`release/2.4-rc.1`/`release/2.4-rc` as an explicit, acknowledged exception
+to the "RC only gets bugfixes" rule, was then withdrawn back to its own
+feature branch — and was subsequently merged into `develop` and back into
+`release/2.4-rc` via PR #71 once the design settled, so it does ship as
+part of DocBot 2.4 after all. See `docs/DECISIONS.md` D-065 for the final
+design, the GDI+/non-standard-PNG-chunk bug it surfaced and its fix, and
+the fallback-to-text behavior. The original narrower text-only request
+above is superseded, not separately implemented.
+
 ---
 
 ## Resolved issues / do not reintroduce
@@ -903,6 +1796,8 @@ These problems are important historical context but are not open TODOs unless th
 - **Clipboard-based hotstring expansion:** deliberately removed/prohibited.
 - **Extended-logging integration status in durable docs:** synchronized with the integrated `develop`/RC2 source; obsolete feature-branch promotion tasks were removed while broader release-candidate acceptance remains open.
 - **Integrated problem reporting on RC2:** the dedicated compiled-Windows validation checklist was completed by the project owner on 2026-08-09, including consent/privacy boundaries, session behavior, diagnostic content, ZIP creation, and Outlook/manual fallback paths.
+- **Sidebar slogan/logo:** the originally filed P3 slogan-text change was superseded on 2026-09-01 by a broader project-owner request (logo + title/slogan chip, not a text swap), implemented on `claude/sidebar-logo-slogan` from `develop`. It briefly sat directly on `release/2.4-rc.1`/`release/2.4-rc` as an explicit, acknowledged exception to the "RC only gets bugfixes" rule, was withdrawn back to its own branch once the owner decided it should follow the normal feature-branch route, and was later merged into both `develop` and `release/2.4-rc` (PR #71) once the design settled — it ships as part of DocBot 2.4. The "DocBot" title and "Telefonie voor de werkplek" subtitle texts are replaced by the DocBot logo next to a rounded title/slogan chip ("een handje extra :)"). First Windows test showed a fully blank area (no logo, no slogan): `DocBot.png` carried a non-standard private PNG chunk (`caBX`, ~29KB, right after `IHDR`) that GDI+'s PNG decoder (`GdipCreateBitmapFromFile`) failed to load silently, while ordinary viewers/browsers ignored it fine. Fixed by re-saving `DocBot.png` with that chunk stripped (pixel data verified byte-identical) and moving the source images into `images/`. `CreateSidebarBrandBitmap()`/`BuildMainGui()` log a `DebugLog` line and fall back to the old title/subtitle text if image loading or bitmap creation ever fails again, instead of rendering nothing. See `docs/DECISIONS.md` D-065.
+- **Startup onboarding tips based on zero-usage counters:** implemented on `claude/onboarding-tips`. A yellow dismissible hint banner on Overzicht (`TipBannerSurface`/`-Accent`/`-Link`/`-CloseButton`, `EvaluateStartupTip()`) randomly picks one eligible tip per session — phone/hotstrings/sms zero-usage tips plus a "closing hides DocBot in the tray" tip that replaced the old fixed Overzicht footer text. Eligibility needs both a true condition and enough time since last shown (`[Tips]` section in `settings.ini`, separate from telemetry's `[Usage]`): at least 10 days for a tip's first `TipRepeatCapCount` (5) shows, then at least `TipLongTermIntervalMonths` (6) months — a tip never stops permanently, it just drops to a much lower frequency after the cap. Shipped as part of DocBot 2.4, field-tested on the shared `DocBot-test` profile before the stable release.
 
 ---
 

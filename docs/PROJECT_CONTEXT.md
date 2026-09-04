@@ -1,6 +1,6 @@
 # DocBot — Project Context
 
-_Last updated: 2026-08-25. This document combines the repository state around the DocBot 2.3 release and the start of the 2.4 development line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
+_Last updated: 2026-09-03. This document combines the repository state around the DocBot 2.4 release and the start of the 2.5 development line with important decisions and lessons from the project conversations that are not otherwise obvious from the source code._
 
 ## 1. Purpose
 
@@ -30,6 +30,8 @@ Current top-level structure:
 - `ThirdParty/JXON/` — JSON library and original license.
 - `ThirdParty/UIA-v2/` — UI Automation library and original license.
 - `tests/SelfTests.ahk` — opt-in self-test suite for pure migration-support logic, run via `DocBot.ahk --selftest`; see `tests/README.md` and `docs/DECISIONS.md` D-053.
+- `tools/` — PowerShell build/CI helpers (`Invoke-WithTimeout.ps1`, a timeout-and-force-kill wrapper for GUI-subsystem AutoHotkey processes; `Read-YesNoAnswer.ps1`, a single-keypress J/N prompt reader), used by `Build-EPD_Machine.bat` and `.github/workflows/ahk-syntax-check.yml`.
+- `images/` — app icon/logo assets (`DocBot.png`, `DocBot.ico`, `DocBot-slim.png`) used by the compiled executable and the sidebar branding.
 - `README.md` — end-user/developer documentation and the only maintained changelog.
 - `AGENTS.md` and `CLAUDE.md` — repository workflow rules for coding agents.
 - `LICENSE` — DocBot's own license.
@@ -44,29 +46,39 @@ Windows.
 
 ## 3. Branch and release status at handover
 
-Repository state checked on 2026-08-25:
+Repository state checked on 2026-09-04, on the assumption that `release/2.4-rc`
+(then at `AppVersion 2.4-rc.8`) ships as stable **DocBot 2.4** once the
+project owner's field test on the shared `DocBot-test` profile comes back
+clean:
 
-- `main` is the production line and represents stable **DocBot 2.3**, merged
-  from `release/2.3-rc` via PR #51 (merge commit `dbe4c52`) and tagged
-  `v2.3` on that commit. No further work is expected on `main` outside an
-  explicitly requested hotfix.
-- `release/2.3-rc` and `release/2.3-finalize` are the historical release
-  branches for 2.3; both have been deleted after merging, no further work
-  is expected on them. The full 2.3 feature/fix set is recorded in the
-  README `### 2.3 — Huidige stabiele release` changelog section — treat
-  that section, not this one, as the authoritative feature list.
-- `develop` was brought back in line with the released `main` via PR #52
-  (`chore/bring-back-2.3-to-develop`, mirroring PR #28 for 2.2) and started
-  the 2.4 development line at `AppVersion = 2.4-dev.1` (direct commit on
-  `develop`, mirroring commit `35d3937` after the 2.2 release). Verify this
+- `main` is the production line and represents stable **DocBot 2.4**, merged
+  from `release/2.4-rc` via PR #70 and tagged `v2.4` on the stable release
+  commit. No further work is expected on `main` outside an explicitly
+  requested hotfix. Verify the exact merge commit and tag against `git log`/
+  `git tag` before citing it elsewhere — this section does not repeat that
+  hash so it cannot go stale if it is ever re-derived (e.g. after a hotfix).
+- `release/2.4-rc` is the historical release branch for 2.4; expect it to be
+  deleted after merging, no further work on it. The full 2.4 feature/fix set
+  is recorded in the README `### 2.4 — Huidige stabiele release` changelog
+  section — treat that section, not this one, as the authoritative feature
+  list. Highlights: the autostart-race storage-retry/degraded-mode mechanism
+  (`docs/DECISIONS.md` D-063/D-064), startup onboarding tips, a third
+  telemetry/Overzicht counter for SMS actions, the sidebar logo/chip
+  redesign (D-065), a clipboard-read hardening fix discovered during the
+  field test that stopped a HiX-side clipboard error and an occasional
+  duplicate call window (D-066), and several diagnostics/build hardening
+  fixes (D-062, D-060/D-061).
+- `develop` was brought back in line with the released `main` and started the
+  2.5 development line at `AppVersion = 2.5-dev.1` (direct commit on
+  `develop`, mirroring the pattern used after 2.2 and 2.3). Verify this
   against `global AppVersion` in `DocBot.ahk` before relying on it, since
   this section is a point-in-time snapshot and further branches may have
   merged since.
 - `feature/extended-logging` is no longer the branch to test or integrate;
   its work shipped as part of 2.2.
-- See `docs/TODO.md` for the current backlog; the "P0 — Release plan:
-  finalize stable DocBot 2.3" section is now a completed record, not an
-  open plan.
+- See `docs/TODO.md` for the current backlog; the P0 sections for the
+  autostart-race work and for finalizing stable DocBot 2.4 are completed
+  records, not open plans, once the release above actually lands.
 
 Do not infer functional validation from source integration alone for future
 cycles. Both the 2.2 feature work and the D-044 diagnostics-retention work
@@ -115,6 +127,7 @@ before declaring a change complete, not just source review.
 - Request objects are intentionally separate for registration, polling, and dialing. Do not collapse them into one shared mutable XHR object.
 - Event polling is chained: the next poll starts after the previous request finishes. Do not restore a fixed-interval overlapping poll timer.
 - Clipboard detection supports Dutch external numbers and a deliberately separate path for internal four-digit numbers.
+- Reading the clipboard on a detected sequence-number change is deliberately delayed and retried (`ReadClipboardTextSafely()`), and the result is discarded if the sequence number changed again during that wait. Reading immediately can make another application's own multi-step clipboard write fail (observed as a clipboard error in HiX) or attach stale content to the earlier detection (`docs/DECISIONS.md` D-066). Do not remove the delay/retry or the staleness check to "simplify" this path.
 
 ### 4.4 Call action and SMS assistance
 
@@ -136,7 +149,7 @@ Requirements for the SMS path:
 - An `SmsCallAction` may optionally set `TextFieldId`, the field id of a second, message-body field on the same SMS page. Where set, and where the user has configured a default text for that page's `Title` on Instellingen (`sms-default-texts.json`), DocBot best-effort-fills that field too, right after the phone-number fill succeeds — a failed text fill never turns an otherwise-successful SMS action into a reported failure, and is only logged.
 - The default-text field on Instellingen is multiline and preserves real newlines (hard Enters), reusing the same control already used for the multiline hotstring Replacement editor.
 - The cancel/SMS/call dialog is keyboard-operable with left/right plus Enter and must paint its initial visual selection correctly.
-- Only one call-action dialog (confirmation, or the cancel/SMS/call choice) may be open at a time. A newer clipboard-detected number always closes a still-open older dialog first — with a short notification — regardless of which action the new number then triggers (a new dialog, an immediate call, or no action). Do not reintroduce stacking dialogs by adding a new outcome path that skips this close step.
+- Only one call-action dialog (confirmation, or the cancel/SMS/call choice) may be open at a time. A newer clipboard-detected number always closes a still-open older dialog first — with a short notification — regardless of which action the new number then triggers (a new dialog, an immediate call, or no action). Do not reintroduce stacking dialogs by adding a new outcome path that skips this close step. The one exception: a repeat detection of the exact same number while its own dialog is still open is treated as a duplicate (e.g. Windows Clipboard History re-touching the clipboard) and ignored, instead of closing and reopening an identical dialog.
 - `State["IPT"]["ClipBoardNumber"]` is cleared immediately once the current action is handed off, completed, or cancelled (call placed, SMS started, dialog cancelled/closed, or no action configured) — not left until the next number is detected or the app exits.
 
 ### 4.5 Help and GUI
@@ -145,6 +158,17 @@ Requirements for the SMS path:
 - Help contains expandable topics and clickable navigation links into DocBot pages.
 - Managed Windows environments are part of the design target. `TrayTip()` proved unreliable under group policy and was replaced by a custom always-visible notification window.
 - Globals needed while building the GUI must be initialized in the top globals block before the auto-execute section. AutoHotkey v2 executes top-level statements in file order; moving such globals lower in the file can create runtime failures even though function definitions themselves are parsed earlier.
+- Overzicht shows a dismissible yellow onboarding-tip banner that rotates
+  through a small set of tips pointing at unused functionality (linking
+  telephony, hotstrings, SMS default texts) plus a tip about the
+  tray-close behavior, gated on both a per-tip repeat cap and a minimum
+  interval since last shown (`[Tips]` in `settings.ini`, separate from
+  telemetry's `[Usage]`). A tip is never permanently retired, only shown
+  much less often once its repeat cap is reached.
+- The sidebar title/subtitle text was replaced by the DocBot logo next to a
+  rounded chip carrying the title and slogan (`docs/DECISIONS.md` D-065);
+  a failure to load or render the logo falls back to the original
+  title/subtitle text instead of rendering nothing.
 
 ### 4.6 Storage profiles
 
@@ -168,7 +192,9 @@ Debug logging lives under LocalAppData, not the Documents profile.
 
 ### 4.7 OneDrive / storage behavior
 
-A real production issue occurred because one user's Documents/OneDrive location was not reliably writable at startup. The first attempted fix added a broad startup writeability gate. That proved too aggressive and was later removed.
+A real production issue occurred because one user's Documents/OneDrive location was not reliably writable at startup. The first attempted fix added a broad startup writeability gate. That proved too aggressive and was later removed (`docs/DECISIONS.md` D-026).
+
+A second, related production issue occurred (2026-08-28): DocBot started via autostart before OneDrive had fully mounted. Because only the telemetry installation ID had a retry strategy at the time, every other startup loader (settings, hotstrings, package settings, speed dial, SMS default texts) permanently ran the rest of that session on defaults after one failed attempt, and `InitializeUserStorage()` could hard-exit the app entirely if preparing a not-yet-existing profile folder failed under the same race. Fixed by generalizing the installation-ID retry pattern to all of these (`docs/DECISIONS.md` D-063) and making the previously-silent failure visible instead of silently wrong (`docs/DECISIONS.md` D-064) — see `docs/ARCHITECTURE.md` §7.4 for the mechanism.
 
 Current intended behavior:
 
@@ -179,7 +205,21 @@ Current intended behavior:
   launch itself and showed the user an intrusive security dialog on every
   startup, for a best-effort optimization that was never load-bearing;
 - each actual write path keeps focused error handling;
-- telemetry installation-ID creation has its own retry strategy when persistence is temporarily unavailable.
+- every startup storage loader (user-data folder, settings, hotstrings,
+  package settings, speed dial, SMS default texts) shares one background
+  retry timer, mirroring telemetry installation-ID creation's existing
+  retry strategy — not five-plus independent ones, but each loader's own
+  diagnosis stays independent (`docs/DECISIONS.md` D-063);
+- whether a not-yet-existing profile folder means a genuine first run or
+  OneDrive just isn't mounted yet is resolved with a real write-probe
+  (create a temporary folder, see if it can be written), never assumed
+  from a single existence check, and a failure here no longer prevents
+  DocBot from starting (`docs/DECISIONS.md` D-063);
+- while any of these loaders has not yet succeeded, the affected
+  functionality is visibly and genuinely unavailable (a persistent banner,
+  hidden — not disabled — content, a neutral sidebar status), not silently
+  running on defaults; telephony registration/linking is the one exception
+  and keeps working throughout (`docs/DECISIONS.md` D-064).
 
 ### 4.8 Telemetry and privacy
 
@@ -194,7 +234,13 @@ If enabled, the current payload includes:
 - started/last-seen timestamps;
 - phone-linked and hotstrings-enabled status;
 - cumulative phone-action count;
-- cumulative long/multiline-hotstring count.
+- cumulative long/multiline-hotstring count;
+- cumulative SMS-action count.
+
+The three cumulative counters share the same read-confirm-before-write
+retry discipline as the installation ID (`docs/DECISIONS.md` D-063): a
+failed read no longer silently defaults to `0` and risks a later write
+overwriting the real cumulative value.
 
 It deliberately does **not** include computer name, called telephone numbers, hotstring triggers, replacement text, package content, or clipboard content.
 
@@ -210,7 +256,7 @@ Installation-ID durability is important:
 
 ### 4.9 Diagnostics and problem reporting
 
-Baseline diagnostics include a bounded/buffered background log at `%LocalAppData%\DocBot\debug.log` and a developer-only live debug window. The current DocBot code also contains the user-facing `Probleem melden...` flow through Help and the tray menu (shipped as part of 2.2, still present in 2.3).
+Baseline diagnostics include a bounded/buffered background log at `%LocalAppData%\DocBot\debug.log` and a developer-only live debug window. The current DocBot code also contains the user-facing `Probleem melden...` flow through Help and the tray menu (shipped as part of 2.2, still present in 2.4).
 
 The implementation has two reporting paths:
 
