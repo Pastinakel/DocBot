@@ -1769,6 +1769,57 @@ and update the branch-specific `AppVersion` in every commit that changes
 
 ---
 
+## P2 — Make the telemetry installation ID visible to the user, e.g. on the Over page
+
+Filed by the project owner. The pseudonymous `InstallationId` (stored as
+`[Telemetry] InstallationId` in `settings.ini`, created by
+`Telemetry_TryEnsureInstallationId()` in `Telemetry.ahk`) is currently
+invisible to the user — only the developer/support person can see it,
+via the telemetry heartbeat payload. Showing it in-app would let a user
+share it when reporting an issue, so a lookup against the telemetry
+records does not depend on cross-referencing username/timestamps.
+
+### Scope
+
+- [ ] Add the installation ID to the Over page, most likely alongside the
+  existing version text built in `BuildAboutText()` (`DocBot.ahk`).
+- [ ] `Telemetry_TryEnsureInstallationId()` only creates/loads an ID when
+  `TelemetryConfig["Enabled"]` is true — decide and implement what the Over
+  page shows when telemetry is disabled or the ID has not yet been
+  confirmed/persisted (e.g. still retrying after a startup storage hiccup,
+  D-063): omit the line entirely, or show an explicit "niet beschikbaar"
+  state. Do not show a blank or partially-written value.
+- [ ] Consider a copy-to-clipboard affordance so a user can paste the ID
+  into a problem report or support message — if added, confirm it does not
+  conflict with DocBot's own clipboard-based phone-number detection (a
+  copied installation ID should not be picked up as a phone number by
+  `ClipBoardPoller()`; it won't match `NormalizePhoneNumber()`'s patterns,
+  but verify rather than assume).
+- [ ] Decide the exact label/wording with the project owner — this is
+  user-facing text, not just a technical identifier dump; briefly explain
+  what it is for (support lookups) so it isn't mistaken for something more
+  sensitive.
+- [ ] This does not change what data is collected or sent — the
+  installation ID is already generated, stored, and transmitted today; this
+  only adds a display surface for a value the user's own installation
+  already holds. Confirm with a quick reread of `docs/DATA_PROTECTION.md`
+  §3.8/§2.2 and `README.md`'s `Telemetrie` section that no wording there
+  needs to change; update it only if this task's wording review finds
+  something genuinely inconsistent, since the payload/collection itself
+  is unaffected.
+- [ ] Consider whether this affects the P2 "Reassess the telemetry username
+  after the startup phase" item above: making the installation ID
+  self-service-visible for support purposes could strengthen the case for
+  eventually dropping the Windows username from the payload, since the
+  user could supply the pseudonymous ID directly instead of support relying
+  on the username to find them.
+
+This changes `DocBot.ahk` behavior (visible UI text). Implement it on a
+dedicated feature/fix branch from the then-current `develop` and update the
+branch-specific `AppVersion` in the same commit.
+
+---
+
 ## P3 — Also offer the EPD_Machine copy question for a stable release, not only `-dev`/`-rc`
 
 _Downgraded from P1 to P3 (2026-08-26, project-owner decision)._
