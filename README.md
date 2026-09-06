@@ -497,6 +497,13 @@ risicoanalyse.
 Changelog
 ---------
 
+### 2.5 — In ontwikkeling
+- De sidebar viel bij een mislukte logo-tekening terug op de oude
+  ondertitel "Telefonie voor de werkplek", terwijl de sidebar inmiddels de
+  slogan "een handje extra :)" toont. De terugvaltekst is bijgewerkt zodat
+  deze zeldzame foutsituatie dezelfde slogan laat zien als de normale
+  weergave.
+
 ### 2.4 — Huidige stabiele release
 - De sidebar toont niet langer de titel "DocBot" en de ondertitel
   "Telefonie voor de werkplek" als platte tekst, maar het DocBot-robotlogo

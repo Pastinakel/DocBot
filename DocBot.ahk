@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-dev.1"
+global AppVersion := "2.5-sidebar-fallback.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -498,7 +498,7 @@ BuildMainGui() {
         DebugLog("✕", "Sidebar-logo", "Kon logo/slogan niet tekenen (" brandError.Message "); terugval op titel/subtitle.")
         appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
         appTitle.SetFont("s18 bold c" C["Text"], "Segoe UI")
-        appSub := MainGui.AddText("x28 y52 w170 h18 Background" C["Sidebar"], "Telefonie voor de werkplek")
+        appSub := MainGui.AddText("x28 y52 w170 h18 Background" C["Sidebar"], "een handje extra :)")
         appSub.SetFont("s9 c" C["Muted"], "Segoe UI")
     }
 
