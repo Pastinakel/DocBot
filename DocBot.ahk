@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-dev.1"
+global AppVersion := "2.5-teleq-diagnose.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -4801,6 +4801,35 @@ ReadClipboardTextSafely() {
     return ""
 }
 
+; TIJDELIJK — alleen om de vereiste TeleQ window-/control-identifiers te
+; achterhalen voor docs/TODO.md "P2 — TeleQ → HiX patient search"
+; (niveau 1). Schrijft uitsluitend naar de uitgebreide log (nooit naar de
+; standaardlog), dus alleen zichtbaar tijdens een bewust gestarte,
+; consent-gated sessie via "Probleem melden...". Verwijderen zodra de
+; identifiers bekend en in dat TODO-item vastgelegd zijn.
+LogClipboardSourceDiagnostics_TeleQ() {
+    try {
+        hwnd := WinExist("A")
+        tekst := "Venster: title='" WinGetTitle("ahk_id " hwnd)
+            "' proces='" WinGetProcessName("ahk_id " hwnd)
+            "' class='" WinGetClass("ahk_id " hwnd) "'"
+    } catch as winError {
+        tekst := "Venster: onbekend (" winError.Message ")"
+    }
+
+    try {
+        elem := UIA.GetFocusedElement()
+        tekst .= " | Focuselement: AutomationId='" elem.AutomationId
+            "' class='" elem.ClassName
+            "' type='" elem.LocalizedControlType
+            "' naam='" elem.Name "'"
+    } catch as uiaError {
+        tekst .= " | Focuselement: onbekend (" uiaError.Message ")"
+    }
+
+    ExtendedDebugLog("•", "TeleQ-diagnose", tekst)
+}
+
 ClipBoardPoller() {
     global State, StorageAllReady, PhoneActionDialogState
     static lastSeq := DllCall("GetClipboardSequenceNumber")  ; voorkomt dat de klembordinhoud bij opstarten al wordt opgepakt
@@ -4833,6 +4862,8 @@ ClipBoardPoller() {
 
     if externalTel = "" && internalTel = ""
         return
+
+    LogClipboardSourceDiagnostics_TeleQ()
 
     if !StorageAllReady {
         ; CallAction en de andere instellingen die de belactie-flow
