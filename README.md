@@ -503,6 +503,12 @@ Changelog
   slogan "een handje extra :)" toont. De terugvaltekst is bijgewerkt zodat
   deze zeldzame foutsituatie dezelfde slogan laat zien als de normale
   weergave.
+- Een onboardingtip op Overzicht kon blijven staan nadat de bijbehorende
+  functie al was gebruikt, bijvoorbeeld de hint over hotstrings terwijl de
+  teller "Lange hotstrings" al hoger dan 0 stond. Dit gebeurde wanneer de
+  functie werd gebruikt terwijl Overzicht al de actieve pagina was: de tip
+  werd dan pas herbeoordeeld bij een volgende paginawissel. De tip
+  verdwijnt nu direct zodra de bijbehorende gebruiksteller wordt bijgewerkt.
 
 ### 2.4 — Huidige stabiele release
 - De sidebar toont niet langer de titel "DocBot" en de ondertitel
