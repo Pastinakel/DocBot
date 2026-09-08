@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-teleq-diagnose.1"
+global AppVersion := "2.5-teleq-diagnose.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -4810,19 +4810,19 @@ ReadClipboardTextSafely() {
 LogClipboardSourceDiagnostics_TeleQ() {
     try {
         hwnd := WinExist("A")
-        tekst := "Venster: title='" WinGetTitle("ahk_id " hwnd)
-            "' proces='" WinGetProcessName("ahk_id " hwnd)
-            "' class='" WinGetClass("ahk_id " hwnd) "'"
+        tekst := "Venster: title='" WinGetTitle("ahk_id " hwnd) "'"
+        tekst .= " proces='" WinGetProcessName("ahk_id " hwnd) "'"
+        tekst .= " class='" WinGetClass("ahk_id " hwnd) "'"
     } catch as winError {
         tekst := "Venster: onbekend (" winError.Message ")"
     }
 
     try {
         elem := UIA.GetFocusedElement()
-        tekst .= " | Focuselement: AutomationId='" elem.AutomationId
-            "' class='" elem.ClassName
-            "' type='" elem.LocalizedControlType
-            "' naam='" elem.Name "'"
+        tekst .= " | Focuselement: AutomationId='" elem.AutomationId "'"
+        tekst .= " class='" elem.ClassName "'"
+        tekst .= " type='" elem.LocalizedControlType "'"
+        tekst .= " naam='" elem.Name "'"
     } catch as uiaError {
         tekst .= " | Focuselement: onbekend (" uiaError.Message ")"
     }
