@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-dev.1"
+global AppVersion := "2.5-tip-teller-mismatch.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2631,6 +2631,14 @@ RefreshUsageStatistics() {
         OverviewLongHotstringActionsText.Value := Telemetry_GetLongHotstringActions()
     if IsObject(OverviewSmsActionsText)
         OverviewSmsActionsText.Value := Telemetry_GetSmsActions()
+
+    ; Een tip-conditie ("teller = 0") kan hierdoor net zijn vervallen zonder
+    ; dat de gebruiker via ShowPage() naar Overzicht is genavigeerd (bijv.
+    ; een lange hotstring uitvoeren terwijl Overzicht al de actieve pagina
+    ; is): zonder deze aanroep bleef de balk dan tonen terwijl de teller al
+    ; hoger dan 0 stond. Zie ReevaluateTipBannerCondition().
+    ReevaluateTipBannerCondition()
+    ApplyTipBannerVisibility()
 }
 
 CallActionChanged(value, *) {
