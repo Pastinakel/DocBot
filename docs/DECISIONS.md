@@ -2861,13 +2861,21 @@ image regresses the same way.
 - `images/` is now a real top-level content directory (moved out of the
   repository root), referenced from `DocBot.ahk` and embedded via
   `FileInstall`/Ahk2Exe at compile time like the rest of the app's assets.
-- The literal strings "DocBot" (title) and "Telefonie voor de werkplek"
-  (old subtitle) remain in `DocBot.ahk` only as the fallback path's text,
-  not as the primary rendered UI.
 - Final layout (logo size, chip width/margins, text scale) was hand-tuned
   against the project owner's feedback over several iterations; see the
   `claude/sidebar-logo-slogan` branch history for the intermediate steps
   if the exact geometry ever needs revisiting.
+
+**Addendum (2026-09-06): fallback text brought in line with the shipped
+slogan**
+
+The fallback path's subtitle still read the old, pre-redesign
+"Telefonie voor de werkplek" text, so a future logo/bitmap failure would
+have shown a subtitle that no longer matches the slogan used everywhere
+else ("een handje extra :)"). Updated the fallback `AddText()` string in
+`BuildMainGui()` to "een handje extra :)" so the degraded path is
+consistent with the primary rendering. No layout change; the fallback
+control's size/position are unchanged.
 
 ---
 
