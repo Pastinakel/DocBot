@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-tip-teller-mismatch.1"
+global AppVersion := "2.5-tip-teller-mismatch.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2637,8 +2637,13 @@ RefreshUsageStatistics() {
     ; een lange hotstring uitvoeren terwijl Overzicht al de actieve pagina
     ; is): zonder deze aanroep bleef de balk dan tonen terwijl de teller al
     ; hoger dan 0 stond. Zie ReevaluateTipBannerCondition().
-    ReevaluateTipBannerCondition()
-    ApplyTipBannerVisibility()
+    ; Telemetry_TryLoadCounters() (Telemetry.ahk) roept deze functie ook aan
+    ; zodra de echte, opgeslagen tellers laat bevestigen — dat kan al vóór
+    ; BuildMainGui() synchroon gebeuren, wanneer de tip-balk nog niet bestaat.
+    if IsObject(OverviewPhoneActionsText) {
+        ReevaluateTipBannerCondition()
+        ApplyTipBannerVisibility()
+    }
 }
 
 CallActionChanged(value, *) {
