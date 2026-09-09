@@ -13,6 +13,8 @@
 ; InitializeBundledPackages() in DocBot.ahk), de idempotentie van de
 ; eenmalige standaardwaarde-migraties voor persoonlijke hotstrings en
 ; snelkiesnummers (AddMissingDefaultHotstrings / AddMissingDefaultSpeedDials),
+; de eenmalige, waardegematchte typefoutcorrectie op een standaard-hotstring
+; (FixKnownDefaultHotstringTypos; docs/MIGRATIONS.md schema 6),
 ; de gebruikersprofielkeuze (GetUserDataProfile; docs/DECISIONS.md D-056),
 ; de telefoonnummernormalisatie (NormalizePhoneNumber en de interne/externe
 ; varianten, NormalizeSmsPhoneNumber) en de standaardlog-opschoonclassificatie
@@ -38,6 +40,7 @@ RunSelfTests() {
     RunSelfTestCase(results, "TestRejectNewerSchemaVersion", TestRejectNewerSchemaVersion)
     RunSelfTestCase(results, "TestNormalizeHotstringItemIdempotency", TestNormalizeHotstringItemIdempotency)
     RunSelfTestCase(results, "TestAddMissingDefaultHotstringsIdempotency", TestAddMissingDefaultHotstringsIdempotency)
+    RunSelfTestCase(results, "TestFixKnownDefaultHotstringTypos", TestFixKnownDefaultHotstringTypos)
     RunSelfTestCase(results, "TestAddMissingDefaultSpeedDialsIdempotency", TestAddMissingDefaultSpeedDialsIdempotency)
     RunSelfTestCase(results, "TestCreateSpeedDialEntryDefaults", TestCreateSpeedDialEntryDefaults)
     RunSelfTestCase(results, "TestGetUserDataProfile", TestGetUserDataProfile)
@@ -224,6 +227,41 @@ TestAddMissingDefaultHotstringsIdempotency(results) {
     } finally {
         LocalConfig := originalConfig
     }
+}
+
+TestFixKnownDefaultHotstringTypos(results) {
+    untouched := [
+        CreateHotstringItem("mvg", "Met vriendelijk groet", "", true, DefaultHotstringOptions(), "")
+    ]
+    fixedCount := FixKnownDefaultHotstringTypos(untouched)
+    AssertEqual(results, "FixKnownDefaultHotstringTypos corrigeert de onaangeraakte standaardtekst", fixedCount, 1)
+    AssertEqual(
+        results,
+        "FixKnownDefaultHotstringTypos zet de tekst om naar de gecorrigeerde waarde",
+        untouched[1]["Replacement"],
+        "Met vriendelijke groet"
+    )
+
+    secondRun := FixKnownDefaultHotstringTypos(untouched)
+    AssertEqual(results, "FixKnownDefaultHotstringTypos is idempotent bij een tweede aanroep", secondRun, 0)
+
+    edited := [
+        CreateHotstringItem("mvg", "Groetjes", "", true, DefaultHotstringOptions(), "")
+    ]
+    editedFixedCount := FixKnownDefaultHotstringTypos(edited)
+    AssertEqual(results, "FixKnownDefaultHotstringTypos laat een bewuste gebruikersaanpassing ongemoeid", editedFixedCount, 0)
+    AssertEqual(
+        results,
+        "FixKnownDefaultHotstringTypos verandert de aangepaste tekst niet",
+        edited[1]["Replacement"],
+        "Groetjes"
+    )
+
+    alreadyFixed := [
+        CreateHotstringItem("mvg", "Met vriendelijke groet", "", true, DefaultHotstringOptions(), "")
+    ]
+    alreadyFixedCount := FixKnownDefaultHotstringTypos(alreadyFixed)
+    AssertEqual(results, "FixKnownDefaultHotstringTypos laat een al door de gebruiker gecorrigeerde tekst ongemoeid", alreadyFixedCount, 0)
 }
 
 TestAddMissingDefaultSpeedDialsIdempotency(results) {
