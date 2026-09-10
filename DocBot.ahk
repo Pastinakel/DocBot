@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-dev.2"
+global AppVersion := "2.5-ipt-comobject-timeouts.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -87,15 +87,33 @@ global C := Map(
 
 ; Technische instellingen mogen in Git staan; adressen en endpointnamen
 ; worden uitsluitend uit de niet-geversioneerde lokale configuratie gelezen.
+;
+; ComObject is Msxml2.ServerXMLHTTP.6.0, niet het eerder gebruikte
+; Msxml2.XMLHTTP.6.0: alleen ServerXMLHTTP (en WinHttp.WinHttpRequest.5.1,
+; waar IPT_poller() al apart rekening mee houdt) ondersteunt SetTimeouts().
+; Gewoon XMLHTTP kent geen enkel time-out-mechanisme, wat vermoedelijk de
+; oorzaak is van meermaals gerapporteerde DocBot-vastlopers tijdens bellen/
+; registreren/pollen — zie docs/DECISIONS.md D-067. ServerXMLHTTP gebruikt
+; WinHTTP in plaats van WinInet: bij problemen met proxy- of Windows-
+; integrated-authenticatie tegen de telefonieserver is dat het eerste om op
+; te controleren.
+;
+; RequestTimeoutsMs (resolve, connect, send, receive in ms) geldt voor de
+; korte request/antwoord-aanroepen (registreren, bellen). PollTimeoutsMs
+; geldt uitsluitend voor de bewuste long-poll (GetEvent) en heeft daarom een
+; veel ruimere receive-waarde: te kort zou een legitiem wachtende long-poll
+; voortijdig afbreken.
 global IPTConfig := Map(
-    "ComObject", "Msxml2.XMLHTTP.6.0",
+    "ComObject", "Msxml2.ServerXMLHTTP.6.0",
     "URL", LocalConfig["Telephony"]["BaseUrl"],
     "AllocatePage", LocalConfig["Telephony"]["AllocateEndpoint"],
     "EventPage", LocalConfig["Telephony"]["EventEndpoint"],
     "DialPage", LocalConfig["Telephony"]["DialEndpoint"],
     "DialPageNumberParam", "number",
     "DialPageSidParam", "sid",
-    "RegisterMinIntervalMs", 10000
+    "RegisterMinIntervalMs", 10000,
+    "RequestTimeoutsMs", [5000, 5000, 5000, 15000],
+    "PollTimeoutsMs", [5000, 5000, 5000, 120000]
 )
 
 ; SmsCallAction mag voor achterwaartse compatibiliteit één Map zijn, of een
@@ -2874,6 +2892,27 @@ MoveSpeedDialDown(*) {
 ; IP-TELEFONIE (registratie, polling en bellen)
 ; =============================================================================
 
+; Zet expliciete time-outs op een IPT-COM-verzoek, in try/catch: niet elk
+; COM-object dat ooit voor IPTConfig["ComObject"] gekozen kan worden
+; ondersteunt SetTimeouts() (alleen Msxml2.ServerXMLHTTP en
+; WinHttp.WinHttpRequest doen dat — zie de toelichting bij IPTConfig).
+; Ontbreekt de methode, dan gaat het verzoek gewoon zonder expliciete
+; time-out door (het oude gedrag) in plaats van te mislukken op een
+; ontbrekende COM-methode.
+ApplyIPTTimeouts(request, timeouts) {
+    try
+        request.SetTimeouts(timeouts[1], timeouts[2], timeouts[3], timeouts[4])
+}
+
+; Meermaals gerapporteerde DocBot-vastlopers bleken samen te vallen met
+; precies dit punt: Send() op het IPT-COM-object kan, zonder expliciete
+; time-out, minutenlang blokkeren zonder ooit een fout te geven (zie
+; docs/DECISIONS.md D-067). De try/catch en de "Send() teruggekeerd/
+; mislukt"-regels hieronder (met verstreken tijd) bestaan specifiek om een
+; volgend incident te kunnen onderscheiden tussen "Send() zelf hing vast"
+; (geen van beide regels verschijnt) en "Send() keerde terug, iets anders
+; liep vast" (wel de "teruggekeerd"-regel, dan stilte) — beide met
+; onmiddellijke flush, zodat ze een vastloper overleven.
 IPT_callNumber(telNummer := "", isRegistrationCall := false) {
     global IPTConfig, IPTDialRequest, State
 
@@ -2894,12 +2933,30 @@ IPT_callNumber(telNummer := "", isRegistrationCall := false) {
         . "&" . IPTConfig["DialPageSidParam"] . "=0." . A_TickCount . A_TimeIdle
 
     DebugLog("→", IPTConfig["DialPage"], url)
+    FlushDebugLog()
 
     IPTDialRequest := ComObject(IPTConfig["ComObject"])
     IPTDialRequest.Open("POST", url, true)
     IPTDialRequest.SetRequestHeader("Accept-Language", "nl-NL")
+    ApplyIPTTimeouts(IPTDialRequest, IPTConfig["RequestTimeoutsMs"])
     IPTDialRequest.onreadystatechange := IPT_DialResponse
-    IPTDialRequest.Send("")
+
+    sendStartedAt := A_TickCount
+    try {
+        IPTDialRequest.Send("")
+    } catch as sendError {
+        DebugLog(
+            "✕",
+            IPTConfig["DialPage"] . " Send() mislukt",
+            "Na " . (A_TickCount - sendStartedAt) . "ms: " . sendError.Message
+        )
+        FlushDebugLog()
+        ShowNotification("Er is een fout opgetreden bij het bellen.", 4000, "error")
+        return
+    }
+    DebugLog("✓", IPTConfig["DialPage"] . " Send() teruggekeerd", "Na " . (A_TickCount - sendStartedAt) . "ms.")
+    FlushDebugLog()
+
     Telemetry_RecordPhoneAction()
     RefreshUsageStatistics()
 }
@@ -2930,18 +2987,37 @@ IPT_DialResponse() {
 ; cooldown staat terwijl de gebruiker nog niets heeft geklikt. Een
 ; handmatige klik (via RefreshRegistrationStatus()) roept dit zonder
 ; argument aan en start de cooldown dus wel, zoals voorheen.
+; Zie de toelichting bij IPT_callNumber() over het waarom van de
+; try/catch en de "Send() teruggekeerd/mislukt"-regels hieronder.
 IPT_register(startCooldown := true) {
     global IPTConfig, State, IPTRegisterRequest
 
     url := IPTConfig["URL"] . IPTConfig["AllocatePage"] . "?sid=0." . A_TickCount . A_TimeIdle
 
     DebugLog("→", IPTConfig["AllocatePage"], url)
+    FlushDebugLog()
 
     IPTRegisterRequest := ComObject(IPTConfig["ComObject"])
     IPTRegisterRequest.Open("POST", url, true)
     IPTRegisterRequest.SetRequestHeader("Accept-Language", "nl-NL")
+    ApplyIPTTimeouts(IPTRegisterRequest, IPTConfig["RequestTimeoutsMs"])
     IPTRegisterRequest.onreadystatechange := IPT_RegisterResponse
-    IPTRegisterRequest.Send("")
+
+    sendStartedAt := A_TickCount
+    try {
+        IPTRegisterRequest.Send("")
+    } catch as sendError {
+        DebugLog(
+            "✕",
+            IPTConfig["AllocatePage"] . " Send() mislukt",
+            "Na " . (A_TickCount - sendStartedAt) . "ms: " . sendError.Message
+        )
+        FlushDebugLog()
+        ShowNotification("Aanmelden bij de telefonieserver is mislukt.", 4000, "error")
+        return
+    }
+    DebugLog("✓", IPTConfig["AllocatePage"] . " Send() teruggekeerd", "Na " . (A_TickCount - sendStartedAt) . "ms.")
+    FlushDebugLog()
 
     ; Herstart de poll-keten als die gestopt was (bijv. na een eerdere
     ; StopEventLoop). Alleen opnieuw starten als hij niet al loopt, anders
@@ -3011,6 +3087,13 @@ UpdateRegisterButtonState() {
     }
 }
 
+; Zie de toelichting bij IPT_callNumber() over het waarom van de
+; try/catch en de "Send() teruggekeerd/mislukt"-regels hieronder. Anders dan
+; bij registreren/bellen mag de pollketen bij een mislukte Send() nooit
+; stilzwijgend stoppen: zonder herplanning ontvangt DocBot tot een herstart
+; geen telefonie-events meer. Zelfde "opnieuw plannen na deze ronde"-patroon
+; als IPT_PollResponse() al bij een ontvangen (ook een foutieve) respons
+; toepast.
 IPT_poller() {
     global IPTConfig, State, IPTPollRequest
 
@@ -3024,17 +3107,35 @@ IPT_poller() {
     url := IPTConfig["URL"] . IPTConfig["EventPage"] . "?sid=0." . A_TickCount . A_TimeIdle
 
     DebugLog("→", IPTConfig["EventPage"], url)
+    FlushDebugLog()
 
     IPTPollRequest := ComObject(IPTConfig["ComObject"])
     IPTPollRequest.Open("POST", url, true)
     IPTPollRequest.SetRequestHeader("Accept-Language", "nl-NL")
+    ApplyIPTTimeouts(IPTPollRequest, IPTConfig["PollTimeoutsMs"])
 
     if IPTConfig["ComObject"] = "WinHttp.WinHttpRequest.5.1"
         IPTPollRequest.OnResponseDataAvailable := IPT_PollResponse
     else
         IPTPollRequest.onreadystatechange := IPT_PollResponse
 
-    IPTPollRequest.Send("")
+    sendStartedAt := A_TickCount
+    try {
+        IPTPollRequest.Send("")
+    } catch as sendError {
+        DebugLog(
+            "✕",
+            IPTConfig["EventPage"] . " Send() mislukt",
+            "Na " . (A_TickCount - sendStartedAt) . "ms: " . sendError.Message
+        )
+        FlushDebugLog()
+
+        if State["IPT"]["NeedUpdate"] > -1
+            SetTimer IPT_poller, -10
+        return
+    }
+    DebugLog("✓", IPTConfig["EventPage"] . " Send() teruggekeerd", "Na " . (A_TickCount - sendStartedAt) . "ms.")
+    FlushDebugLog()
 }
 
 IPT_PollResponse() {

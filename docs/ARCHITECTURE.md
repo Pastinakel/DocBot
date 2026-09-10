@@ -408,6 +408,18 @@ When a user edits or saves a package item as personal, the application writes a 
   `Telephony.BaseUrl`, so every request built from `IPTConfig["URL"]`
   inherits that guarantee without a separate per-call check
   (`docs/DECISIONS.md` D-043).
+- `IPTConfig["ComObject"]` is `Msxml2.ServerXMLHTTP.6.0`, not the plain
+  `Msxml2.XMLHTTP.6.0` used before. Only `ServerXMLHTTP` (and
+  `WinHttp.WinHttpRequest.5.1`, which `IPT_poller()` already special-cases
+  for its response-event name) supports `SetTimeouts()`; plain `XMLHTTP`
+  has no timeout mechanism at all, which repeated field reports tied to
+  multi-minute DocBot hangs during registering/polling/dialing — see
+  `docs/DECISIONS.md` D-067. `ApplyIPTTimeouts()` applies
+  `IPTConfig["RequestTimeoutsMs"]` (register/dial — short request/response)
+  or `IPTConfig["PollTimeoutsMs"]` (the deliberate GetEvent long-poll, much
+  more generous) right after each `ComObject()` call, in `try`/`catch`
+  since not every COM object this could ever be configured to supports the
+  method.
 
 ### 11.2 Request lifecycle
 
@@ -418,10 +430,15 @@ Core flows:
 ```text
 IPT_register()
   -> request registration/link information
+  -> Send() failed (caught, logged with elapsed ms, flushed immediately —
+       D-067): notify failure, stop here; poll chain is not (re)started
   -> update registration UI/state
 
 IPT_poller()
   -> issue one long/event poll
+  -> Send() failed (caught, logged with elapsed ms, flushed immediately —
+       D-067): reschedule the next poll anyway (same as a received
+       response, error or not) so the chain never silently stops
   -> IPT_PollResponse()
   -> process event/state
   -> schedule/start next poll after completion
@@ -430,8 +447,16 @@ IPT_callNumber()
   -> normalize/validate number
   -> ensure linked phone unless this is the linking call
   -> issue dial request
+  -> Send() failed (caught, logged with elapsed ms, flushed immediately —
+       D-067): notify failure, stop here
   -> update diagnostics/telemetry where appropriate
 ```
+
+Every `Send()` call above is wrapped so a failure is caught and logged
+with how long it took, and every outgoing-request log line is flushed
+immediately rather than left in `DebugLog()`'s normal buffer — see D-067:
+without an explicit timeout, `Send()` itself could previously block for
+minutes with nothing to catch and nothing on disk to show it happened.
 
 The event loop is chained rather than a fixed periodic timer to avoid overlapping long polls.
 

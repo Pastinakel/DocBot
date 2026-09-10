@@ -2962,3 +2962,121 @@ closed" notice, even though the user had only copied once.
   unresponsive call flow.
 - See the README `### 2.4` changelog for the user-facing summary of this
   fix.
+
+## D-067 — Bound the telephony COM requests with explicit timeouts (test fix for reported hangs)
+
+**Status:** Proposed, implemented on `claude/ipt-comobject-timeouts`
+(branched from `develop`), not yet validated on Windows (D-037) or
+confirmed to fix the reported hangs. Note: a differently-numbered,
+unrelated D-067 exists on the separate, unmerged `claude/klembord-hang-fix`
+branch (a clipboard-read isolation fix — see that branch's own
+`docs/DECISIONS.md`); if both branches are ever merged, one of the two
+entries needs renumbering.
+
+Two standard-log incidents from the same user (2026-09-10, 09:48 and
+10:10) showed an identical pattern: "Bellen-knop gekozen; venster wordt
+gesloten" and "Venster wordt gesloten en klembordstatus opgeruimd" both
+logged normally (both are immediate-flush checkpoints — D-066), then
+**nothing** — no "Klembordnummer — Status geleegd", no "→ DialNumber.xml",
+which every one of the ~11 other successful call actions in the same log
+produced within milliseconds — until DocBot restarted itself minutes
+later. All 7 SMS actions in the same log succeeded without exception.
+
+**Root cause (leading hypothesis)**
+
+`IPT_callNumber()`, `IPT_register()`, and `IPT_poller()` each create a
+fresh `ComObject(IPTConfig["ComObject"])` (`Msxml2.XMLHTTP.6.0` before this
+change) and call `.Send("")` with no timeout of any kind — plain `XMLHTTP`
+exposes no timeout-control method at all. A hang inside `.Send()` (e.g.
+proxy/WPAD auto-detection, DNS resolution, or a stalled connection
+attempt handled internally by WinInet before the "async" request truly
+begins) blocks DocBot's single thread with no exception to catch, exactly
+like D-067 on `claude/klembord-hang-fix` describes for `A_ClipBoard`
+reads — except here in the telephony request path instead of the
+clipboard-read path. Since `IPT_poller()`'s long-poll chain uses the exact
+same call, unprompted by any user action, this can also explain an earlier
+report (2026-09-07) where a call/SMS dialog never appeared at all: if
+`IPT_poller()` hung first, the whole thread — including `ClipBoardPoller()`
+— would stop regardless of what the user copied.
+
+**Decision**
+
+- `IPTConfig["ComObject"]` default changed from `Msxml2.XMLHTTP.6.0` to
+  `Msxml2.ServerXMLHTTP.6.0` (`DocBot.ahk:90`+): the only variant besides
+  `WinHttp.WinHttpRequest.5.1` (already special-cased in `IPT_poller()`)
+  that exposes `SetTimeouts()`.
+- `ApplyIPTTimeouts(request, timeouts)` calls `.SetTimeouts()` in
+  `try`/`catch` right after every `ComObject()` call in all three
+  functions — `try` because not every COM object this could ever be
+  configured to necessarily supports the method, and a missing method
+  must degrade to "no explicit timeout" (the old behavior), not fail the
+  whole request. Two timeout profiles in `IPTConfig`:
+  `RequestTimeoutsMs` (5000/5000/5000/15000 ms — register/dial, short
+  request-response) and `PollTimeoutsMs` (5000/5000/5000/120000 ms — the
+  deliberate GetEvent long-poll, needs a much more generous receive bound
+  so a legitimately-waiting long-poll isn't cut short).
+- `.Send("")` wrapped in `try`/`catch` in all three functions. On a caught
+  error: `IPT_callNumber()`/`IPT_register()` log it (with elapsed
+  milliseconds) and show the same user-facing failure notification their
+  response handlers already show for a server-side `ERROR` reply, then
+  stop. `IPT_poller()` additionally reschedules the next poll
+  (`SetTimer IPT_poller, -10`, guarded by the same `NeedUpdate` check
+  `IPT_PollResponse()` already uses) before returning — the poll chain
+  must never silently stop just because one `Send()` failed, or DocBot
+  stops receiving telephony events until the user restarts it.
+- Every outgoing-request `DebugLog()` call in these three functions is now
+  followed by an explicit `FlushDebugLog()`, and a new
+  `DebugLog("✓", ... " Send() teruggekeerd", "Na <ms>ms.")` (also flushed
+  immediately) is logged right after a successful `Send()`. Both the
+  request line and this new confirmation line survive a subsequent hang or
+  crash, unlike `DebugLog()`'s normal ~2-second write buffer — so a future
+  incident's standard log can distinguish "`Send()` itself hung" (no
+  confirmation line at all) from "`Send()` returned, something else hung
+  afterward" (confirmation line present, then silence), and the logged
+  elapsed milliseconds show how close a *successful* `Send()` was running
+  to its configured timeout.
+
+**Reasoning**
+
+- Bounding the existing calls is far simpler than process isolation (the
+  approach `claude/klembord-hang-fix` uses for the clipboard read): no new
+  command-line port, no `#SingleInstance` rework, no second process per
+  request — just timeout values and `try`/`catch` on calls that already
+  exist. Preferred here because the evidence for this specific mechanism
+  (two clean, reproducible incidents pinpointing `IPT_callNumber()`
+  directly) is stronger than the clipboard-read hypothesis ever was
+  (inferred from one user's report, never reproduced in a log).
+  `claude/klembord-hang-fix` is deliberately left untouched and unmerged
+  pending a decision on whether it's still needed once this lands.
+- `ServerXMLHTTP` over hand-rolling a timeout around `XMLHTTP` (e.g. via a
+  helper process, mirroring the clipboard fix): `SetTimeouts()` is the
+  standard, documented mechanism for exactly this problem on a COM object
+  already in the exact same object family, at a fraction of the
+  complexity.
+- A much longer receive timeout for the poll than for register/dial: they
+  are not the same kind of request. Collapsing them into one timeout
+  profile would either make the long-poll unusably twitchy or leave
+  register/dial waiting far longer than a fast internal request ever
+  should.
+- Rescheduling `IPT_poller()` after a caught `Send()` failure, but not
+  retrying `IPT_register()`/`IPT_callNumber()`: those are user- or
+  button-triggered one-shot actions where surfacing the failure and
+  stopping is correct; the poller is a background chain that must keep
+  running for DocBot to receive telephony events at all.
+
+**Consequences**
+
+- Biggest open risk, to verify on Windows against the real internal server
+  before trusting this: `Msxml2.XMLHTTP` (WinInet) and
+  `Msxml2.ServerXMLHTTP` (WinHTTP) can differ in proxy handling and
+  Windows-integrated authentication. If the telephony server silently
+  relies on WinInet/IE-level behavior, switching could break
+  registering/dialing — visibly, via the existing "Aanmelden bij de
+  telefonieserver is mislukt" notification and a logged `Send()` failure
+  or an HTTP error status, not silently.
+- A `Send()` failure is now visible to the user (a notification) where it
+  previously either hung indefinitely or — if the underlying problem was
+  brief enough to not hang — went unnoticed.
+- Confirming this resolves the reported hangs still needs field use: a fix
+  for a failure mode that leaves no trace while it's happening can only be
+  confirmed by its absence over time, not by static log analysis.

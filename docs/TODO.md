@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-09-03. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-09-10. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -704,6 +704,56 @@ At minimum, validate the following on the managed Windows environment and, where
 - [x] Executable replacement and byte verification.
 - [x] Restart task preserves active/background/minimized state.
 - [x] Update signal is removed on both success and failure.
+
+---
+
+## P1 — Validate the telephony COM-timeout hang fix on Windows (open)
+
+Filed 2026-09-10 from a standard log with two same-pattern incidents (09:48
+and 10:10) from a user who had already reported a separate clipboard-copy
+freeze earlier (2026-09-07). See `docs/DECISIONS.md` D-067 on
+`claude/ipt-comobject-timeouts` (branched from `develop`, deliberately
+separate from the unrelated, unmerged `claude/klembord-hang-fix`) for the
+full diagnosis and fix: `IPTConfig["ComObject"]` switched from
+`Msxml2.XMLHTTP.6.0` to `Msxml2.ServerXMLHTTP.6.0` so `.SetTimeouts()`
+becomes available, applied to `IPT_register()`/`IPT_poller()`/
+`IPT_callNumber()`, plus `try`/`catch` around each `.Send()` and immediate-
+flush diagnostic logging around all three.
+
+This is a test fix, not a confirmed one — the root cause is a leading
+hypothesis from two clean, reproducible log incidents, not something a
+static log can prove beyond doubt.
+
+- [ ] Validate on a real Windows machine, against the real internal
+  telephony server, that registering, event-polling, and dialing all still
+  work correctly after switching from `Msxml2.XMLHTTP.6.0` to
+  `Msxml2.ServerXMLHTTP.6.0`. This is the single highest risk in D-067:
+  WinInet (`XMLHTTP`) and WinHTTP (`ServerXMLHTTP`) can differ in proxy
+  handling and Windows-integrated authentication — if the telephony server
+  silently relies on WinInet/IE-level behavior, this switch could break
+  registering/dialing. Should fail visibly (a notification, a logged
+  `Send()` failure, or an HTTP error status) rather than silently if so.
+- [ ] Confirm the long-poll (`IPT_poller()`) does not get cut short by
+  `PollTimeoutsMs`'s 120000ms receive timeout during normal, legitimately
+  quiet periods — watch for unexpected `Send() mislukt`/reconnect churn in
+  the standard log during idle stretches. Adjust the value if the real
+  server's long-poll behavior needs more room.
+- [ ] Get this build to the reporting user (or another affected user) for
+  field use — the original hangs leave no trace in `debug.log` while
+  happening, so only continued/absent reports over time can confirm or
+  refute the fix.
+- [ ] Decide, once this has field evidence, whether
+  `claude/klembord-hang-fix` (clipboard-read process isolation) is still
+  needed, redundant, or addressing a genuinely separate problem — do not
+  let it merge or get discarded on assumption alone.
+- [ ] If confirmed: merge into `develop`, add a README changelog entry, and
+  update this item to done. If refuted: re-open the investigation in
+  D-067 rather than layering a third theory on top without retiring this
+  one.
+
+This changes `DocBot.ahk` behavior. `AppVersion` already follows the
+feature-branch counter in every commit on `claude/ipt-comobject-timeouts`;
+re-check the counter on `develop` when merging per the usual rule.
 
 ---
 
