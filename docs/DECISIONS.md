@@ -3556,10 +3556,10 @@ ungated function call at global-initialization time (before
 ## D-069 — Restore WinInet-style default headers on the WinHTTP-based telephony requests
 
 **Status:** Implemented on `claude/ipt-legacy-headers` (branched from
-`develop`, after D-068 merged as `2.5-dev.2`); the root cause is confirmed
-by a real-Windows header-injection test, but the fix itself is not yet
-validated through the actual `DocBot.ahk` production code path — only
-through a standalone probe request built the same way.
+`develop`, after D-068 merged as `2.5-dev.2`), Windows-validated through
+the actual `DocBot.ahk` production code path: registering, calling the
+koppelnummer, and restarting DocBot all showed the same instant
+recognition as the stable build, with no regression in polling/dialing/SMS.
 
 **Background**
 
@@ -3648,14 +3648,11 @@ ever shown to need it.
 
 **Consequences**
 
-- Only the standalone header probe has been validated on Windows so far —
-  not yet the actual `DocBot.ahk` production path with this exact change.
-  Needs the same Windows field-validation discipline as D-067/D-068
-  (register/poll/dial/SMS, plus specifically re-checking the
-  immediate-confirmation and restart-recognition symptoms that prompted
-  this investigation) before merging to `develop`.
-- Once validated, this closes the last known behavioral gap between the
-  stable `2.4` build and the `ServerXMLHTTP`/cookie-propagation rework
-  from D-067/D-068.
+- Confirmed on the actual `DocBot.ahk` production path, not just the
+  standalone probe: registering, calling the koppelnummer, and restarting
+  DocBot all showed instant server-side recognition, matching the stable
+  build, with no regression in polling/dialing/SMS.
+- This closes the last known behavioral gap between the stable `2.4` build
+  and the `ServerXMLHTTP`/cookie-propagation rework from D-067/D-068.
 - The NTLM/Windows-integrated-authentication question D-067 left open is
   now answered: it is not the mechanism at play here.

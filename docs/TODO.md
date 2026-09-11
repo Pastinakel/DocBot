@@ -887,14 +887,13 @@ on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
     touching production code — done: a `Msxml2.ServerXMLHTTP.6.0` request
     with these four headers added got an immediate `GetEvent.xml`
     confirmation, matching the stable build.
-  - [ ] Validate the actual `DocBot.ahk` production path (not just the
-    probe) on Windows: register/poll/dial/SMS must all keep working, and
-    specifically re-check that calling the koppelnummer shows an immediate
-    confirmation and that restarting DocBot shows the linked number
-    without a manual refresh.
-  - [ ] If confirmed: merge into `develop`, add a README changelog entry,
-    bump `AppVersion` per the usual branch rule, and update this item to
-    done.
+  - [x] Validate the actual `DocBot.ahk` production path (not just the
+    probe) on Windows — confirmed: register/poll/dial/SMS all kept
+    working, calling the koppelnummer showed an immediate confirmation,
+    and restarting DocBot showed the linked number without a manual
+    refresh.
+  - [ ] Merge into `develop` via pull request (only once the project owner
+    explicitly asks for the merge), then update this item to done.
 
 This changes `DocBot.ahk` behavior. `AppVersion` already follows the
 feature-branch counter in every commit on `claude/ipt-comobject-timeouts`
