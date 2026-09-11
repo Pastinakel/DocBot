@@ -49,7 +49,7 @@ and used by all four loaders below:
 
 ## Personal hotstrings — `hotstrings.json`
 
-`HotstringSchemaVersion` (currently **6**). Functional key: `Trigger`
+`HotstringSchemaVersion` (currently **7**). Functional key: `Trigger`
 (trimmed, case-insensitive for duplicate/default detection).
 
 | Version | What it adds | Gate |
@@ -57,7 +57,8 @@ and used by all four loaders below:
 | (absent) | Treated as version 1 by `ReadSchemaVersion()`. | — |
 | 1 | Every item gets a stable `Id` and an `Origin` (`custom` unless it came from a package). Items missing either field trigger a migration write. | `!rawItem.Has("Id") || !rawItem.Has("Origin")` per item |
 | 5 | Locally configured default hotstrings (`LocalConfig["DefaultHotstrings"]`, real values only in `DocBot.local.ahk`) are added once via `AddMissingDefaultHotstrings()`. An existing trigger — default or user-created — is never touched. | `schemaVersion < 5` |
-| 6 | `FixKnownDefaultHotstringTypos()` corrects a known typo already shipped in a default hotstring's `Replacement`: the `mvg` trigger's text `"Met vriendelijk groet"` becomes `"Met vriendelijke groet"`. Matches on `Trigger` **and** the exact old `Replacement` text (see `KnownDefaultHotstringTypoFixes()`), not on the trigger alone — a trigger whose text no longer equals the old value (including a user's own fix of the same typo) is left untouched. This is a new pattern distinct from "add if missing": a targeted, value-matched correction of an already-distributed default, listed here rather than in `docs/DECISIONS.md` since it fixes one specific shipped string rather than establishing a new general rule. | `schemaVersion < 6` |
+| 6 | `FixKnownDefaultHotstringTypos()` corrects a known typo already shipped in a default hotstring's `Replacement`: the `mvg` trigger's text `"Met vriendelijk groet"` becomes `"Met vriendelijke groet"`. Matches on `Trigger` **and** the exact old `Replacement` text (see `KnownDefaultHotstringTypoFixes()`), not on the trigger alone. In practice this matched nothing: the real shipped "mvg" text had a trailing comma and newlines (e.g. a name on the next line) that weren't known when this was written, so the exact-string comparison never fired for any real user. Left in place as shipped history rather than removed. | `schemaVersion < 6` |
+| 7 | `FixKnownDefaultHotstringPrefixTypos()` repeats the schema 6 correction as a **prefix** match instead of a full-string match: `Replacement` need only start with `"Met vriendelijk groet"` (see `KnownDefaultHotstringPrefixTypoFixes()`); only the matched prefix is replaced with `"Met vriendelijke groet"`, and everything after it (comma, newlines, a name, anything) is preserved byte-for-byte. Still gated on `Trigger` and still never touches a `Replacement` that doesn't start with the exact old prefix — a deliberate rewording is left alone, same as schema 6's guarantee. | `schemaVersion < 7` |
 
 Versions 2–4 have no dedicated migration block in the current code. Do not
 assume they historically added a specific field; nothing in the source or
@@ -213,7 +214,8 @@ When a change needs a new default or a new required field:
 `tests/README.md`) covers `ReadSchemaVersion()`/`RejectNewerSchemaVersion()`
 directly and the idempotency of `AddMissingDefaultHotstrings()` /
 `AddMissingDefaultSpeedDials()` / `NormalizeHotstringItem()` /
-`FixKnownDefaultHotstringTypos()`. It does not
+`FixKnownDefaultHotstringTypos()` / `FixKnownDefaultHotstringPrefixTypos()`.
+It does not
 exercise file I/O, the `.bak`/temp-file write path, GUI refresh, or the
 bundled-package/package-settings loaders — those still depend on manual and
 compiled Windows validation (`docs/ARCHITECTURE.md` §19, D-037).

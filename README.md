@@ -497,13 +497,19 @@ risicoanalyse.
 Changelog
 ---------
 
-### 2.4.1 — Huidige stabiele release
-- De standaard-hotstring "mvg" bevatte een spelfout in de vervangtekst
-  ("Met vriendelijk groet" in plaats van "Met vriendelijke groet"). Wie deze
-  hotstring nog ongewijzigd gebruikt, krijgt de gecorrigeerde tekst
-  automatisch bij de eerstvolgende start. Is de tekst zelf al aangepast —
-  inclusief een eigen fix van dezelfde spelfout — dan blijft die aanpassing
-  ongemoeid.
+### 2.4.2 — Huidige stabiele release
+- De poging in 2.4.1 om de spelfout in de standaard-hotstring "mvg" te
+  corrigeren, sloeg in de praktijk nergens op: de daadwerkelijk uitgerolde
+  tekst begon met "Met vriendelijk groet" gevolgd door een komma en een
+  regeleinde (bijvoorbeeld met een naam erna), terwijl 2.4.1 alleen de
+  volledige tekst zonder die toevoegingen herkende. De correctie matcht nu
+  op het begin van de tekst: alleen "vriendelijk" wordt "vriendelijke", al
+  het overige (komma, regeleinde, naam) blijft ongewijzigd. Is de aanhef
+  zelf al aangepast, dan blijft die aanpassing ongemoeid.
+
+### 2.4.1 — Vorige stabiele release
+- Bevatte een eerste, niet-effectieve poging om de spelfout in de
+  standaard-hotstring "mvg" te corrigeren (zie 2.4.2 hierboven).
 
 ### 2.4 — Vorige stabiele release
 - De sidebar toont niet langer de titel "DocBot" en de ondertitel
