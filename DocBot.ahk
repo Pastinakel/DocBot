@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-ipt-comobject-timeouts.3"
+global AppVersion := "2.5-ipt-comobject-timeouts.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -88,7 +88,7 @@ global C := Map(
 ; Technische instellingen mogen in Git staan; adressen en endpointnamen
 ; worden uitsluitend uit de niet-geversioneerde lokale configuratie gelezen.
 ;
-; ComObject bleef uiteindelijk Msxml2.XMLHTTP.6.0: een Windows-test op
+; ComObject bleef Msxml2.XMLHTTP.6.0: een Windows-test op
 ; claude/ipt-comobject-timeouts liet zien dat Msxml2.ServerXMLHTTP.6.0 (dat
 ; wél SetTimeouts() ondersteunt) geen cookies tussen aparte COM-objecten
 ; deelt. AllocNumber.xml slaagde, maar GetEvent.xml kreeg daarna meteen
@@ -97,9 +97,11 @@ global C := Map(
 ; cookiecache; noch ServerXMLHTTP noch WinHttp.WinHttpRequest.5.1 (dat per
 ; object-instantie een eigen, dus even lege, cookieopslag heeft — en DocBot
 ; maakt voor elke aanroep een vers object aan) repliceert dat gedrag zonder
-; expliciete cookie-doorgifte. Zie docs/DECISIONS.md D-067 voor de volledige
-; analyse en de aparte vervolgstap (Set-Cookie uitlezen/doorsturen) die dit
-; alsnog met een begrensde time-out zou moeten kunnen combineren.
+; expliciete cookie-doorgifte. Object-hergebruik is bewust niet gekozen als
+; oplossing: IPT_register() en IPT_poller() kunnen tegelijk in de lucht zijn
+; (de gebruiker kan op Verversen klikken terwijl een GetEvent-aanvraag nog
+; openstaat), en één COM-object kan geen twee asynchrone aanvragen tegelijk
+; afhandelen. Zie docs/DECISIONS.md D-067 voor de volledige analyse.
 global IPTConfig := Map(
     "ComObject", "Msxml2.XMLHTTP.6.0",
     "URL", LocalConfig["Telephony"]["BaseUrl"],
@@ -110,6 +112,13 @@ global IPTConfig := Map(
     "DialPageSidParam", "sid",
     "RegisterMinIntervalMs", 10000
 )
+
+; Expliciet vastgelegde sessiecookie voor het GetEvent-meldingskanaal (zie
+; CaptureIPTSessionCookie()/LogIPTResponseHeaders() verderop) — niet
+; afhankelijk van welk COM-object of welke object-instantie een aanvraag
+; doet, dus ongevoelig voor het hierboven beschreven probleem. Leeg zolang
+; er nog geen respons met een Set-Cookie-header is gezien.
+global IPTSessionCookie := ""
 
 ; SmsCallAction mag voor achterwaartse compatibiliteit één Map zijn, of een
 ; Array met meerdere Maps. In de GUI wordt uitsluitend Title getoond;
@@ -2917,8 +2926,54 @@ LogIPTResponseHeaders(label, request) {
         DebugLog("←", label . " response headers", request.getAllResponseHeaders())
 }
 
+; Legt de sessiecookie voor het GetEvent-meldingskanaal vast uit de
+; Set-Cookie-responseheader, zodat die expliciet kan worden meegestuurd bij
+; de volgende aanvraag (zie IPTSessionCookie hierboven en docs/DECISIONS.md
+; D-067) — in plaats van te vertrouwen op impliciete, COM-object-afhankelijke
+; cookie-opslag. Bewaart alleen het naam=waarde-deel vóór de eerste ";": een
+; Cookie-requestheader hoort geen responsattributen (expires/path/...) te
+; bevatten. Bij meerdere Set-Cookie-headers in één respons geeft
+; getResponseHeader() ze mogelijk kommagescheiden terug — komt in de
+; praktijk niet voor (de server zet er hier één), maar zou deze eenvoudige
+; parse wel kunnen verstoren. Laat een eerder vastgelegde cookie ongemoeid
+; als deze respons er zelf geen heeft (bijv. een foutrespons), in plaats van
+; 'm leeg te maken.
+CaptureIPTSessionCookie(request) {
+    global IPTSessionCookie
+
+    try
+        setCookie := request.getResponseHeader("Set-Cookie")
+    catch
+        return
+
+    if setCookie = ""
+        return
+
+    semicolonPos := InStr(setCookie, ";")
+    IPTSessionCookie := semicolonPos ? SubStr(setCookie, 1, semicolonPos - 1) : setCookie
+}
+
+; Logt alleen de headers die DocBot zelf expliciet meestuurt
+; (Accept-Language, en de sessiecookie zodra die bekend is) — niet wat
+; WinInet/WinHTTP zelf automatisch kan toevoegen (bijv. een NTLM-
+; onderhandeling voor Windows-integrated authenticatie): geen van de
+; IPT-COM-objecten biedt een manier om de werkelijk verzonden headers terug
+; te lezen. Voor dát verschil (zie docs/DECISIONS.md D-067, de vraag hoe de
+; koppeling serverzijdig blijft bestaan) is een pakket-niveau tool (bijv.
+; Fiddler/Wireshark) op de Windows-machine nodig — niet iets wat DocBot
+; vanuit zijn eigen COM-aanroepen kan laten zien.
+LogIPTRequestHeaders(label) {
+    global IPTSessionCookie
+
+    text := "Accept-Language: nl-NL"
+    if IPTSessionCookie != ""
+        text .= "`r`nCookie: " . IPTSessionCookie
+
+    DebugLog("→", label . " request headers", text)
+}
+
 IPT_callNumber(telNummer := "", isRegistrationCall := false) {
-    global IPTConfig, IPTDialRequest, State
+    global IPTConfig, IPTDialRequest, State, IPTSessionCookie
 
     if telNummer = "" || telNummer <= 0
         return
@@ -2942,7 +2997,10 @@ IPT_callNumber(telNummer := "", isRegistrationCall := false) {
     IPTDialRequest := ComObject(IPTConfig["ComObject"])
     IPTDialRequest.Open("POST", url, true)
     IPTDialRequest.SetRequestHeader("Accept-Language", "nl-NL")
+    if IPTSessionCookie != ""
+        IPTDialRequest.SetRequestHeader("Cookie", IPTSessionCookie)
     IPTDialRequest.onreadystatechange := IPT_DialResponse
+    LogIPTRequestHeaders(IPTConfig["DialPage"])
 
     sendStartedAt := A_TickCount
     try {
@@ -2978,6 +3036,7 @@ IPT_DialResponse() {
     try {
         DebugLog("←", IPTConfig["DialPage"] . " status " . IPTDialRequest.status, IPTDialRequest.ResponseText)
         LogIPTResponseHeaders(IPTConfig["DialPage"], IPTDialRequest)
+        CaptureIPTSessionCookie(IPTDialRequest)
 
         if InStr(IPTDialRequest.ResponseText, "ERROR")
             ShowNotification("Er is een fout opgetreden bij het bellen.", 4000, "error")
@@ -2994,7 +3053,7 @@ IPT_DialResponse() {
 ; Zie de toelichting bij IPT_callNumber() over het waarom van de
 ; try/catch en de "Send() teruggekeerd/mislukt"-regels hieronder.
 IPT_register(startCooldown := true) {
-    global IPTConfig, State, IPTRegisterRequest
+    global IPTConfig, State, IPTRegisterRequest, IPTSessionCookie
 
     url := IPTConfig["URL"] . IPTConfig["AllocatePage"] . "?sid=0." . A_TickCount . A_TimeIdle
 
@@ -3004,7 +3063,10 @@ IPT_register(startCooldown := true) {
     IPTRegisterRequest := ComObject(IPTConfig["ComObject"])
     IPTRegisterRequest.Open("POST", url, true)
     IPTRegisterRequest.SetRequestHeader("Accept-Language", "nl-NL")
+    if IPTSessionCookie != ""
+        IPTRegisterRequest.SetRequestHeader("Cookie", IPTSessionCookie)
     IPTRegisterRequest.onreadystatechange := IPT_RegisterResponse
+    LogIPTRequestHeaders(IPTConfig["AllocatePage"])
 
     sendStartedAt := A_TickCount
     try {
@@ -3052,6 +3114,7 @@ IPT_RegisterResponse() {
     try {
         DebugLog("←", IPTConfig["AllocatePage"] . " status " . IPTRegisterRequest.status, IPTRegisterRequest.ResponseText)
         LogIPTResponseHeaders(IPTConfig["AllocatePage"], IPTRegisterRequest)
+        CaptureIPTSessionCookie(IPTRegisterRequest)
 
         if InStr(IPTRegisterRequest.ResponseText, "ERROR")
             ShowNotification("Aanmelden bij de telefonieserver is mislukt.", 4000, "error")
@@ -3099,7 +3162,7 @@ UpdateRegisterButtonState() {
 ; als IPT_PollResponse() al bij een ontvangen (ook een foutieve) respons
 ; toepast.
 IPT_poller() {
-    global IPTConfig, State, IPTPollRequest
+    global IPTConfig, State, IPTPollRequest, IPTSessionCookie
 
     UpdateRegisterButtonState()
 
@@ -3116,11 +3179,15 @@ IPT_poller() {
     IPTPollRequest := ComObject(IPTConfig["ComObject"])
     IPTPollRequest.Open("POST", url, true)
     IPTPollRequest.SetRequestHeader("Accept-Language", "nl-NL")
+    if IPTSessionCookie != ""
+        IPTPollRequest.SetRequestHeader("Cookie", IPTSessionCookie)
 
     if IPTConfig["ComObject"] = "WinHttp.WinHttpRequest.5.1"
         IPTPollRequest.OnResponseDataAvailable := IPT_PollResponse
     else
         IPTPollRequest.onreadystatechange := IPT_PollResponse
+
+    LogIPTRequestHeaders(IPTConfig["EventPage"])
 
     sendStartedAt := A_TickCount
     try {
@@ -3148,6 +3215,7 @@ IPT_PollResponse() {
         return
 
     LogIPTResponseHeaders(IPTConfig["EventPage"], IPTPollRequest)
+    CaptureIPTSessionCookie(IPTPollRequest)
 
     if IPTPollRequest.status != 200 && IPTPollRequest.status != 201 {
         DebugLog("←", IPTConfig["EventPage"] . " FOUT status " . IPTPollRequest.status, "")
@@ -3567,6 +3635,7 @@ SanitizeStandardLogText(label, tekst) {
         && (
             InStr(labelLower, " status ")
             || InStr(labelLower, "response")
+            || InStr(labelLower, "headers")
             || InStr(labelLower, "parse-fout")
         )
         return "<responsinhoud niet opgenomen in standaardlog>"

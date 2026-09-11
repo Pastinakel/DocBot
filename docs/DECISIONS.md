@@ -3095,6 +3095,73 @@ with extended logging enabled should finally show whether/how a session
 cookie is actually set, which the cookie-propagation fix above needs
 before it can be written correctly instead of guessed. See `docs/TODO.md`.
 
+**Step A implemented: explicit cookie capture/propagation (`ComObject` still `Msxml2.XMLHTTP.6.0`)**
+
+The follow-up Windows test confirmed a session cookie: both `AllocNumber.xml`
+and `GetEvent.xml` responses carry `Set-Cookie: JDMWEBCOOKIE=<value>;
+expires=...`, refreshed (sliding expiry) on every response. Separately, the
+project owner noted a phone stays linked long after DocBot itself is
+closed, while the same AJAX call from a browser doesn't know about the
+link — meaning the *link* itself is durable and server-side, independent
+of `JDMWEBCOOKIE`/`sid`; the cookie is most likely scoped to the
+`GetEvent.xml` notification channel only (which events go to which live
+DocBot connection), not to the underlying phone-to-extension link. The
+`StopEventLoop` regression above is therefore best understood as "the
+notification channel died," not "the link broke" — still worth fixing
+(the user needs to see the koppelnummer and call/SMS prompts), just
+smaller in scope than first assumed.
+
+Implemented, `ComObject` deliberately left at `Msxml2.XMLHTTP.6.0` for
+this step — isolating the cookie logic from any COM-object change, same
+staged-testing reasoning as D-067's rejected first attempt:
+
+- `IPTSessionCookie` (global, `DocBot.ahk` near `IPTConfig`): the current
+  session cookie as a plain `"name=value"` string, independent of any
+  particular COM object instance or which of `IPT_register()`/
+  `IPT_poller()`/`IPT_callNumber()` last updated it.
+- `CaptureIPTSessionCookie(request)`: reads `request.getResponseHeader("Set-Cookie")`
+  after every response (register, poll, dial — the poll's refreshed
+  `expires` showed the server re-sends it on every response, so this
+  isn't a one-time capture), keeps only the `name=value` part before the
+  first `;` (a `Cookie` request header must not carry response attributes
+  like `expires`/`path`), and leaves a previously-captured cookie alone if
+  a given response doesn't carry one (e.g. an error response) rather than
+  clearing it.
+- Each of the three request functions now sends
+  `SetRequestHeader("Cookie", IPTSessionCookie)` when one is known, right
+  alongside the existing `Accept-Language` header.
+- **Object reuse across calls (reusing one persistent `WinHttp.WinHttpRequest.5.1`
+  instance instead of a fresh one per call, its own built-in per-instance
+  cookie store carrying the session) was considered and rejected**: manual
+  registration (the "Verversen" button) and the poll chain can be in
+  flight at the same time — a user can click Verversen while a `GetEvent.xml`
+  long-poll is still outstanding — and one COM object instance cannot
+  service two concurrent async operations. Sharing one object between
+  `IPT_register()` and `IPT_poller()` would trade the cookie problem for a
+  request-collision problem. Explicit, object-independent propagation
+  (a plain string, safely readable from any call site regardless of
+  timing) sidesteps that entirely.
+- `LogIPTRequestHeaders(label)`: logs only the headers DocBot itself sets
+  explicitly (`Accept-Language`, `Cookie` once known) — routed through
+  `DebugLog()` with `"headers"` now also matched by
+  `SanitizeStandardLogText()` (extended alongside `"response"`), so this
+  scrubs in the always-on standard log the same way response
+  headers/bodies do. This does **not** show what WinInet/WinHTTP adds
+  automatically (e.g. an NTLM handshake for Windows-integrated
+  authentication) — none of `Msxml2.XMLHTTP`/`ServerXMLHTTP`/
+  `WinHttpRequest` expose a way to read back the actually-transmitted
+  request headers, only what was explicitly set via `SetRequestHeader()`.
+  Confirming *how* the durable link is actually established server-side
+  (the open question above) would need a packet-level tool (Fiddler/
+  Wireshark) run on the Windows machine — outside what DocBot's own COM
+  calls can ever show, regardless of how much is logged.
+
+Not yet done: switching `ComObject` back to `Msxml2.ServerXMLHTTP.6.0` (or
+`WinHttp.WinHttpRequest.5.1`) with `SetTimeouts()` re-added on top of this
+— the actual bounded-timeout fix this whole decision is about. This step
+only proves the cookie plumbing itself doesn't regress anything while
+`ComObject` is unchanged; see `docs/TODO.md` for that remaining step.
+
 **Reasoning**
 
 - Bounding the existing calls is far simpler than process isolation (the

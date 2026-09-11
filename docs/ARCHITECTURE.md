@@ -424,10 +424,35 @@ When a user edits or saves a package item as personal, the application writes a 
   from all three response handlers — nothing logged response headers
   before this, only `.status`/`.ResponseText` — scrubbed in the always-on
   standard log the same way response bodies/full URLs already are, real
-  values only in the opt-in extended log. Exists to let a future Windows
-  test actually see whether/how the server sets a session cookie, which
-  the D-067 cookie-propagation follow-up needs before it can be written
-  instead of guessed.
+  values only in the opt-in extended log. This confirmed a session cookie
+  (`JDMWEBCOOKIE`, refreshed on every response) on `AllocNumber.xml`/
+  `GetEvent.xml` — see D-067.
+- `IPTSessionCookie` (global) holds that cookie as a plain `name=value`
+  string, captured by `CaptureIPTSessionCookie(request)` after every
+  response and resent via `SetRequestHeader("Cookie", ...)` on every
+  subsequent request, independent of which COM object instance handles
+  it. Deliberately not solved via reusing one persistent COM object
+  instance instead: `IPT_register()` and `IPT_poller()` can be in flight
+  concurrently, and one object can't serve two concurrent async calls —
+  see D-067. `LogIPTRequestHeaders(label)` logs only what DocBot itself
+  explicitly sets (`Accept-Language`, `Cookie`) — none of the IPT COM
+  objects expose a way to read back automatically-added headers (e.g. an
+  NTLM handshake), so this cannot show whether/how Windows-integrated
+  authentication plays into the separately-durable phone-link mechanism
+  (see D-067's discussion of that open question).
+- `ComObject` itself is still `Msxml2.XMLHTTP.6.0`: a since-reverted
+  attempt to switch to `Msxml2.ServerXMLHTTP.6.0` (the only variant
+  besides `WinHttp.WinHttpRequest.5.1`, which `IPT_poller()` already
+  special-cases for its response-event name, that supports
+  `SetTimeouts()`) broke registration on a real Windows test —
+  `ServerXMLHTTP` does not share cookies between separate COM object
+  instances, and `DocBot.ahk` creates a fresh one per call. Plain
+  `XMLHTTP` has no timeout mechanism at all, so none of the three
+  telephony COM calls currently has one — an unresolved hang risk
+  repeated field reports tied to multi-minute DocBot freezes during
+  registering/polling/dialing, still open pending validation of the
+  cookie propagation above and a retried `ComObject` switch on top of it.
+  See `docs/DECISIONS.md` D-067.
 
 ### 11.2 Request lifecycle
 

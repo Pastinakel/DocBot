@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-09-11. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-09-11 (second update, cookie capture/propagation). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -743,21 +743,39 @@ on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
   `LogIPTResponseHeaders()` now logs `.getAllResponseHeaders()` from all
   three, scrubbed in the standard log (same `"response"`-label convention
   as bodies/URLs) and only visible in the opt-in extended log.
-- [ ] Get a build with this logging to a user with extended logging
-  enabled during a normal registration, and check whether/how a session
-  cookie (`Set-Cookie`) actually appears in the captured headers — this is
-  the prerequisite the cookie-propagation fix below needs, not yet done.
-- [ ] Design and implement the actual fix, once the above confirms a
-  cookie is really what's missing: capture the `Set-Cookie` response
-  header from `AllocNumber.xml` and explicitly resend it as a `Cookie`
-  request header on every subsequent `GetEvent.xml`/`DialNumber.xml` call,
-  then retry the `Msxml2.ServerXMLHTTP.6.0` (or
-  `WinHttp.WinHttpRequest.5.1`) switch with `SetTimeouts()` on top of
-  that.
-- [ ] Validate that fix on a real Windows machine against the real
-  internal telephony server exactly as the first attempt was tested —
-  registering, event-polling, and dialing must all keep working, and a
-  koppelnummer must still appear.
+- [x] Get a build with this logging to a user with extended logging
+  enabled during a normal registration: confirmed. Both `AllocNumber.xml`
+  and `GetEvent.xml` responses carry `Set-Cookie: JDMWEBCOOKIE=<value>;
+  expires=...`, refreshed on every response. Separately confirmed (project
+  owner observation): the phone-to-extension *link* itself is durable and
+  survives closing DocBot entirely, and is unknown to the same AJAX call
+  made from a browser — so the link is not carried by this cookie or by
+  `sid`; the cookie is most likely scoped only to the `GetEvent.xml`
+  notification channel. See `docs/DECISIONS.md` D-067.
+- [x] Implement cookie capture/propagation (`IPTSessionCookie`,
+  `CaptureIPTSessionCookie()`, `LogIPTRequestHeaders()` — `DocBot.ahk`),
+  `ComObject` deliberately left at `Msxml2.XMLHTTP.6.0` for this step so
+  it can be validated in isolation from any COM-object change. Object
+  reuse (one persistent `WinHttpRequest` instance instead of manual
+  header propagation) was considered and rejected: `IPT_register()` and
+  `IPT_poller()` can be in flight concurrently (Verversen-click during an
+  outstanding long-poll), and one COM object can't serve two concurrent
+  async calls.
+- [ ] Validate step A on Windows: with `ComObject` still
+  `Msxml2.XMLHTTP.6.0`, confirm registering/polling/dialing behave
+  exactly as before (no regression expected — this step is additive) and
+  that the standard log's new `"... request headers"`/`"... response
+  headers"` lines appear (scrubbed) with real content visible only in the
+  opt-in extended log, including a non-empty `Cookie:` line on the second
+  and later requests.
+- [ ] Step B, only after step A is confirmed clean: retry the
+  `Msxml2.ServerXMLHTTP.6.0` (or `WinHttp.WinHttpRequest.5.1`) switch with
+  `SetTimeouts()` on top of the now-working cookie propagation — this is
+  the part that actually bounds `Send()` and addresses the original hang
+  risk. Validate on a real Windows machine against the real internal
+  telephony server exactly as the first attempt was tested — registering,
+  event-polling, and dialing must all keep working, and a koppelnummer
+  must still appear.
 - [ ] Confirm any new receive timeout for the long-poll (`IPT_poller()`)
   does not get cut short during normal, legitimately quiet periods —
   watch for unexpected `Send() mislukt`/reconnect churn in the standard
