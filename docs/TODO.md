@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-09-11 (second update, cookie capture/propagation). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-09-11 (third update, registry-based cookie persistence). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -2093,6 +2093,39 @@ part of DocBot 2.4 after all. See `docs/DECISIONS.md` D-065 for the final
 design, the GDI+/non-standard-PNG-chunk bug it surfaced and its fix, and
 the fallback-to-text behavior. The original narrower text-only request
 above is superseded, not separately implemented.
+
+---
+
+## P2 — Consider which other settings.ini values should move to the registry
+
+D-068 moved `IPTSessionCookie` from `settings.ini` to `HKCU\Software\DocBot`
+specifically because `settings.ini` lives under `A_MyDocuments`, which in
+this Ivanti/OneDrive-managed environment can be an unhydrated cloud
+placeholder at startup — while `HKCU` loads synchronously with the Windows
+profile, before `OneDrive.exe` itself runs, so it has no equivalent
+"not yet available" failure mode. That same reasoning may apply to other
+`settings.ini` values, not just the telephony cookie.
+
+The clearest existing candidate: the telemetry installation ID
+(`Telemetry_TryEnsureInstallationId()`). `IniReadOrThrow()`'s own comment
+already flags the risk this item is about — a value that exists in
+`settings.ini` but can't be read yet is dangerous specifically when "the
+caller then treats 'read succeeded' as license to stop retrying, or worse,
+to write a freshly generated value over what may still be a real one" —
+which is exactly the failure mode that could mint a spurious new
+installation ID (and so fragment telemetry history for that install) if
+`settings.ini` isn't actually readable yet at the moment DocBot checks it.
+
+This is not a decision to migrate everything — most `settings.ini` values
+(`AutoSave`, `HotstringFile`, `CallAction`, `SmsCallActionTitle`,
+`TextReplacement`, the `[Tips]` counters) are lower-stakes, read later in
+startup after the GUI is already up, or don't have the same
+"first-run-vs-race-condition" ambiguity the installation ID and the
+telephony cookie both have. Before moving anything else, evaluate each
+value against that specific risk — not registry-vs-file as a general
+preference — and weigh it against the registry's own trade-off already
+documented in D-068 (local to this Windows profile/machine, doesn't roam
+the way a OneDrive-synced file eventually does).
 
 ---
 
