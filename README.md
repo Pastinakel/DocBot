@@ -509,6 +509,15 @@ Changelog
   functie werd gebruikt terwijl Overzicht al de actieve pagina was: de tip
   werd dan pas herbeoordeeld bij een volgende paginawissel. De tip
   verdwijnt nu direct zodra de bijbehorende gebruiksteller wordt bijgewerkt.
+- DocBot kon tijdens het koppelen, verversen, pollen of bellen soms
+  minutenlang vastlopen zonder foutmelding, doordat een aanvraag naar de
+  telefonieserver geen tijdslimiet had. Zulke aanvragen krijgen nu een
+  tijdslimiet: bij een trage of onbereikbare server toont DocBot een
+  foutmelding in plaats van vast te lopen (`docs/DECISIONS.md` D-067).
+- Een telefoonkoppeling ging verloren zodra DocBot werd herstart, crashte
+  of de Windows-sessie opnieuw startte. DocBot bewaart de koppeling nu op
+  een manier die dit overleeft: bellen naar het weergegeven koppelnummer
+  is daarna niet meer nodig (`docs/DECISIONS.md` D-068).
 
 ### 2.4 — Huidige stabiele release
 - De sidebar toont niet langer de titel "DocBot" en de ondertitel
