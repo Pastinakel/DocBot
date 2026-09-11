@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-09-10. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-09-11. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -707,41 +707,56 @@ At minimum, validate the following on the managed Windows environment and, where
 
 ---
 
-## P1 — Validate the telephony COM-timeout hang fix on Windows (open)
+## P1 — Telephony COM-request hang: timeout attempt reverted, cookie-propagation fix still needed (open)
 
 Filed 2026-09-10 from a standard log with two same-pattern incidents (09:48
 and 10:10) from a user who had already reported a separate clipboard-copy
 freeze earlier (2026-09-07). See `docs/DECISIONS.md` D-067 on
 `claude/ipt-comobject-timeouts` (branched from `develop`, deliberately
 separate from the unrelated, unmerged `claude/klembord-hang-fix`) for the
-full diagnosis and fix: `IPTConfig["ComObject"]` switched from
-`Msxml2.XMLHTTP.6.0` to `Msxml2.ServerXMLHTTP.6.0` so `.SetTimeouts()`
-becomes available, applied to `IPT_register()`/`IPT_poller()`/
-`IPT_callNumber()`, plus `try`/`catch` around each `.Send()` and immediate-
-flush diagnostic logging around all three.
+full diagnosis.
 
-This is a test fix, not a confirmed one — the root cause is a leading
-hypothesis from two clean, reproducible log incidents, not something a
-static log can prove beyond doubt.
+**Update 2026-09-11:** the first fix attempt (`IPTConfig["ComObject"]`
+switched to `Msxml2.ServerXMLHTTP.6.0` so `.SetTimeouts()` becomes
+available) was tested on Windows against the real internal telephony
+server and **broke registration**: `AllocNumber.xml` kept succeeding, but
+`GetEvent.xml` immediately got `StopEventLoop` back instead of the
+`SetUpperText` event that carries the link/registration number — no
+koppelnummer ever appeared. Root cause: `ServerXMLHTTP` does not share
+cookies between separate COM object instances, and `DocBot.ahk` creates a
+fresh one per call; `Msxml2.XMLHTTP.6.0` only ever worked because it rides
+WinInet's implicit, process-wide shared cookie cache. The `ComObject`
+switch and the `ApplyIPTTimeouts()`/timeout-profile code have been
+reverted (`claude/ipt-comobject-timeouts`). What remains active: `try`/
+`catch` around each `.Send()` plus the immediate-flush diagnostic logging
+("Send() teruggekeerd"/"Send() mislukt", with elapsed ms) — independently
+useful, kept regardless of the timeout outcome.
 
-- [ ] Validate on a real Windows machine, against the real internal
-  telephony server, that registering, event-polling, and dialing all still
-  work correctly after switching from `Msxml2.XMLHTTP.6.0` to
-  `Msxml2.ServerXMLHTTP.6.0`. This is the single highest risk in D-067:
-  WinInet (`XMLHTTP`) and WinHTTP (`ServerXMLHTTP`) can differ in proxy
-  handling and Windows-integrated authentication — if the telephony server
-  silently relies on WinInet/IE-level behavior, this switch could break
-  registering/dialing. Should fail visibly (a notification, a logged
-  `Send()` failure, or an HTTP error status) rather than silently if so.
-- [ ] Confirm the long-poll (`IPT_poller()`) does not get cut short by
-  `PollTimeoutsMs`'s 120000ms receive timeout during normal, legitimately
-  quiet periods — watch for unexpected `Send() mislukt`/reconnect churn in
-  the standard log during idle stretches. Adjust the value if the real
-  server's long-poll behavior needs more room.
-- [ ] Get this build to the reporting user (or another affected user) for
-  field use — the original hangs leave no trace in `debug.log` while
-  happening, so only continued/absent reports over time can confirm or
-  refute the fix.
+The original hang risk (`.Send()` blocking indefinitely with no timeout,
+on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
+**still open and unresolved** — this item is not close to done.
+
+- [ ] Design and implement the actual fix: capture the `Set-Cookie`
+  response header from `AllocNumber.xml` and explicitly resend it as a
+  `Cookie` request header on every subsequent `GetEvent.xml`/
+  `DialNumber.xml` call, then retry the `Msxml2.ServerXMLHTTP.6.0` (or
+  `WinHttp.WinHttpRequest.5.1`) switch with `SetTimeouts()` on top of that.
+  Needs the real server's actual response headers first (not guessed) —
+  capture those from a working `Msxml2.XMLHTTP.6.0` session (e.g. a
+  temporary diagnostic log of `.getAllResponseHeaders()`) before writing
+  the propagation code.
+- [ ] Validate that fix on a real Windows machine against the real
+  internal telephony server exactly as the first attempt was tested —
+  registering, event-polling, and dialing must all keep working, and a
+  koppelnummer must still appear.
+- [ ] Confirm any new receive timeout for the long-poll (`IPT_poller()`)
+  does not get cut short during normal, legitimately quiet periods —
+  watch for unexpected `Send() mislukt`/reconnect churn in the standard
+  log during idle stretches.
+- [ ] Get a build with the working fix to the reporting user (or another
+  affected user) for field use — the original hangs leave no trace in
+  `debug.log` while happening, so only continued/absent reports over time
+  can confirm or refute it.
 - [ ] Decide, once this has field evidence, whether
   `claude/klembord-hang-fix` (clipboard-read process isolation) is still
   needed, redundant, or addressing a genuinely separate problem — do not

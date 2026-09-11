@@ -408,18 +408,18 @@ When a user edits or saves a package item as personal, the application writes a 
   `Telephony.BaseUrl`, so every request built from `IPTConfig["URL"]`
   inherits that guarantee without a separate per-call check
   (`docs/DECISIONS.md` D-043).
-- `IPTConfig["ComObject"]` is `Msxml2.ServerXMLHTTP.6.0`, not the plain
-  `Msxml2.XMLHTTP.6.0` used before. Only `ServerXMLHTTP` (and
-  `WinHttp.WinHttpRequest.5.1`, which `IPT_poller()` already special-cases
-  for its response-event name) supports `SetTimeouts()`; plain `XMLHTTP`
-  has no timeout mechanism at all, which repeated field reports tied to
-  multi-minute DocBot hangs during registering/polling/dialing — see
-  `docs/DECISIONS.md` D-067. `ApplyIPTTimeouts()` applies
-  `IPTConfig["RequestTimeoutsMs"]` (register/dial — short request/response)
-  or `IPTConfig["PollTimeoutsMs"]` (the deliberate GetEvent long-poll, much
-  more generous) right after each `ComObject()` call, in `try`/`catch`
-  since not every COM object this could ever be configured to supports the
-  method.
+- `IPTConfig["ComObject"]` is `Msxml2.XMLHTTP.6.0`, and stays that way for
+  now: a since-reverted attempt to switch to `Msxml2.ServerXMLHTTP.6.0`
+  (the only variant besides `WinHttp.WinHttpRequest.5.1`, which
+  `IPT_poller()` already special-cases for its response-event name, that
+  supports `SetTimeouts()`) broke registration on a real Windows test —
+  `ServerXMLHTTP` does not share cookies between separate COM object
+  instances, and `DocBot.ahk` creates a fresh one per call. See
+  `docs/DECISIONS.md` D-067. Plain `XMLHTTP` has no timeout mechanism at
+  all, so none of the three telephony COM calls currently has one — an
+  unresolved hang risk repeated field reports tied to multi-minute DocBot
+  freezes during registering/polling/dialing, still open pending the
+  cookie-propagation follow-up D-067 describes.
 
 ### 11.2 Request lifecycle
 
@@ -454,9 +454,13 @@ IPT_callNumber()
 
 Every `Send()` call above is wrapped so a failure is caught and logged
 with how long it took, and every outgoing-request log line is flushed
-immediately rather than left in `DebugLog()`'s normal buffer — see D-067:
-without an explicit timeout, `Send()` itself could previously block for
-minutes with nothing to catch and nothing on disk to show it happened.
+immediately rather than left in `DebugLog()`'s normal buffer — see D-067.
+This only catches a `Send()` that throws; none of the three calls has an
+explicit timeout currently (see §11.1), so `Send()` itself can still block
+indefinitely with nothing to catch and nothing on disk to show it
+happened. The diagnostic logging exists precisely so the *next* incident
+is distinguishable from "returned fine, something else hung" — it does
+not by itself bound how long `Send()` can take.
 
 The event loop is chained rather than a fixed periodic timer to avoid overlapping long polls.
 

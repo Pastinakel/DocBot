@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-ipt-comobject-timeouts.1"
+global AppVersion := "2.5-ipt-comobject-timeouts.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -88,32 +88,27 @@ global C := Map(
 ; Technische instellingen mogen in Git staan; adressen en endpointnamen
 ; worden uitsluitend uit de niet-geversioneerde lokale configuratie gelezen.
 ;
-; ComObject is Msxml2.ServerXMLHTTP.6.0, niet het eerder gebruikte
-; Msxml2.XMLHTTP.6.0: alleen ServerXMLHTTP (en WinHttp.WinHttpRequest.5.1,
-; waar IPT_poller() al apart rekening mee houdt) ondersteunt SetTimeouts().
-; Gewoon XMLHTTP kent geen enkel time-out-mechanisme, wat vermoedelijk de
-; oorzaak is van meermaals gerapporteerde DocBot-vastlopers tijdens bellen/
-; registreren/pollen — zie docs/DECISIONS.md D-067. ServerXMLHTTP gebruikt
-; WinHTTP in plaats van WinInet: bij problemen met proxy- of Windows-
-; integrated-authenticatie tegen de telefonieserver is dat het eerste om op
-; te controleren.
-;
-; RequestTimeoutsMs (resolve, connect, send, receive in ms) geldt voor de
-; korte request/antwoord-aanroepen (registreren, bellen). PollTimeoutsMs
-; geldt uitsluitend voor de bewuste long-poll (GetEvent) en heeft daarom een
-; veel ruimere receive-waarde: te kort zou een legitiem wachtende long-poll
-; voortijdig afbreken.
+; ComObject bleef uiteindelijk Msxml2.XMLHTTP.6.0: een Windows-test op
+; claude/ipt-comobject-timeouts liet zien dat Msxml2.ServerXMLHTTP.6.0 (dat
+; wél SetTimeouts() ondersteunt) geen cookies tussen aparte COM-objecten
+; deelt. AllocNumber.xml slaagde, maar GetEvent.xml kreeg daarna meteen
+; "StopEventLoop" terug — geen koppelnummer meer in beeld. XMLHTTP werkte
+; hier altijd stilzwijgend dankzij WinInet's gedeelde, procesbrede
+; cookiecache; noch ServerXMLHTTP noch WinHttp.WinHttpRequest.5.1 (dat per
+; object-instantie een eigen, dus even lege, cookieopslag heeft — en DocBot
+; maakt voor elke aanroep een vers object aan) repliceert dat gedrag zonder
+; expliciete cookie-doorgifte. Zie docs/DECISIONS.md D-067 voor de volledige
+; analyse en de aparte vervolgstap (Set-Cookie uitlezen/doorsturen) die dit
+; alsnog met een begrensde time-out zou moeten kunnen combineren.
 global IPTConfig := Map(
-    "ComObject", "Msxml2.ServerXMLHTTP.6.0",
+    "ComObject", "Msxml2.XMLHTTP.6.0",
     "URL", LocalConfig["Telephony"]["BaseUrl"],
     "AllocatePage", LocalConfig["Telephony"]["AllocateEndpoint"],
     "EventPage", LocalConfig["Telephony"]["EventEndpoint"],
     "DialPage", LocalConfig["Telephony"]["DialEndpoint"],
     "DialPageNumberParam", "number",
     "DialPageSidParam", "sid",
-    "RegisterMinIntervalMs", 10000,
-    "RequestTimeoutsMs", [5000, 5000, 5000, 15000],
-    "PollTimeoutsMs", [5000, 5000, 5000, 120000]
+    "RegisterMinIntervalMs", 10000
 )
 
 ; SmsCallAction mag voor achterwaartse compatibiliteit één Map zijn, of een
@@ -2892,27 +2887,18 @@ MoveSpeedDialDown(*) {
 ; IP-TELEFONIE (registratie, polling en bellen)
 ; =============================================================================
 
-; Zet expliciete time-outs op een IPT-COM-verzoek, in try/catch: niet elk
-; COM-object dat ooit voor IPTConfig["ComObject"] gekozen kan worden
-; ondersteunt SetTimeouts() (alleen Msxml2.ServerXMLHTTP en
-; WinHttp.WinHttpRequest doen dat — zie de toelichting bij IPTConfig).
-; Ontbreekt de methode, dan gaat het verzoek gewoon zonder expliciete
-; time-out door (het oude gedrag) in plaats van te mislukken op een
-; ontbrekende COM-methode.
-ApplyIPTTimeouts(request, timeouts) {
-    try
-        request.SetTimeouts(timeouts[1], timeouts[2], timeouts[3], timeouts[4])
-}
-
 ; Meermaals gerapporteerde DocBot-vastlopers bleken samen te vallen met
-; precies dit punt: Send() op het IPT-COM-object kan, zonder expliciete
-; time-out, minutenlang blokkeren zonder ooit een fout te geven (zie
-; docs/DECISIONS.md D-067). De try/catch en de "Send() teruggekeerd/
-; mislukt"-regels hieronder (met verstreken tijd) bestaan specifiek om een
-; volgend incident te kunnen onderscheiden tussen "Send() zelf hing vast"
-; (geen van beide regels verschijnt) en "Send() keerde terug, iets anders
-; liep vast" (wel de "teruggekeerd"-regel, dan stilte) — beide met
-; onmiddellijke flush, zodat ze een vastloper overleven.
+; precies dit punt: Send() op het IPT-COM-object kan minutenlang blokkeren
+; zonder ooit een fout te geven (zie docs/DECISIONS.md D-067). Een poging om
+; dit met SetTimeouts() te begrenzen (Msxml2.ServerXMLHTTP.6.0) bleek de
+; cookiegebaseerde sessie tussen registreren en pollen te breken en is
+; teruggedraaid — zie de toelichting bij IPTConfig hierboven. De try/catch
+; en de "Send() teruggekeerd/mislukt"-regels hieronder (met verstreken tijd)
+; blijven wél staan: ze bestaan specifiek om een volgend incident te kunnen
+; onderscheiden tussen "Send() zelf hing vast" (geen van beide regels
+; verschijnt) en "Send() keerde terug, iets anders liep vast" (wel de
+; "teruggekeerd"-regel, dan stilte) — beide met onmiddellijke flush, zodat
+; ze een vastloper overleven.
 IPT_callNumber(telNummer := "", isRegistrationCall := false) {
     global IPTConfig, IPTDialRequest, State
 
@@ -2938,7 +2924,6 @@ IPT_callNumber(telNummer := "", isRegistrationCall := false) {
     IPTDialRequest := ComObject(IPTConfig["ComObject"])
     IPTDialRequest.Open("POST", url, true)
     IPTDialRequest.SetRequestHeader("Accept-Language", "nl-NL")
-    ApplyIPTTimeouts(IPTDialRequest, IPTConfig["RequestTimeoutsMs"])
     IPTDialRequest.onreadystatechange := IPT_DialResponse
 
     sendStartedAt := A_TickCount
@@ -3000,7 +2985,6 @@ IPT_register(startCooldown := true) {
     IPTRegisterRequest := ComObject(IPTConfig["ComObject"])
     IPTRegisterRequest.Open("POST", url, true)
     IPTRegisterRequest.SetRequestHeader("Accept-Language", "nl-NL")
-    ApplyIPTTimeouts(IPTRegisterRequest, IPTConfig["RequestTimeoutsMs"])
     IPTRegisterRequest.onreadystatechange := IPT_RegisterResponse
 
     sendStartedAt := A_TickCount
@@ -3112,7 +3096,6 @@ IPT_poller() {
     IPTPollRequest := ComObject(IPTConfig["ComObject"])
     IPTPollRequest.Open("POST", url, true)
     IPTPollRequest.SetRequestHeader("Accept-Language", "nl-NL")
-    ApplyIPTTimeouts(IPTPollRequest, IPTConfig["PollTimeoutsMs"])
 
     if IPTConfig["ComObject"] = "WinHttp.WinHttpRequest.5.1"
         IPTPollRequest.OnResponseDataAvailable := IPT_PollResponse
