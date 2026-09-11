@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-09-11 (third update, registry-based cookie persistence). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-09-11 (fourth update, shorten mvg-typo-fix changelog entries before release). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -2126,6 +2126,35 @@ value against that specific risk — not registry-vs-file as a general
 preference — and weigh it against the registry's own trade-off already
 documented in D-068 (local to this Windows profile/machine, doesn't roam
 the way a OneDrive-synced file eventually does).
+
+---
+
+## P3 — Shorten the 2.4.1/2.4.2 README changelog entries before release
+
+Filed by the project owner (2026-09-11). The `hotfix/2.4.1-mvg-typo` and
+`hotfix/2.4.2-mvg-typo-prefix` branches (the "mvg" default-hotstring typo
+fix, `docs/MIGRATIONS.md` schema 6/7) each added a full-length `README.md`
+Changelog entry: 2.4.1 explains it corrected the "mvg" default text, then
+2.4.2 explains that 2.4.1's fix never actually matched any real user's text
+(the shipped Replacement had a trailing comma and newlines) and describes
+the prefix-match replacement. Accurate, and mildly funny as project history,
+but far too long and implementation-focused for an end-user-facing
+changelog — a reader of the compiled app's "Over" screen does not need the
+full story of why the first attempt missed.
+
+### Scope
+
+- [ ] Before finalizing whichever stable version actually ships this fix,
+  collapse the 2.4.1 and 2.4.2 entries into a single short item describing
+  only the user-visible outcome: the "mvg" default hotstring's text is
+  corrected automatically; any hotstring the user has already customized —
+  including a self-made fix of the same typo — is left untouched.
+- [ ] Keep the full narrative (why 2.4.1 didn't work, the prefix-match
+  design) in `docs/MIGRATIONS.md` and the commit history, not in
+  `README.md`.
+
+This only touches `README.md`; a commit that changes only `README.md` does
+not need an `AppVersion` bump.
 
 ---
 
