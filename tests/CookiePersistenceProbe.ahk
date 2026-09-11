@@ -54,7 +54,12 @@ SendProbeRequest(url, cookie) {
         request.SetRequestHeader("Cookie", cookie)
     try
         request.SetTimeouts(5000, 5000, 5000, 15000)
-    request.Send("")
+
+    try {
+        request.Send("")
+    } catch as err {
+        return {status: 0, body: "", xml: "", setCookie: "", error: err.Message}
+    }
 
     setCookie := ""
     try
@@ -64,7 +69,7 @@ SendProbeRequest(url, cookie) {
         setCookie := semicolonPos ? SubStr(setCookie, 1, semicolonPos - 1) : setCookie
     }
 
-    return {status: request.status, body: request.ResponseText, xml: request.responseXML, setCookie: setCookie}
+    return {status: request.status, body: request.ResponseText, xml: request.responseXML, setCookie: setCookie, error: ""}
 }
 
 ExtractEventSummary(xml) {
@@ -87,20 +92,33 @@ ExtractEventSummary(xml) {
 if mode = "capture" {
     ProbeLog("=== capture gestart ===")
     allocResult := SendProbeRequest(baseUrl . allocatePage . "?sid=0." . A_TickCount, "")
+    if allocResult.error != "" {
+        ProbeLog("AllocNumber.xml Send() mislukt: " . allocResult.error)
+        MsgBox("AllocNumber.xml-aanvraag mislukt: " . allocResult.error, "Cookie-probe", 16)
+        ExitApp(1)
+    }
     ProbeLog("AllocNumber.xml status " . allocResult.status . ", Set-Cookie: " . allocResult.setCookie)
     if allocResult.setCookie = "" {
         MsgBox("Geen Set-Cookie ontvangen op AllocNumber.xml. Zie " . LogFile, "Cookie-probe", 16)
         ExitApp(1)
     }
 
-    FileDelete(CookieProbeFile)
+    if FileExist(CookieProbeFile)
+        FileDelete(CookieProbeFile)
     FileAppend(allocResult.setCookie, CookieProbeFile, "UTF-8")
     ProbeLog("Cookie opgeslagen in " . CookieProbeFile)
 
     koppelnummerGetoond := false
     linked := false
+    errored := false
     loop 30 {
         pollResult := SendProbeRequest(baseUrl . eventPage . "?sid=0." . A_TickCount, allocResult.setCookie)
+        if pollResult.error != "" {
+            errored := true
+            ProbeLog("GetEvent.xml Send() mislukt: " . pollResult.error)
+            MsgBox("GetEvent.xml-aanvraag mislukt: " . pollResult.error . "`n`nCookie staat nog wel opgeslagen in " . CookieProbeFile . ".", "Cookie-probe", 16)
+            break
+        }
         summary := ExtractEventSummary(pollResult.xml)
         ProbeLog("GetEvent.xml status " . pollResult.status . ": " . summary)
 
@@ -126,7 +144,7 @@ if mode = "capture" {
         }
         Sleep(2000)
     }
-    if !linked
+    if !linked && !errored
         MsgBox("Nog niet gekoppeld na ongeveer 60 seconden pollen. Zie " . LogFile . " voor details.", "Cookie-probe", 48)
 
 } else if mode = "resume" {
@@ -141,6 +159,11 @@ if mode = "capture" {
     result := ""
     loop 5 {
         pollResult := SendProbeRequest(baseUrl . eventPage . "?sid=0." . A_TickCount, savedCookie)
+        if pollResult.error != "" {
+            ProbeLog("GetEvent.xml Send() mislukt: " . pollResult.error)
+            MsgBox("GetEvent.xml-aanvraag mislukt: " . pollResult.error, "Cookie-probe", 16)
+            ExitApp(1)
+        }
         summary := ExtractEventSummary(pollResult.xml)
         ProbeLog("GetEvent.xml status " . pollResult.status . ", Set-Cookie: " . pollResult.setCookie . ": " . summary)
         if summary != "NULL" {
