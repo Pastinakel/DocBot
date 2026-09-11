@@ -4,20 +4,24 @@
 ; Handmatig diagnose-instrument, GEEN onderdeel van de uitgeleverde DocBot-
 ; applicatie (niet gecompileerd, nergens vanuit DocBot.ahk ge-#Include'd).
 ; Beantwoordt één vraag, vóórdat de hoofdapplicatie wordt omgebouwd om
-; IPTSessionCookie persistent op te slaan: blijft een telefoonkoppeling
-; bestaan als je later — met uitsluitend de eerder ontvangen sessiecookie
-; (JDMWEBCOOKIE), zonder een nieuwe AllocNumber.xml-aanvraag — opnieuw een
-; GetEvent.xml-aanvraag doet, na een herstart van de Ivanti/Windows-sessie?
-; Zie docs/DECISIONS.md D-067 voor de volledige achtergrond van dit
-; onderzoek.
+; IPTSessionCookie persistent op te slaan: herstelt de eerder ontvangen
+; sessiecookie (JDMWEBCOOKIE) een bestaande telefoonkoppeling als je die
+; cookie later — na een herstart van de Ivanti/Windows-sessie — opnieuw
+; meestuurt, precies zoals productie-DocBot dat bij opstarten altijd doet
+; (eerst AllocNumber.xml, dan pollen)? Zie docs/DECISIONS.md D-067 voor de
+; volledige achtergrond van dit onderzoek.
 ;
 ; Gebruik (vanuit een AutoHotkey v2-interpreter, niet compileren):
 ;   CookiePersistenceProbe.ahk capture   (vandaag: koppelnummer aanvragen,
 ;                                          laten koppelen, cookie opslaan)
 ;   CookiePersistenceProbe.ahk resume    (later, bijv. de volgende dag na
-;                                          een sessieherstart: uitsluitend
-;                                          met de opgeslagen cookie pollen,
-;                                          geen nieuwe registratie)
+;                                          een sessieherstart: eerst een
+;                                          kale GetEvent.xml met alleen de
+;                                          opgeslagen cookie ter referentie,
+;                                          daarna de doorslaggevende test —
+;                                          AllocNumber.xml mét die cookie,
+;                                          gevolgd door pollen — om te zien
+;                                          of dezelfde koppeling terugkomt)
 ;
 ; Vereist DocBot.local.ahk naast dit script (dezelfde niet-gecommitte lokale
 ; configuratie als de hoofdapplicatie). Slaat de cookiewaarde alleen buiten
@@ -156,29 +160,70 @@ if mode = "capture" {
     savedCookie := Trim(FileRead(CookieProbeFile, "UTF-8"))
     ProbeLog("Opgeslagen cookie gelezen: " . savedCookie)
 
-    result := ""
+    ; Stap 1: kale GetEvent.xml, uitsluitend met de opgeslagen cookie, geen
+    ; AllocNumber.xml. Een "StopEventLoop" hier bewijst weinig: dat is ook
+    ; het normale antwoord op elke pollcyclus die al even niet meer bevraagd
+    ; is — zelfs productie-DocBot cleart UserTel niet bij StopEventLoop, het
+    ; stopt alleen met pollen. Alleen ter referentie/logging; stap 2 is
+    ; doorslaggevend.
+    result1 := ""
     loop 5 {
         pollResult := SendProbeRequest(baseUrl . eventPage . "?sid=0." . A_TickCount, savedCookie)
         if pollResult.error != "" {
-            ProbeLog("GetEvent.xml Send() mislukt: " . pollResult.error)
+            ProbeLog("Stap 1 - GetEvent.xml Send() mislukt: " . pollResult.error)
             MsgBox("GetEvent.xml-aanvraag mislukt: " . pollResult.error, "Cookie-probe", 16)
             ExitApp(1)
         }
         summary := ExtractEventSummary(pollResult.xml)
-        ProbeLog("GetEvent.xml status " . pollResult.status . ", Set-Cookie: " . pollResult.setCookie . ": " . summary)
+        ProbeLog("Stap 1 - GetEvent.xml status " . pollResult.status . ", Set-Cookie: " . pollResult.setCookie . ": " . summary)
         if summary != "NULL" {
-            result := summary
+            result1 := summary
+            break
+        }
+        Sleep(2000)
+    }
+
+    ; Stap 2: net als productie-DocBot bij opstarten altijd doet, ongeacht
+    ; stap 1 — een AllocNumber.xml-aanvraag mét de opgeslagen cookie. Dit is
+    ; de echte test: komt daarna hetzelfde toestelnummer terug als gisteren
+    ; (geen nieuw koppelnummer nodig), dan herstelt de cookie de bestaande
+    ; koppeling. Komt er een nieuw "Bel ... om te registreren"-koppelnummer,
+    ; dan begint de server gewoon een nieuwe, losse sessie — cookie of niet.
+    allocResult := SendProbeRequest(baseUrl . allocatePage . "?sid=0." . A_TickCount, savedCookie)
+    if allocResult.error != "" {
+        ProbeLog("Stap 2 - AllocNumber.xml Send() mislukt: " . allocResult.error)
+        MsgBox("AllocNumber.xml-aanvraag mislukt: " . allocResult.error, "Cookie-probe", 16)
+        ExitApp(1)
+    }
+    ProbeLog("Stap 2 - AllocNumber.xml status " . allocResult.status . ", Set-Cookie: " . allocResult.setCookie)
+    cookieVoorStap2 := allocResult.setCookie != "" ? allocResult.setCookie : savedCookie
+
+    result2 := ""
+    loop 5 {
+        pollResult := SendProbeRequest(baseUrl . eventPage . "?sid=0." . A_TickCount, cookieVoorStap2)
+        if pollResult.error != "" {
+            ProbeLog("Stap 2 - GetEvent.xml Send() mislukt: " . pollResult.error)
+            break
+        }
+        summary := ExtractEventSummary(pollResult.xml)
+        ProbeLog("Stap 2 - GetEvent.xml status " . pollResult.status . ": " . summary)
+        if summary != "NULL" {
+            result2 := summary
             break
         }
         Sleep(2000)
     }
 
     MsgBox(
-        "Resultaat met uitsluitend de opgeslagen cookie (geen nieuwe AllocNumber.xml-aanvraag):`n`n"
-        . (result != "" ? result : "(alleen NULL-keepalives ontvangen, geen duidelijk resultaat binnen 5 pogingen)")
-        . "`n`nBevat dit hetzelfde toestelnummer als gisteren? Dan overleeft de koppeling een"
-        . " sessieherstart met uitsluitend de cookie — dat is precies wat IPTSessionCookie-"
-        . "persistentie in de hoofdapplicatie zou herstellen."
+        "Stap 1 — uitsluitend GetEvent.xml met de opgeslagen cookie (geen AllocNumber.xml):`n"
+        . (result1 != "" ? result1 : "(alleen NULL-keepalives)")
+        . "`n`nStap 2 — AllocNumber.xml mét de opgeslagen cookie, daarna GetEvent.xml (zoals"
+        . " productie-DocBot bij opstarten altijd doet):`n"
+        . (result2 != "" ? result2 : "(alleen NULL-keepalives)")
+        . "`n`nBevat stap 2 hetzelfde toestelnummer als gisteren, zonder nieuw koppelnummer?"
+        . " Dan herstelt de cookie de bestaande koppeling. Toont stap 2 juist een nieuw"
+        . " `"Bel ... om te registreren`"-koppelnummer? Dan start de server gewoon een nieuwe"
+        . " sessie, cookie of niet."
         . "`n`nVolledig log: " . LogFile,
         "Cookie-probe — resultaat",
         64
