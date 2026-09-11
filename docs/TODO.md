@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-09-11 (fifth update, WinInet-style legacy headers on the telephony requests, D-069). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-09-11 (sixth update, investigate an explicit telephony unlink mechanism). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -2152,6 +2152,38 @@ value against that specific risk — not registry-vs-file as a general
 preference — and weigh it against the registry's own trade-off already
 documented in D-068 (local to this Windows profile/machine, doesn't roam
 the way a OneDrive-synced file eventually does).
+
+---
+
+## P2 — Investigate an explicit unlink mechanism for the telephony link
+
+Filed by the project owner (2026-09-11), following D-068/D-069. Now that
+`IPTSessionCookie` persists across a DocBot restart, crash, or Windows
+reboot (D-068) and the server recognizes a restored link essentially
+instantly (D-069), there is no longer any way for a user to deliberately
+end a link — e.g. at the end of a shift, before handing the extension to a
+colleague, or after being assigned a different extension. Before D-068,
+simply closing DocBot (or its process dying) eventually let the link lapse
+server-side; that no longer happens by design.
+
+Investigate whether an explicit "ontkoppelen" action is possible and
+desirable, for example:
+
+- Clearing the persisted cookie (`SavePersistedIPTSessionCookie("")`/
+  `RegWrite`) and `IPTSessionCookie` itself, so the next `AllocNumber.xml`
+  starts a genuinely fresh session instead of resuming the old one.
+- Whether the telephony server has its own explicit unlink/logout endpoint
+  (distinct from `AllocatePage`/`EventPage`/`DialPage`) that should be
+  called as well, rather than relying on the cookie simply going stale
+  server-side — needs checking against the server's actual behavior/API,
+  not assumed.
+- Where this action should live in the UI (Overzicht-pagina, near the
+  existing koppelnummer/Verversen controls) and what should happen to
+  `State["IPT"]["UserTel"]`/the poll chain (`State["IPT"]["NeedUpdate"]`)
+  immediately afterward.
+
+This is an open investigation, not a committed design — confirm the actual
+need and the server's supported behavior before implementing anything.
 
 ---
 
