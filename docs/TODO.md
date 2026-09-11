@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-09-11 (fifth update, investigate an explicit telephony unlink mechanism). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-09-11 (sixth update, investigate an explicit telephony unlink mechanism). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -865,14 +865,40 @@ on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
   `claude/klembord-hang-fix` (clipboard-read process isolation) is still
   needed, redundant, or addressing a genuinely separate problem — do not
   let it merge or get discarded on assumption alone.
-- [ ] If confirmed: merge into `develop`, add a README changelog entry, and
+- [x] If confirmed: merge into `develop`, add a README changelog entry, and
   update this item to done. If refuted: re-open the investigation in
   D-067 rather than layering a third theory on top without retiring this
   one.
+- [ ] Follow-on regression after the D-068 merge (`2.5-dev.2`): the
+  persisted link was restored correctly, but server-side recognition of it
+  was visibly slower/less reliable than the stable build's (delayed
+  koppelnummer confirmation, no immediate link display after a restart).
+  Diagnosed via a Fiddler packet capture comparison (see `docs/DECISIONS.md`
+  D-069): NTLM/Windows-integrated authentication was ruled out (no
+  `Authorization` header in the stable capture); the real cause was a set
+  of WinInet-default headers (`User-Agent`, `UA-CPU`, `Accept-Encoding`,
+  `Cache-Control`) that `Msxml2.ServerXMLHTTP.6.0`/WinHTTP does not send
+  automatically the way `Msxml2.XMLHTTP.6.0`/WinInet does, which this
+  legacy JDM-style server appears to depend on for its fast
+  session-reconciliation path. `ApplyIPTLegacyHeaders()` (`DocBot.ahk`) now
+  sets these explicitly on all three telephony requests, implemented on
+  `claude/ipt-legacy-headers`.
+  - [x] Confirm the fix with a standalone header probe on Windows before
+    touching production code — done: a `Msxml2.ServerXMLHTTP.6.0` request
+    with these four headers added got an immediate `GetEvent.xml`
+    confirmation, matching the stable build.
+  - [x] Validate the actual `DocBot.ahk` production path (not just the
+    probe) on Windows — confirmed: register/poll/dial/SMS all kept
+    working, calling the koppelnummer showed an immediate confirmation,
+    and restarting DocBot showed the linked number without a manual
+    refresh.
+  - [ ] Merge into `develop` via pull request (only once the project owner
+    explicitly asks for the merge), then update this item to done.
 
 This changes `DocBot.ahk` behavior. `AppVersion` already follows the
-feature-branch counter in every commit on `claude/ipt-comobject-timeouts`;
-re-check the counter on `develop` when merging per the usual rule.
+feature-branch counter in every commit on `claude/ipt-comobject-timeouts`
+and `claude/ipt-legacy-headers`; re-check the counter on `develop` when
+merging per the usual rule.
 
 ---
 

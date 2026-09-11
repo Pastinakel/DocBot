@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-dev.2"
+global AppVersion := "2.5-ipt-legacy-headers.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -134,6 +134,30 @@ global IPTConfig := Map(
     "RegisterMinIntervalMs", 10000,
     "RequestTimeoutsMs", [5000, 5000, 5000, 15000],
     "PollTimeoutsMs", [5000, 5000, 5000, 120000]
+)
+
+; De telefonieserver (een legacy JDM-achtige middleware, te herkennen aan de
+; JDMWEBCOOKIE-naam) herkent een bestaande koppeling via WinInet
+; (Msxml2.XMLHTTP.6.0) vrijwel direct, maar deed dat via WinHTTP
+; (Msxml2.ServerXMLHTTP.6.0, hierboven) merkbaar trager en onbetrouwbaarder
+; — bevestigd met een Fiddler-pakketvergelijking tussen beide clients (zie
+; docs/DECISIONS.md D-069). Het verschil zat niet in NTLM/Windows-
+; integrated authenticatie (geen Authorization-header in de stabiele
+; capture) maar in headers die WinInet automatisch toevoegt en die
+; ServerXMLHTTP/WinHTTP niet vanzelf meestuurt. Deze headers bootsen die
+; WinInet-standaardwaarden na, vastgelegd op één Windows-testmachine — geen
+; garantie dat ze letterlijk overeenkomen met wat elke gebruikersmachine
+; zelf zou hebben gestuurd, maar voldoende om de server hetzelfde
+; snelle-herkenningsgedrag te laten zien. Toegepast via
+; ApplyIPTLegacyHeaders() (verderop bij ApplyIPTTimeouts): moet vóór
+; IPT_register(false)/IPT_poller() in het auto-execute-gedeelte bekend
+; zijn, dus in dit globals-blok gedeclareerd, niet verderop bij de
+; functiedefinitie zelf.
+global IPTLegacyClientHeaders := Map(
+    "Accept-Encoding", "gzip, deflate",
+    "Cache-Control", "no-cache",
+    "UA-CPU", "AMD64",
+    "User-Agent", "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 10.0; Win64; x64; Trident/7.0; .NET4.0C; .NET4.0E; .NET CLR 2.0.50727; .NET CLR 3.0.30729; .NET CLR 3.5.30729; Tablet PC 2.0)"
 )
 
 ; Expliciet vastgelegde sessiecookie voor het GetEvent-meldingskanaal (zie
@@ -3035,9 +3059,11 @@ CaptureIPTSessionCookie(request) {
 ; Fiddler/Wireshark) op de Windows-machine nodig — niet iets wat DocBot
 ; vanuit zijn eigen COM-aanroepen kan laten zien.
 LogIPTRequestHeaders(label) {
-    global IPTSessionCookie
+    global IPTSessionCookie, IPTLegacyClientHeaders
 
     text := "Accept-Language: nl-NL"
+    for name, value in IPTLegacyClientHeaders
+        text .= "`r`n" . name . ": " . value
     if IPTSessionCookie != ""
         text .= "`r`nCookie: " . IPTSessionCookie
 
@@ -3054,6 +3080,12 @@ LogIPTRequestHeaders(label) {
 ApplyIPTTimeouts(request, timeouts) {
     try
         request.SetTimeouts(timeouts[1], timeouts[2], timeouts[3], timeouts[4])
+}
+
+ApplyIPTLegacyHeaders(request) {
+    global IPTLegacyClientHeaders
+    for name, value in IPTLegacyClientHeaders
+        request.SetRequestHeader(name, value)
 }
 
 IPT_callNumber(telNummer := "", isRegistrationCall := false) {
@@ -3081,6 +3113,7 @@ IPT_callNumber(telNummer := "", isRegistrationCall := false) {
     IPTDialRequest := ComObject(IPTConfig["ComObject"])
     IPTDialRequest.Open("POST", url, true)
     IPTDialRequest.SetRequestHeader("Accept-Language", "nl-NL")
+    ApplyIPTLegacyHeaders(IPTDialRequest)
     if IPTSessionCookie != ""
         IPTDialRequest.SetRequestHeader("Cookie", IPTSessionCookie)
     ApplyIPTTimeouts(IPTDialRequest, IPTConfig["RequestTimeoutsMs"])
@@ -3148,6 +3181,7 @@ IPT_register(startCooldown := true) {
     IPTRegisterRequest := ComObject(IPTConfig["ComObject"])
     IPTRegisterRequest.Open("POST", url, true)
     IPTRegisterRequest.SetRequestHeader("Accept-Language", "nl-NL")
+    ApplyIPTLegacyHeaders(IPTRegisterRequest)
     if IPTSessionCookie != ""
         IPTRegisterRequest.SetRequestHeader("Cookie", IPTSessionCookie)
     ApplyIPTTimeouts(IPTRegisterRequest, IPTConfig["RequestTimeoutsMs"])
@@ -3274,6 +3308,7 @@ IPT_poller() {
     IPTPollRequest := ComObject(IPTConfig["ComObject"])
     IPTPollRequest.Open("POST", url, true)
     IPTPollRequest.SetRequestHeader("Accept-Language", "nl-NL")
+    ApplyIPTLegacyHeaders(IPTPollRequest)
     if IPTSessionCookie != ""
         IPTPollRequest.SetRequestHeader("Cookie", IPTSessionCookie)
     ApplyIPTTimeouts(IPTPollRequest, IPTConfig["PollTimeoutsMs"])

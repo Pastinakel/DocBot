@@ -452,12 +452,14 @@ When a user edits or saves a package item as personal, the application writes a 
   it. Deliberately not solved via reusing one persistent COM object
   instance instead: `IPT_register()` and `IPT_poller()` can be in flight
   concurrently, and one object can't serve two concurrent async calls —
-  see D-067. `LogIPTRequestHeaders(label)` logs only what DocBot itself
-  explicitly sets (`Accept-Language`, `Cookie`) — none of the IPT COM
-  objects expose a way to read back automatically-added headers (e.g. an
-  NTLM handshake), so this cannot show whether/how Windows-integrated
-  authentication plays into the separately-durable phone-link mechanism
-  (see D-067's discussion of that open question).
+  see D-067. `LogIPTRequestHeaders(label)` logs everything DocBot itself
+  explicitly sets (`Accept-Language`, the `IPTLegacyClientHeaders` below,
+  `Cookie`) — none of the IPT COM objects expose a way to read back
+  automatically-added headers, so this still cannot show anything beyond
+  what DocBot sets itself. D-067 left open whether Windows-integrated
+  (NTLM) authentication plays into the separately-durable phone-link
+  mechanism; D-069 answered that with a packet capture showing no
+  `Authorization` header on the stable build's requests — it is not NTLM.
 - `IPTSessionCookie` is persisted to `HKCU\Software\DocBot` (or
   `DocBot-test`/`DocBot-dev`, mirroring `UserDataDir`'s per-channel split)
   rather than `settings.ini`, so an existing phone link survives a DocBot
@@ -490,6 +492,18 @@ When a user edits or saves a package item as personal, the application writes a 
   `IPT_callNumber()` self-chains the way `IPT_poller()` does, so they
   lack the repeated-firing window that exposed this bug. See
   `docs/DECISIONS.md` D-067.
+- `IPTLegacyClientHeaders` (global map) and `ApplyIPTLegacyHeaders(request)`
+  add `Accept-Encoding`, `Cache-Control`, `UA-CPU`, and `User-Agent` to
+  every telephony request, copied from what `Msxml2.XMLHTTP.6.0`/WinInet
+  (the stable build) sends automatically and `Msxml2.ServerXMLHTTP.6.0`/
+  WinHTTP (the current `ComObject`) does not. The telephony server (a
+  legacy JDM-style middleware) was found, via a Fiddler packet comparison,
+  to key its fast session-reconciliation path on these headers rather than
+  the cookie alone — without them, an existing link was still recognized,
+  but noticeably slower and less consistently than the stable build. See
+  `docs/DECISIONS.md` D-069, including the known limitation that these
+  values are a static copy from one Windows test machine rather than
+  something derived per-machine.
 
 ### 11.2 Request lifecycle
 

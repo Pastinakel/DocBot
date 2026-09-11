@@ -3552,3 +3552,107 @@ ungated function call at global-initialization time (before
 - `tests/CookiePersistenceProbe.ahk` stays in the repository as a
   reusable diagnostic for any future question about this server's session
   behavior — it does not need deleting now that the feature is built.
+
+## D-069 — Restore WinInet-style default headers on the WinHTTP-based telephony requests
+
+**Status:** Implemented on `claude/ipt-legacy-headers` (branched from
+`develop`, after D-068 merged as `2.5-dev.2`), Windows-validated through
+the actual `DocBot.ahk` production code path: registering, calling the
+koppelnummer, and restarting DocBot all showed the same instant
+recognition as the stable build, with no regression in polling/dialing/SMS.
+
+**Background**
+
+After D-068 merged to `develop`, the project owner reported that the
+persisted-cookie mechanism correctly restored the underlying phone link
+(confirmed working), but the *server's recognition* of that link was now
+visibly slower and less consistent than the stable `2.4` build's: calling
+the koppelnummer no longer showed an immediate confirmation (a manual
+refresh was needed), and restarting DocBot showed no linked number for
+roughly a minute before an automatic poll eventually delivered the
+`SetUpperText` confirmation event — both behaviors absent from the stable
+build, which the project owner confirmed gets instant server-side
+recognition of an existing link.
+
+**Investigation**
+
+An initial "inherent server-side reconciliation delay" explanation was
+ruled out — the project owner confirmed the stable build never shows this
+delay, so something the dev build's request itself does (or fails to do)
+had to be the cause. NTLM/Windows-integrated authentication was the next
+hypothesis (WinInet performing an implicit handshake that WinHTTP-based
+`ServerXMLHTTP` does not) — refuted by a Fiddler capture of the stable
+build's actual request, which carried no `Authorization` header at all.
+
+Capturing the *dev* build's traffic in Fiddler initially showed nothing.
+Cause: Fiddler configures itself as the system-wide WinInet/Internet
+Options proxy, which the stable build (`Msxml2.XMLHTTP.6.0`, WinInet-based)
+automatically follows; `Msxml2.ServerXMLHTTP.6.0` is WinHTTP-based, and
+WinHTTP keeps its own, separate, machine-wide proxy configuration
+(`netsh winhttp show/set proxy`) that is not synced with Internet Options —
+confirmed to be "Direct access (no proxy server)" on the test machine,
+while Internet Options' own LAN setting already pointed at Fiddler. The
+standard fix (`netsh winhttp set proxy`) needs an elevated prompt, not
+available on the test machine. Used
+`IServerXMLHTTPRequest2.setProxy(proxySetting, proxyServer)` instead — a
+per-COM-object override that needs no elevation at all. First attempt used
+`proxySetting = 3`, which threw `(0x80070057) The parameter is incorrect`:
+`3` is `SXH_PROXY_SET_PRECONFIG_WITH_NO_AUTOPROXY`, which rejects an
+explicit proxy address; `2` is `SXH_PROXY_SET_PROXY`, the correct value for
+routing to an explicit `server:port`.
+
+With the dev build's traffic finally visible, the header diff against the
+stable capture was:
+
+| Header | Stable (WinInet) | Dev (WinHTTP, before this fix) |
+| --- | --- | --- |
+| `User-Agent` | `Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 10.0; Win64; x64; Trident/7.0; ...)` | `Mozilla/4.0 (compatible; Win32; WinHttp.WinHttpRequest.5)` |
+| `UA-CPU` | `AMD64` | *(absent)* |
+| `Accept-Encoding` | `gzip, deflate` | *(absent)* |
+| `Cache-Control` | `no-cache` | *(absent)* |
+| `Cookie` | present | present (unaffected — confirms D-068's propagation works) |
+
+This server (a legacy JDM-style telephony middleware, identifiable by its
+`JDMWEBCOOKIE` cookie name) is the kind of old intranet system that
+plausibly keys its fast session-reconciliation path on the client's
+`User-Agent` (or the presence of these WinInet-default headers generally)
+rather than purely on the session cookie. Confirmed, not just guessed: a
+probe request built with `Msxml2.ServerXMLHTTP.6.0`, `setProxy()`-routed
+through Fiddler for visibility, with these four headers added to match the
+stable capture exactly, got its `GetEvent.xml` confirmation on the very
+first poll — the same instant recognition the stable build shows, versus
+the ~10 second delay seen without them.
+
+**Fix**
+
+`ApplyIPTLegacyHeaders(request)` (`DocBot.ahk`, next to
+`ApplyIPTTimeouts()`) sets `Accept-Encoding`, `Cache-Control`, `UA-CPU`,
+and `User-Agent` to the values captured from the stable build's WinInet
+defaults, via a new `IPTLegacyClientHeaders` map. Called from
+`IPT_callNumber()`, `IPT_register()`, and `IPT_poller()` right alongside
+the existing `Accept-Language` header. `LogIPTRequestHeaders()` now logs
+these too, so the standard log accurately reflects what is actually sent
+(still scrubbed by the existing `"headers"` `SanitizeStandardLogText()`
+rule).
+
+**Known limitation**
+
+The `User-Agent`/`UA-CPU` values are a static copy of what one specific
+Windows test machine's WinInet stack generated (it embeds
+`Windows NT 10.0; Win64; x64` and specific `.NET CLR` versions) rather than
+something DocBot derives from the machine it actually runs on. Accepted
+for now: hospital desktops in this environment are centrally imaged and
+effectively homogeneous, and deriving these dynamically per machine would
+be unwarranted complexity unless a genuinely different Windows image is
+ever shown to need it.
+
+**Consequences**
+
+- Confirmed on the actual `DocBot.ahk` production path, not just the
+  standalone probe: registering, calling the koppelnummer, and restarting
+  DocBot all showed instant server-side recognition, matching the stable
+  build, with no regression in polling/dialing/SMS.
+- This closes the last known behavioral gap between the stable `2.4` build
+  and the `ServerXMLHTTP`/cookie-propagation rework from D-067/D-068.
+- The NTLM/Windows-integrated-authentication question D-067 left open is
+  now answered: it is not the mechanism at play here.
