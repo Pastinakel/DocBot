@@ -831,6 +831,24 @@ on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
   affected user) for field use — the original hangs leave no trace in
   `debug.log` while happening, so only continued/absent reports over time
   can confirm or refute it.
+- [ ] Separate, follow-on question raised by the "no longer linked after a
+  restart/crash" regression observed once the crash fix above was
+  confirmed: persist `IPTSessionCookie` to `settings.ini` so a phone link
+  survives a DocBot restart, the way it did for free under the old
+  `Msxml2.XMLHTTP.6.0` (WinInet's own persistent cookie cache). Before
+  building that into the main app, `tests/CookiePersistenceProbe.ahk` (a
+  standalone, non-shipped diagnostic script, not part of `DocBot.ahk`)
+  tests the underlying hypothesis directly against the real server: run it
+  with `capture` to register/link and save the session cookie, then
+  `resume` after an Ivanti/Windows session restart (ideally the next day)
+  to see whether a single `GetEvent.xml` request carrying only that saved
+  cookie — no fresh `AllocNumber.xml` — still shows the phone linked. If
+  it does, build the persistence feature into `DocBot.ahk` gated so
+  registering/polling/refreshing/dialing wait for that load to resolve
+  before proceeding (never silently racing ahead on an empty cookie), plus
+  the corresponding `docs/DATA_PROTECTION.md` §3.2/§7 update. If it
+  doesn't, the server has its own independent session timeout and this
+  approach doesn't help — don't build the feature.
 - [ ] Decide, once this has field evidence, whether
   `claude/klembord-hang-fix` (clipboard-read process isolation) is still
   needed, redundant, or addressing a genuinely separate problem — do not
