@@ -420,10 +420,20 @@ When a user edits or saves a package item as personal, the application writes a 
   also supports `SetTimeouts()`; its cookie storage is likewise per-object
   rather than shared, but that gap is closed by the explicit cookie
   propagation described below, independent of which COM object instance
-  handles a given call. `IPT_poller()` already special-cased this ComObject
-  for its response-event name (`OnResponseDataAvailable` vs.
-  `onreadystatechange`) before this change, so no further branching was
-  needed there. See `docs/DECISIONS.md` D-067.
+  handles a given call. See `docs/DECISIONS.md` D-067.
+- `BindIPTResponseHandler(request, handler)` binds a request's async
+  response callback: `WinHttp.WinHttpRequest.5.1` does not implement the
+  scriptable `onreadystatechange` property that `Msxml2.XMLHTTP.6.0`/
+  `Msxml2.ServerXMLHTTP.6.0` expose, and setting it on a `WinHttpRequest`
+  object throws (`This value of type "WinHttpRequest" has no property
+  named "onreadystatechange"`) — confirmed by a real Windows crash the
+  first time the ComObject switch above was tested. `WinHttpRequest`
+  instead exposes `OnResponseDataAvailable`/`OnResponseFinished`/`OnError`
+  as real COM events. `IPT_poller()` already branched on `ComObject` for
+  this before the switch above; `BindIPTResponseHandler()` centralizes
+  that branch so all three telephony calls (`IPT_register()`,
+  `IPT_callNumber()`, `IPT_poller()`) use it consistently instead of
+  setting the event property directly.
 - `ApplyIPTTimeouts(request, timeouts)` calls `request.SetTimeouts(...)`
   (wrapped in try/catch, since older/other COM variants may not implement
   it) with `IPTConfig["RequestTimeoutsMs"]` for register/dial calls and the

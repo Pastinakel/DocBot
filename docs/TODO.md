@@ -775,10 +775,18 @@ on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
   called in all three functions with `RequestTimeoutsMs`/`PollTimeoutsMs`.
   This is the part that actually bounds `Send()` and addresses the
   original hang risk.
+- [x] First Windows test of step B crashed immediately on
+  `IPT_register()`: `WinHttp.WinHttpRequest.5.1` has no
+  `onreadystatechange` property (only `IPT_poller()` already branched on
+  `ComObject` for this; `IPT_register()`/`IPT_callNumber()` did not).
+  Fixed by extracting that branch into `BindIPTResponseHandler()` and
+  using it in all three telephony functions — see `docs/DECISIONS.md`
+  D-067, "Step B crash on first Windows test".
 - [ ] Validate step B on a real Windows machine against the real internal
   telephony server, exactly as thoroughly as the first (rejected) attempt
   should have been — registering, event-polling, dialing, and SMS must
-  all keep working, and a koppelnummer must still appear.
+  all keep working, and a koppelnummer must still appear. This has not
+  been re-tested since the `onreadystatechange` crash fix above.
 - [ ] Confirm the long-poll's receive timeout (`PollTimeoutsMs`,
   120000ms) does not get cut short during normal, legitimately quiet
   periods — watch for unexpected `Send() mislukt`/reconnect churn in the

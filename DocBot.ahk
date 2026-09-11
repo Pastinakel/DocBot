@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-ipt-comobject-timeouts.5"
+global AppVersion := "2.5-ipt-comobject-timeouts.6"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2997,6 +2997,23 @@ ApplyIPTTimeouts(request, timeouts) {
         request.SetTimeouts(timeouts[1], timeouts[2], timeouts[3], timeouts[4])
 }
 
+; Msxml2.XMLHTTP.6.0/Msxml2.ServerXMLHTTP.6.0 bieden de scriptbare
+; eigenschap onreadystatechange om een callback te koppelen.
+; WinHttp.WinHttpRequest.5.1 kent die eigenschap niet en levert in plaats
+; daarvan de events OnResponseDataAvailable/OnResponseFinished/OnError
+; (foutmelding op Windows: "This value of type WinHttpRequest has no
+; property named onreadystatechange" toen dit nog per aanroep apart, en
+; onvolledig, werd afgehandeld — alleen IPT_poller() had deze wissel al).
+; Alle drie de telefonie-aanroepen koppelen hun responshandler nu via deze
+; ene functie in plaats van de eigenschap rechtstreeks te zetten.
+BindIPTResponseHandler(request, handler) {
+    global IPTConfig
+    if IPTConfig["ComObject"] = "WinHttp.WinHttpRequest.5.1"
+        request.OnResponseDataAvailable := handler
+    else
+        request.onreadystatechange := handler
+}
+
 IPT_callNumber(telNummer := "", isRegistrationCall := false) {
     global IPTConfig, IPTDialRequest, State, IPTSessionCookie
 
@@ -3025,7 +3042,7 @@ IPT_callNumber(telNummer := "", isRegistrationCall := false) {
     if IPTSessionCookie != ""
         IPTDialRequest.SetRequestHeader("Cookie", IPTSessionCookie)
     ApplyIPTTimeouts(IPTDialRequest, IPTConfig["RequestTimeoutsMs"])
-    IPTDialRequest.onreadystatechange := IPT_DialResponse
+    BindIPTResponseHandler(IPTDialRequest, IPT_DialResponse)
     LogIPTRequestHeaders(IPTConfig["DialPage"])
 
     sendStartedAt := A_TickCount
@@ -3092,7 +3109,7 @@ IPT_register(startCooldown := true) {
     if IPTSessionCookie != ""
         IPTRegisterRequest.SetRequestHeader("Cookie", IPTSessionCookie)
     ApplyIPTTimeouts(IPTRegisterRequest, IPTConfig["RequestTimeoutsMs"])
-    IPTRegisterRequest.onreadystatechange := IPT_RegisterResponse
+    BindIPTResponseHandler(IPTRegisterRequest, IPT_RegisterResponse)
     LogIPTRequestHeaders(IPTConfig["AllocatePage"])
 
     sendStartedAt := A_TickCount
@@ -3209,11 +3226,7 @@ IPT_poller() {
     if IPTSessionCookie != ""
         IPTPollRequest.SetRequestHeader("Cookie", IPTSessionCookie)
     ApplyIPTTimeouts(IPTPollRequest, IPTConfig["PollTimeoutsMs"])
-
-    if IPTConfig["ComObject"] = "WinHttp.WinHttpRequest.5.1"
-        IPTPollRequest.OnResponseDataAvailable := IPT_PollResponse
-    else
-        IPTPollRequest.onreadystatechange := IPT_PollResponse
+    BindIPTResponseHandler(IPTPollRequest, IPT_PollResponse)
 
     LogIPTRequestHeaders(IPTConfig["EventPage"])
 

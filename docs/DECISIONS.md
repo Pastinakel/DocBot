@@ -2972,9 +2972,12 @@ to fix the reported hangs. The first bound-timeout attempt
 registration; diagnostic hardening plus explicit cookie propagation were
 added and validated with no regression; a second bound-timeout attempt
 (`WinHttp.WinHttpRequest.5.1`, on top of the now-working cookie
-propagation) is implemented but **not yet Windows-validated** — see
-"Step A validated on Windows; Step B implemented" below for the current
-state. Note: a differently-numbered, unrelated D-067 exists on the
+propagation) crashed on its first Windows test (`onreadystatechange` does
+not exist on `WinHttpRequest`) and was fixed by centralizing event-handler
+binding; **still not yet Windows-validated after that fix** — see "Step A
+validated on Windows; Step B implemented" and "Step B crash on first
+Windows test" below for the current state. Note: a differently-numbered,
+unrelated D-067 exists on the
 separate, unmerged `claude/klembord-hang-fix` branch (a clipboard-read
 isolation fix — see that branch's own `docs/DECISIONS.md`); if both
 branches are ever merged, one of the two entries needs renumbering.
@@ -3196,6 +3199,35 @@ this needs the same care as step A and the original (rejected) attempt —
 registering/polling/dialing/SMS must all still work, and this time the
 receive timeout on the long-poll needs watching too (a value picked
 without knowing the server's real long-poll behavior in detail).
+
+**Step B crash on first Windows test; fixed by centralizing event binding**
+
+The first real Windows test of step B crashed immediately, on the very
+first `IPT_register()` call during auto-execute:
+
+```
+Error: This value of type "WinHttpRequest" has no property named
+"onreadystatechange".
+```
+
+Root cause: `Msxml2.XMLHTTP.6.0`/`Msxml2.ServerXMLHTTP.6.0` expose
+`onreadystatechange` as a scriptable property that DocBot's code sets
+directly to hook up each response handler. `WinHttp.WinHttpRequest.5.1`
+does not implement that property at all — it instead exposes
+`OnResponseDataAvailable`/`OnResponseFinished`/`OnError` as real COM
+events. `IPT_poller()` already branched on `IPTConfig["ComObject"]` to
+handle this (it predates this decision, from an earlier period where
+WinHttpRequest was used successfully), but `IPT_register()` and
+`IPT_callNumber()` did not — they were written assuming `onreadystatechange`
+always exists, which held as long as `ComObject` was always MSXML-family
+and broke the moment step B switched the default to WinHttpRequest.
+
+Fix: extracted `IPT_poller()`'s existing branch into
+`BindIPTResponseHandler(request, handler)`, called from all three
+telephony functions instead of setting the event property directly. This
+is a consolidation of an already-working pattern, not a new mechanism —
+`IPT_poller()`'s behavior is unchanged, `IPT_register()`/`IPT_callNumber()`
+now match it.
 
 **Reasoning**
 
