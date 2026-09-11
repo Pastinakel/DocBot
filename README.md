@@ -518,6 +518,12 @@ Changelog
   of de Windows-sessie opnieuw startte. DocBot bewaart de koppeling nu op
   een manier die dit overleeft: bellen naar het weergegeven koppelnummer
   is daarna niet meer nodig (`docs/DECISIONS.md` D-068).
+- Na het herstellen van een telefoonkoppeling herkende de telefonieserver
+  deze soms merkbaar trager dan voorheen: pas na een handmatige verversing
+  kwam de bevestiging in beeld. DocBot stuurt nu dezelfde technische
+  verzoekgegevens mee die de server altijd al van een Windows-pc
+  verwachtte, waardoor een bestaande koppeling weer meteen wordt herkend
+  (`docs/DECISIONS.md` D-069).
 
 ### 2.4.2 — Huidige stabiele release
 - Spelfout in de standaard-hotstring "mvg" te gecorrigeerd.
