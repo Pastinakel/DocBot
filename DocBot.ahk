@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4.1"
+global AppVersion := "2.4.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -127,7 +127,7 @@ global State := Map(
     )
 )
 
-global HotstringSchemaVersion := 6
+global HotstringSchemaVersion := 7
 global BundledPackageSchemaVersion := 1
 global PackageSettingsSchemaVersion := 1
 global BundledPackageDir := ""
@@ -7022,6 +7022,39 @@ FixKnownDefaultHotstringTypos(items) {
     return fixed
 }
 
+; Vervolg op KnownDefaultHotstringTypoFixes()/FixKnownDefaultHotstringTypos()
+; hierboven (schema 6): die matchte op de volledige Replacement-tekst, maar
+; de daadwerkelijk uitgerolde "mvg"-tekst bleek een komma en regeleinden te
+; bevatten (bijvoorbeeld een naam op een volgende regel) die niet vooraf
+; bekend waren. Schema 6 matchte daardoor nergens en corrigeerde niets.
+; Deze correctie matcht in plaats daarvan op het BEGIN van de tekst en laat
+; al het overige (komma, regeleinden, naam) ongemoeid — zie
+; docs/MIGRATIONS.md schema 7.
+KnownDefaultHotstringPrefixTypoFixes() {
+    return [
+        Map("Trigger", "mvg", "OldPrefix", "Met vriendelijk groet", "NewPrefix", "Met vriendelijke groet")
+    ]
+}
+
+FixKnownDefaultHotstringPrefixTypos(items) {
+    fixed := 0
+    for _, fix in KnownDefaultHotstringPrefixTypoFixes() {
+        triggerKey := StrLower(Trim(fix["Trigger"]))
+        oldPrefix := fix["OldPrefix"]
+        for _, rawItem in items {
+            item := NormalizeHotstringItem(rawItem)
+            if StrLower(Trim(item["Trigger"])) != triggerKey
+                continue
+            replacement := item["Replacement"]
+            if SubStr(replacement, 1, StrLen(oldPrefix)) != oldPrefix
+                continue
+            rawItem["Replacement"] := fix["NewPrefix"] . SubStr(replacement, StrLen(oldPrefix) + 1)
+            fixed += 1
+        }
+    }
+    return fixed
+}
+
 DefaultHotstringOptions() {
     return Map(
         "NoEndChar", false,       ; *
@@ -8373,6 +8406,14 @@ LoadHotstringsFromJson(path, showMessage := false) {
         ; eigen fix van dezelfde typefout) wordt nooit overschreven.
         if schemaVersion < 6
             FixKnownDefaultHotstringTypos(Hotstrings)
+
+        ; Schema 7 herhaalt dezelfde soort correctie, maar dan op het begin
+        ; van de tekst: de daadwerkelijke "mvg"-tekst bleek een komma en
+        ; regeleinden na de aanhef te bevatten, waardoor de exacte-tekstmatch
+        ; van schema 6 nergens op sloeg. Alles ná het gematchte begin blijft
+        ; ongewijzigd.
+        if schemaVersion < 7
+            FixKnownDefaultHotstringPrefixTypos(Hotstrings)
 
         ; Schema 1 krijgt stabiele IDs en origin=custom. De bestaande
         ; atomaire opslag maakt eerst een .bak voordat het bestand wijzigt.
