@@ -2967,17 +2967,22 @@ closed" notice, even though the user had only copied once.
 
 **Status:** Implemented on `claude/ipt-comobject-timeouts` (branched from
 `develop`) in staged, individually-Windows-tested steps; not yet confirmed
-to fix the reported hangs. The first bound-timeout attempt
-(`Msxml2.ServerXMLHTTP.6.0`) was reverted after a real Windows test broke
-registration; diagnostic hardening plus explicit cookie propagation were
-added and validated with no regression; a second bound-timeout attempt
-(`WinHttp.WinHttpRequest.5.1`, on top of the now-working cookie
-propagation) crashed on its first Windows test (`onreadystatechange` does
-not exist on `WinHttpRequest`) and was fixed by centralizing event-handler
-binding; **still not yet Windows-validated after that fix** — see "Step A
-validated on Windows; Step B implemented" and "Step B crash on first
-Windows test" below for the current state. Note: a differently-numbered,
-unrelated D-067 exists on the
+to fix the reported hangs. `ComObject` went through three candidates
+before settling on `Msxml2.ServerXMLHTTP.6.0`: `Msxml2.XMLHTTP.6.0` (the
+original) has no timeout mechanism at all; a first attempt to switch
+straight to `ServerXMLHTTP` was reverted after a real Windows test broke
+registration on its cookie-sharing gap; diagnostic hardening plus explicit
+cookie propagation were then added and validated with no regression;
+`WinHttp.WinHttpRequest.5.1` (tried next, on top of the now-working cookie
+propagation) crashed twice on real Windows tests — first because it has no
+`onreadystatechange` property, then again because its real async events
+don't bind reliably from AHK v2 either — and was abandoned in favor of
+`ServerXMLHTTP` on top of the same cookie propagation, which needs no
+event-binding rework at all. **Not yet Windows-validated in this final
+form** — see "Final ComObject choice: `Msxml2.ServerXMLHTTP.6.0`" below for
+the current state and the full history above it for how the other two
+candidates were ruled out. Note: a differently-numbered, unrelated D-067
+exists on the
 separate, unmerged `claude/klembord-hang-fix` branch (a clipboard-read
 isolation fix — see that branch's own `docs/DECISIONS.md`); if both
 branches are ever merged, one of the two entries needs renumbering.
@@ -3222,12 +3227,60 @@ WinHttpRequest was used successfully), but `IPT_register()` and
 always exists, which held as long as `ComObject` was always MSXML-family
 and broke the moment step B switched the default to WinHttpRequest.
 
-Fix: extracted `IPT_poller()`'s existing branch into
+First fix attempt: extracted `IPT_poller()`'s existing branch into
 `BindIPTResponseHandler(request, handler)`, called from all three
-telephony functions instead of setting the event property directly. This
-is a consolidation of an already-working pattern, not a new mechanism —
-`IPT_poller()`'s behavior is unchanged, `IPT_register()`/`IPT_callNumber()`
-now match it.
+telephony functions instead of setting the event property directly, on
+the assumption that `IPT_poller()`'s `OnResponseDataAvailable := handler`
+branch was an already-working pattern from an earlier period where
+WinHttpRequest was used successfully. That assumption was wrong — see
+below.
+
+**Second crash: WinHttpRequest's real events don't bind reliably from AHK
+v2 either; `ComObject` finally set to `Msxml2.ServerXMLHTTP.6.0`**
+
+The very next Windows test crashed again, this time inside
+`BindIPTResponseHandler()` itself, on the same first `IPT_register()` call:
+
+```
+Error: This value of type "WinHttpRequest" has no property named
+"OnResponseDataAvailable".
+```
+
+So the `IPT_poller()` branch this was extracted from had in fact never
+been exercised against a real WinHttpRequest object with `ComObject`
+actually set to `WinHttp.WinHttpRequest.5.1` — before this decision,
+`ComObject` was always MSXML-family, so that branch's WinHttpRequest arm
+was latent, unvalidated code. Research (AutoHotkey community forum
+threads, cross-checked against the earlier decision to add step B)
+confirmed this is a known AHK v2 limitation, not a mistake in how the
+property was named: `onreadystatechange` is a scriptable property that
+MSXML added specifically for host scripting, so ordinary property
+assignment works for it. `WinHttpRequest` instead exposes its async
+events (`OnResponseDataAvailable`/`OnResponseFinished`/`OnError`) through
+a genuine COM connection-point (dispinterface) — the mechanism ordinary
+property assignment does not reach, and `ComObjConnect()` (AHK v2's tool
+for connection-point events) does not reach either here, because it
+relies on `IProvideClassInfo`/`IDispatch` to discover the interface, which
+`WinHttpRequest`'s event source does not expose in a way `ComObjConnect()`
+can use. Correctly implementing this would require a hand-built,
+vtable-level COM event sink — significant, previously-undone complexity
+for this codebase, and a real risk of a third Windows crash in this exact
+area given how each of the last two attempts already broke on the first
+real test.
+
+Put to the project owner as an explicit choice (keep pushing on
+WinHttpRequest with a vtable event sink, fall back to synchronous
+WinHttpRequest calls, or drop back to `Msxml2.ServerXMLHTTP.6.0`): the
+project owner chose `ServerXMLHTTP`. `ComObject` is now
+`Msxml2.ServerXMLHTTP.6.0`, on top of the same `IPTSessionCookie`
+propagation built for step A — `ServerXMLHTTP`'s only known gap (not
+sharing cookies between separate COM object instances, which is what
+broke the very first attempt at this ComObject switch) is exactly what
+that propagation was built to close. `BindIPTResponseHandler()` is
+removed again: with `ComObject` now always MSXML-family, all three
+telephony functions go back to setting `.onreadystatechange` directly,
+matching the pre-step-B code and needing no event-binding abstraction at
+all.
 
 **Reasoning**
 
@@ -3257,21 +3310,33 @@ now match it.
 
 **Consequences**
 
-- As of step B (implemented, not yet Windows-validated), the original hang
-  risk (`Send()` blocking indefinitely with no timeout) should finally be
-  bounded — `SetTimeouts()` is active on all three telephony COM calls,
-  backed by working cookie propagation instead of an implicit,
-  COM-object-dependent cookie jar. This is not yet confirmed; step B has
-  not been run against the real server yet.
-- If step B validates cleanly: registering/polling/dialing/SMS must all
-  still work exactly as before, `Send()` should now throw (caught, logged,
-  notified) rather than hang if the server is genuinely slow/unreachable
-  beyond the configured timeouts, and the long-poll's receive timeout
-  (120000ms) needs to not fire during normal, legitimately quiet periods —
-  a value chosen without detailed knowledge of the server's actual
-  long-poll behavior, worth revisiting if it proves wrong in practice.
-- `docs/TODO.md` tracks Windows validation of step B as the remaining
-  explicitly open work — not a passive "maybe later."
+- With `ComObject` finally settled on `Msxml2.ServerXMLHTTP.6.0`, the
+  original hang risk (`Send()` blocking indefinitely with no timeout)
+  should finally be bounded — `SetTimeouts()` is active on all three
+  telephony COM calls, backed by working cookie propagation instead of an
+  implicit, COM-object-dependent cookie jar. This is not yet confirmed:
+  this exact combination (`ServerXMLHTTP` + cookie propagation +
+  `SetTimeouts()`, all three together) has not yet been run against the
+  real server — only its individual pieces have been separately validated
+  (cookie propagation under the original `XMLHTTP`; `SetTimeouts()` and
+  `onreadystatechange` binding under the since-abandoned `WinHttpRequest`).
+- `WinHttp.WinHttpRequest.5.1` is ruled out for this codebase going
+  forward, not just for this decision: two independent real-Windows
+  crashes showed it cannot be wired up for async use from AHK v2 without
+  a hand-built vtable event sink, which nothing in this codebase currently
+  provides. A future contributor should not re-attempt a simple property-
+  or `ComObjConnect()`-based binding to `WinHttpRequest`'s events without
+  first reading this section.
+- If this final combination validates cleanly: registering/polling/
+  dialing/SMS must all still work exactly as before, `Send()` should now
+  throw (caught, logged, notified) rather than hang if the server is
+  genuinely slow/unreachable beyond the configured timeouts, and the
+  long-poll's receive timeout (120000ms) needs to not fire during normal,
+  legitimately quiet periods — a value chosen without detailed knowledge
+  of the server's actual long-poll behavior, worth revisiting if it proves
+  wrong in practice.
+- `docs/TODO.md` tracks Windows validation of this final combination as
+  the remaining explicitly open work — not a passive "maybe later."
 - Confirming this resolves the reported hangs will still need field use
   beyond just a clean validation pass: a fix for a failure mode that
   leaves no trace while it's happening can only be confirmed by its

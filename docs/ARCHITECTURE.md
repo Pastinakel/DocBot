@@ -408,32 +408,30 @@ When a user edits or saves a package item as personal, the application writes a 
   `Telephony.BaseUrl`, so every request built from `IPTConfig["URL"]`
   inherits that guarantee without a separate per-call check
   (`docs/DECISIONS.md` D-043).
-- `IPTConfig["ComObject"]` is `WinHttp.WinHttpRequest.5.1`, chosen after two
-  earlier variants were ruled out on real Windows tests: `Msxml2.XMLHTTP.6.0`
+- `IPTConfig["ComObject"]` is `Msxml2.ServerXMLHTTP.6.0`, chosen after two
+  other variants were ruled out on real Windows tests: `Msxml2.XMLHTTP.6.0`
   (the long-standing default) has no timeout mechanism at all, so a genuine
   hang on `.Send()` throws no exception and leaves DocBot's UI thread stuck
   — the confirmed root cause of repeated field reports of multi-minute
-  freezes during registering/polling/dialing. `Msxml2.ServerXMLHTTP.6.0`
-  supports `SetTimeouts()` but does not share cookies between separate COM
-  object instances, and `DocBot.ahk` creates a fresh instance per call, so
-  switching to it broke registration outright. `WinHttp.WinHttpRequest.5.1`
-  also supports `SetTimeouts()`; its cookie storage is likewise per-object
-  rather than shared, but that gap is closed by the explicit cookie
-  propagation described below, independent of which COM object instance
-  handles a given call. See `docs/DECISIONS.md` D-067.
-- `BindIPTResponseHandler(request, handler)` binds a request's async
-  response callback: `WinHttp.WinHttpRequest.5.1` does not implement the
-  scriptable `onreadystatechange` property that `Msxml2.XMLHTTP.6.0`/
-  `Msxml2.ServerXMLHTTP.6.0` expose, and setting it on a `WinHttpRequest`
-  object throws (`This value of type "WinHttpRequest" has no property
-  named "onreadystatechange"`) — confirmed by a real Windows crash the
-  first time the ComObject switch above was tested. `WinHttpRequest`
-  instead exposes `OnResponseDataAvailable`/`OnResponseFinished`/`OnError`
-  as real COM events. `IPT_poller()` already branched on `ComObject` for
-  this before the switch above; `BindIPTResponseHandler()` centralizes
-  that branch so all three telephony calls (`IPT_register()`,
-  `IPT_callNumber()`, `IPT_poller()`) use it consistently instead of
-  setting the event property directly.
+  freezes during registering/polling/dialing. `WinHttp.WinHttpRequest.5.1`
+  also supports `SetTimeouts()`, but does not expose the scriptable
+  `onreadystatechange` property that `Msxml2.XMLHTTP.6.0`/
+  `Msxml2.ServerXMLHTTP.6.0` share; setting it throws (`This value of type
+  "WinHttpRequest" has no property named "onreadystatechange"`), confirmed
+  by a real Windows crash. Its real async events
+  (`OnResponseDataAvailable`/`OnResponseFinished`/`OnError`) turned out not
+  to bind reliably from AHK v2 either — plain property assignment on those
+  names crashes the same way, and `ComObjConnect()` relies on
+  `IProvideClassInfo`/`IDispatch`, which `WinHttpRequest`'s event interface
+  does not implement, per the AHK community's own reports. Two separate
+  Windows crashes on this branch confirmed both failure modes before it
+  was ruled out. `ServerXMLHTTP` supports `SetTimeouts()` and keeps the
+  same `onreadystatechange` mechanism as the original `XMLHTTP`, so no
+  event-binding rework was needed for it. Its one known gap — not sharing
+  cookies between separate COM object instances, which broke registration
+  the first time this ComObject was tried — is closed by the explicit
+  cookie propagation described below, independent of which COM object
+  instance handles a given call. See `docs/DECISIONS.md` D-067.
 - `ApplyIPTTimeouts(request, timeouts)` calls `request.SetTimeouts(...)`
   (wrapped in try/catch, since older/other COM variants may not implement
   it) with `IPTConfig["RequestTimeoutsMs"]` for register/dial calls and the

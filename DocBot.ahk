@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-ipt-comobject-timeouts.6"
+global AppVersion := "2.5-ipt-comobject-timeouts.7"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -88,25 +88,35 @@ global C := Map(
 ; Technische instellingen mogen in Git staan; adressen en endpointnamen
 ; worden uitsluitend uit de niet-geversioneerde lokale configuratie gelezen.
 ;
-; ComObject is WinHttp.WinHttpRequest.5.1, niet Msxml2.XMLHTTP.6.0: alleen
-; WinHttpRequest (en Msxml2.ServerXMLHTTP.6.0) ondersteunt SetTimeouts(),
+; ComObject is Msxml2.ServerXMLHTTP.6.0, niet Msxml2.XMLHTTP.6.0: alleen
+; ServerXMLHTTP (en WinHttp.WinHttpRequest.5.1) ondersteunt SetTimeouts(),
 ; nodig omdat Send() zonder expliciete time-out minutenlang kan blokkeren
 ; zonder ooit een fout te geven — de vermoedelijke oorzaak van meermaals
-; gerapporteerde DocBot-vastlopers. Een eerdere poging met
-; Msxml2.ServerXMLHTTP.6.0 brak registreren: dat object deelt geen cookies
-; tussen aparte COM-objectinstanties, en DocBot maakt voor elke aanroep een
-; vers object aan; WinHttpRequest heeft ditzelfde per-instantie-probleem in
-; theorie net zo goed. Dat is nu opgevangen door IPTSessionCookie
-; (hieronder): de sessiecookie voor het GetEvent-meldingskanaal wordt
-; expliciet vastgelegd (CaptureIPTSessionCookie()) en als Cookie-header
-; meegestuurd (LogIPTRequestHeaders()), onafhankelijk van welk COM-object
-; of welke object-instantie een aanvraag doet — op Windows gevalideerd
-; zonder regressie vóórdat deze ComObject-overstap opnieuw werd geprobeerd.
-; Object-hergebruik was bewust geen optie: IPT_register() en IPT_poller()
-; kunnen tegelijk in de lucht zijn (de gebruiker kan op Verversen klikken
-; terwijl een GetEvent-aanvraag nog openstaat), en één COM-object kan geen
-; twee asynchrone aanvragen tegelijk afhandelen. Zie docs/DECISIONS.md
-; D-067 voor de volledige analyse.
+; gerapporteerde DocBot-vastlopers. Een eerste poging met dit object brak
+; destijds registreren: ServerXMLHTTP deelt geen cookies tussen aparte
+; COM-objectinstanties, en DocBot maakt voor elke aanroep een vers object
+; aan. Dat is nu opgevangen door IPTSessionCookie (hieronder): de
+; sessiecookie voor het GetEvent-meldingskanaal wordt expliciet vastgelegd
+; (CaptureIPTSessionCookie()) en als Cookie-header meegestuurd
+; (LogIPTRequestHeaders()), onafhankelijk van de object-instantie — op
+; Windows gevalideerd zonder regressie.
+;
+; WinHttp.WinHttpRequest.5.1 is bewust niet gekozen ondanks hetzelfde
+; cookie-voordeel: die ondersteunt onreadystatechange niet (dat is een
+; MSXML-specifieke scriptbare eigenschap, geen echte COM-event), en de
+; asynchrone events die WinHttpRequest wél heeft
+; (OnResponseDataAvailable/OnResponseFinished/OnError) blijken in AHK v2
+; niet betrouwbaar te koppelen — noch als eigenschap, noch via
+; ComObjConnect() (die leunt op IProvideClassInfo/IDispatch en werkt niet
+; op WinHttpRequests non-IDispatch event-interface). Twee aparte Windows-
+; crashes bevestigden dit. ServerXMLHTTP gebruikt hetzelfde
+; onreadystatechange-mechanisme als het oorspronkelijke XMLHTTP en heeft
+; dit probleem niet. Object-hergebruik (met een van beide objecten) was
+; bewust ook geen optie: IPT_register() en IPT_poller() kunnen tegelijk in
+; de lucht zijn (de gebruiker kan op Verversen klikken terwijl een
+; GetEvent-aanvraag nog openstaat), en één COM-object kan geen twee
+; asynchrone aanvragen tegelijk afhandelen. Zie docs/DECISIONS.md D-067
+; voor de volledige analyse.
 ;
 ; RequestTimeoutsMs (resolve, connect, send, receive in ms) geldt voor de
 ; korte request/antwoord-aanroepen (registreren, bellen). PollTimeoutsMs
@@ -114,7 +124,7 @@ global C := Map(
 ; een veel ruimere receive-waarde: te kort zou een legitiem wachtende
 ; long-poll voortijdig afbreken.
 global IPTConfig := Map(
-    "ComObject", "WinHttp.WinHttpRequest.5.1",
+    "ComObject", "Msxml2.ServerXMLHTTP.6.0",
     "URL", LocalConfig["Telephony"]["BaseUrl"],
     "AllocatePage", LocalConfig["Telephony"]["AllocateEndpoint"],
     "EventPage", LocalConfig["Telephony"]["EventEndpoint"],
@@ -2997,23 +3007,6 @@ ApplyIPTTimeouts(request, timeouts) {
         request.SetTimeouts(timeouts[1], timeouts[2], timeouts[3], timeouts[4])
 }
 
-; Msxml2.XMLHTTP.6.0/Msxml2.ServerXMLHTTP.6.0 bieden de scriptbare
-; eigenschap onreadystatechange om een callback te koppelen.
-; WinHttp.WinHttpRequest.5.1 kent die eigenschap niet en levert in plaats
-; daarvan de events OnResponseDataAvailable/OnResponseFinished/OnError
-; (foutmelding op Windows: "This value of type WinHttpRequest has no
-; property named onreadystatechange" toen dit nog per aanroep apart, en
-; onvolledig, werd afgehandeld — alleen IPT_poller() had deze wissel al).
-; Alle drie de telefonie-aanroepen koppelen hun responshandler nu via deze
-; ene functie in plaats van de eigenschap rechtstreeks te zetten.
-BindIPTResponseHandler(request, handler) {
-    global IPTConfig
-    if IPTConfig["ComObject"] = "WinHttp.WinHttpRequest.5.1"
-        request.OnResponseDataAvailable := handler
-    else
-        request.onreadystatechange := handler
-}
-
 IPT_callNumber(telNummer := "", isRegistrationCall := false) {
     global IPTConfig, IPTDialRequest, State, IPTSessionCookie
 
@@ -3042,7 +3035,7 @@ IPT_callNumber(telNummer := "", isRegistrationCall := false) {
     if IPTSessionCookie != ""
         IPTDialRequest.SetRequestHeader("Cookie", IPTSessionCookie)
     ApplyIPTTimeouts(IPTDialRequest, IPTConfig["RequestTimeoutsMs"])
-    BindIPTResponseHandler(IPTDialRequest, IPT_DialResponse)
+    IPTDialRequest.onreadystatechange := IPT_DialResponse
     LogIPTRequestHeaders(IPTConfig["DialPage"])
 
     sendStartedAt := A_TickCount
@@ -3109,7 +3102,7 @@ IPT_register(startCooldown := true) {
     if IPTSessionCookie != ""
         IPTRegisterRequest.SetRequestHeader("Cookie", IPTSessionCookie)
     ApplyIPTTimeouts(IPTRegisterRequest, IPTConfig["RequestTimeoutsMs"])
-    BindIPTResponseHandler(IPTRegisterRequest, IPT_RegisterResponse)
+    IPTRegisterRequest.onreadystatechange := IPT_RegisterResponse
     LogIPTRequestHeaders(IPTConfig["AllocatePage"])
 
     sendStartedAt := A_TickCount
@@ -3226,7 +3219,7 @@ IPT_poller() {
     if IPTSessionCookie != ""
         IPTPollRequest.SetRequestHeader("Cookie", IPTSessionCookie)
     ApplyIPTTimeouts(IPTPollRequest, IPTConfig["PollTimeoutsMs"])
-    BindIPTResponseHandler(IPTPollRequest, IPT_PollResponse)
+    IPTPollRequest.onreadystatechange := IPT_PollResponse
 
     LogIPTRequestHeaders(IPTConfig["EventPage"])
 

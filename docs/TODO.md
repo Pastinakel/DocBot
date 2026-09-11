@@ -779,14 +779,27 @@ on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
   `IPT_register()`: `WinHttp.WinHttpRequest.5.1` has no
   `onreadystatechange` property (only `IPT_poller()` already branched on
   `ComObject` for this; `IPT_register()`/`IPT_callNumber()` did not).
-  Fixed by extracting that branch into `BindIPTResponseHandler()` and
-  using it in all three telephony functions — see `docs/DECISIONS.md`
-  D-067, "Step B crash on first Windows test".
-- [ ] Validate step B on a real Windows machine against the real internal
-  telephony server, exactly as thoroughly as the first (rejected) attempt
-  should have been — registering, event-polling, dialing, and SMS must
-  all keep working, and a koppelnummer must still appear. This has not
-  been re-tested since the `onreadystatechange` crash fix above.
+  First fix attempt: extracted that branch into
+  `BindIPTResponseHandler()` and used it in all three telephony functions.
+- [x] Second Windows test crashed again, inside `BindIPTResponseHandler()`
+  itself: `WinHttpRequest` also has no `OnResponseDataAvailable` property
+  — its real async events are COM connection-point events, which plain
+  property assignment can't reach and `ComObjConnect()` can't either
+  (relies on `IProvideClassInfo`/`IDispatch`, which `WinHttpRequest`'s
+  event source doesn't expose usably). `IPT_poller()`'s original branch
+  had never actually been exercised against a real WinHttpRequest object.
+  Put to the project owner as an explicit choice; chose to drop
+  `WinHttp.WinHttpRequest.5.1` and go back to `Msxml2.ServerXMLHTTP.6.0`
+  on top of the now-working cookie propagation. `BindIPTResponseHandler()`
+  removed again — all three functions set `.onreadystatechange` directly,
+  same as before step B. See `docs/DECISIONS.md` D-067, "Second crash:
+  WinHttpRequest's real events don't bind reliably from AHK v2 either".
+- [ ] Validate this final combination (`Msxml2.ServerXMLHTTP.6.0` +
+  cookie propagation + `SetTimeouts()`) on a real Windows machine against
+  the real internal telephony server, exactly as thoroughly as every
+  earlier attempt should have been — registering, event-polling, dialing,
+  and SMS must all keep working, and a koppelnummer must still appear.
+  This exact combination has not been tested together before.
 - [ ] Confirm the long-poll's receive timeout (`PollTimeoutsMs`,
   120000ms) does not get cut short during normal, legitimately quiet
   periods — watch for unexpected `Send() mislukt`/reconnect churn in the
