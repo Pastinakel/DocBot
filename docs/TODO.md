@@ -831,24 +831,37 @@ on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
   affected user) for field use — the original hangs leave no trace in
   `debug.log` while happening, so only continued/absent reports over time
   can confirm or refute it.
-- [ ] Separate, follow-on question raised by the "no longer linked after a
+- [x] Separate, follow-on question raised by the "no longer linked after a
   restart/crash" regression observed once the crash fix above was
-  confirmed: persist `IPTSessionCookie` to `settings.ini` so a phone link
-  survives a DocBot restart, the way it did for free under the old
-  `Msxml2.XMLHTTP.6.0` (WinInet's own persistent cookie cache). Before
-  building that into the main app, `tests/CookiePersistenceProbe.ahk` (a
-  standalone, non-shipped diagnostic script, not part of `DocBot.ahk`)
-  tests the underlying hypothesis directly against the real server: run it
-  with `capture` to register/link and save the session cookie, then
-  `resume` after an Ivanti/Windows session restart (ideally the next day)
-  to see whether a single `GetEvent.xml` request carrying only that saved
-  cookie — no fresh `AllocNumber.xml` — still shows the phone linked. If
-  it does, build the persistence feature into `DocBot.ahk` gated so
-  registering/polling/refreshing/dialing wait for that load to resolve
-  before proceeding (never silently racing ahead on an empty cookie), plus
-  the corresponding `docs/DATA_PROTECTION.md` §3.2/§7 update. If it
-  doesn't, the server has its own independent session timeout and this
-  approach doesn't help — don't build the feature.
+  confirmed: does the phone link survive a DocBot restart if
+  `IPTSessionCookie` is persisted and resent, the way it did for free
+  under the old `Msxml2.XMLHTTP.6.0` (WinInet's own persistent cookie
+  cache)? Tested empirically first with `tests/CookiePersistenceProbe.ahk`
+  (a standalone, non-shipped diagnostic script) before touching
+  `DocBot.ahk`. First attempt stored the cookie under `%A_Temp%`, which
+  turned out to be cleared on an Ivanti session restart in this
+  environment — moved to `A_MyDocuments`, matching where DocBot's real
+  persistent files already live. Confirmed after a full Windows reboot:
+  `AllocNumber.xml` with the old cookie reported `(geregistreerd is:
+  5758)` — the same extension as before the reboot. See `docs/DECISIONS.md`
+  D-068 for the full narrative, including why a bare `GetEvent.xml`-only
+  probe (the original test design) was inconclusive and had to be extended
+  with an `AllocNumber.xml`-with-old-cookie step to be decisive.
+- [x] Built the confirmed feature into `DocBot.ahk`: `IPTSessionCookie` is
+  now persisted to the Windows registry (`HKCU\Software\DocBot[-test|-dev]`,
+  value `SessionCookie`), not `settings.ini` — the project owner asked
+  whether the registry might be available earlier than a OneDrive-backed
+  `%MyDocuments%` at startup, which is correct (`HKCU` loads synchronously
+  with the profile before `OneDrive.exe` runs) and let the whole
+  degraded-mode-gating design get dropped: a `RegRead()` has no "not yet
+  available" state to gate against the way a cloud-synced file does, so
+  `LoadPersistedIPTSessionCookie()` is a plain, ungated call at startup.
+  See `docs/DECISIONS.md` D-068 for the full design and the accepted
+  roaming-vs-reliability trade-off.
+- [ ] Validate the actual production path end-to-end on Windows (not just
+  the probe script): restart DocBot after it has linked a phone, confirm
+  the link is restored without a fresh koppelnummer, across a DocBot
+  restart, a crash, and ideally another full Windows reboot.
 - [ ] Decide, once this has field evidence, whether
   `claude/klembord-hang-fix` (clipboard-read process isolation) is still
   needed, redundant, or addressing a genuinely separate problem — do not

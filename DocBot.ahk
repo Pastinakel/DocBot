@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-ipt-comobject-timeouts.8"
+global AppVersion := "2.5-ipt-comobject-timeouts.9"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -139,9 +139,40 @@ global IPTConfig := Map(
 ; Expliciet vastgelegde sessiecookie voor het GetEvent-meldingskanaal (zie
 ; CaptureIPTSessionCookie()/LogIPTResponseHeaders() verderop) — niet
 ; afhankelijk van welk COM-object of welke object-instantie een aanvraag
-; doet, dus ongevoelig voor het hierboven beschreven probleem. Leeg zolang
-; er nog geen respons met een Set-Cookie-header is gezien.
-global IPTSessionCookie := ""
+; doet, dus ongevoelig voor het hierboven beschreven probleem.
+;
+; Persistent in het Windows-register (HKCU), niet in settings.ini: een
+; telefoonkoppeling blijkt op de telefonieserver te blijven bestaan zolang
+; dezelfde sessiecookie later opnieuw wordt meegestuurd bij AllocNumber.xml
+; — empirisch bevestigd met tests/CookiePersistenceProbe.ahk, inclusief een
+; volledige Windows-herstart. settings.ini staat onder A_MyDocuments, dat in
+; deze Ivanti/OneDrive-omgeving bij het opstarten nog een niet-gehydrateerde
+; cloud-placeholder kan zijn (zie de toelichting bij LoadAppSettings()) —
+; precies de aanleiding voor de bestaande IniReadOrThrow()-voorzorg daar.
+; HKCU wordt synchroon met het gebruikersprofiel geladen, ruim vóór
+; OneDrive.exe zelf start, en kent daarom geen vergelijkbare "nog niet
+; beschikbaar"-faalmodus: een gewone RegRead() volstaat, zonder degraded-
+; mode-afhandeling of blokkering van koppelen/pollen/verversen/bellen bij
+; opstarten. Per releasekanaal gescheiden, net als UserDataDir. Zie
+; docs/DECISIONS.md D-067.
+global IPTSessionCookieRegistryKey := "HKCU\Software\" . AppDataFolderName
+    . (UserDataProfile = "main" ? "" : "-" . UserDataProfile)
+
+LoadPersistedIPTSessionCookie() {
+    global IPTSessionCookieRegistryKey
+    try
+        return RegRead(IPTSessionCookieRegistryKey, "SessionCookie", "")
+    catch
+        return ""
+}
+
+SavePersistedIPTSessionCookie(value) {
+    global IPTSessionCookieRegistryKey
+    try
+        RegWrite(value, "REG_SZ", IPTSessionCookieRegistryKey, "SessionCookie")
+}
+
+global IPTSessionCookie := LoadPersistedIPTSessionCookie()
 
 ; Bewaakt of er al een GetEvent.xml-aanvraag onderweg is. Op Windows bleek
 ; Msxml2.ServerXMLHTTP.6.0's onreadystatechange soms tweemaal af te vuren
@@ -2982,7 +3013,16 @@ CaptureIPTSessionCookie(request) {
         return
 
     semicolonPos := InStr(setCookie, ";")
-    IPTSessionCookie := semicolonPos ? SubStr(setCookie, 1, semicolonPos - 1) : setCookie
+    newCookie := semicolonPos ? SubStr(setCookie, 1, semicolonPos - 1) : setCookie
+
+    ; Alleen bij een echte wijziging naar het register schrijven — de
+    ; server stuurt op vrijwel elke respons een Set-Cookie met dezelfde
+    ; waarde (alleen expires schuift op), dus dit is in de praktijk een
+    ; zeldzame write, niet eentje per poll.
+    if newCookie != IPTSessionCookie {
+        IPTSessionCookie := newCookie
+        SavePersistedIPTSessionCookie(newCookie)
+    }
 }
 
 ; Logt alleen de headers die DocBot zelf expliciet meestuurt

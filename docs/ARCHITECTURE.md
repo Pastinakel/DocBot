@@ -458,6 +458,19 @@ When a user edits or saves a package item as personal, the application writes a 
   NTLM handshake), so this cannot show whether/how Windows-integrated
   authentication plays into the separately-durable phone-link mechanism
   (see D-067's discussion of that open question).
+- `IPTSessionCookie` is persisted to `HKCU\Software\DocBot` (or
+  `DocBot-test`/`DocBot-dev`, mirroring `UserDataDir`'s per-channel split)
+  rather than `settings.ini`, so an existing phone link survives a DocBot
+  restart, crash, or Windows restart — empirically confirmed with
+  `tests/CookiePersistenceProbe.ahk` (see D-068). `LoadPersistedIPTSessionCookie()`
+  runs once at global-initialization time via a plain `RegRead()`, ungated:
+  unlike a `%MyDocuments%` file that can be an unhydrated OneDrive
+  placeholder at startup, `HKCU` loads synchronously with the Windows
+  profile before `OneDrive.exe` itself runs, so there's no "not yet
+  available" state to guard registering/polling/refreshing/dialing
+  against. `SavePersistedIPTSessionCookie()` is called from
+  `CaptureIPTSessionCookie()` only when the value actually changes, since
+  the server sends the same cookie value on nearly every response.
 - `IPTPollInFlight` (global) guards `IPT_poller()`/`IPT_PollResponse()`
   against a real concurrency bug found on Windows: `ServerXMLHTTP`'s
   `onreadystatechange` can fire twice for one completed response, and
