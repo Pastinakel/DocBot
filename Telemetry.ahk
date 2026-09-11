@@ -173,7 +173,9 @@ Telemetry_TryLoadCounters(*) {
     ; StorageAllReady. Without this, the Gebruik card would stay stuck on 0
     ; until the next recorded action or a restart. Guarded like every other
     ; DocBot.ahk call from this file (see Telemetry_LogError()): harmless if
-    ; the GUI isn't built yet.
+    ; the GUI isn't built yet. RefreshUsageStatistics() also herbeoordeelt de
+    ; onboardingtip (DocBot.ahk), dus deze late bevestiging corrigeert zowel
+    ; de tellerweergave als een tip die op de nog-onbevestigde 0 was gekozen.
     try RefreshUsageStatistics()
 }
 

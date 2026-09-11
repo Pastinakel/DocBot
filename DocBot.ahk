@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.4.2"
+global AppVersion := "2.5-dev.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -87,16 +87,101 @@ global C := Map(
 
 ; Technische instellingen mogen in Git staan; adressen en endpointnamen
 ; worden uitsluitend uit de niet-geversioneerde lokale configuratie gelezen.
+;
+; ComObject is Msxml2.ServerXMLHTTP.6.0, niet Msxml2.XMLHTTP.6.0: alleen
+; ServerXMLHTTP (en WinHttp.WinHttpRequest.5.1) ondersteunt SetTimeouts(),
+; nodig omdat Send() zonder expliciete time-out minutenlang kan blokkeren
+; zonder ooit een fout te geven — de vermoedelijke oorzaak van meermaals
+; gerapporteerde DocBot-vastlopers. Een eerste poging met dit object brak
+; destijds registreren: ServerXMLHTTP deelt geen cookies tussen aparte
+; COM-objectinstanties, en DocBot maakt voor elke aanroep een vers object
+; aan. Dat is nu opgevangen door IPTSessionCookie (hieronder): de
+; sessiecookie voor het GetEvent-meldingskanaal wordt expliciet vastgelegd
+; (CaptureIPTSessionCookie()) en als Cookie-header meegestuurd
+; (LogIPTRequestHeaders()), onafhankelijk van de object-instantie — op
+; Windows gevalideerd zonder regressie.
+;
+; WinHttp.WinHttpRequest.5.1 is bewust niet gekozen ondanks hetzelfde
+; cookie-voordeel: die ondersteunt onreadystatechange niet (dat is een
+; MSXML-specifieke scriptbare eigenschap, geen echte COM-event), en de
+; asynchrone events die WinHttpRequest wél heeft
+; (OnResponseDataAvailable/OnResponseFinished/OnError) blijken in AHK v2
+; niet betrouwbaar te koppelen — noch als eigenschap, noch via
+; ComObjConnect() (die leunt op IProvideClassInfo/IDispatch en werkt niet
+; op WinHttpRequests non-IDispatch event-interface). Twee aparte Windows-
+; crashes bevestigden dit. ServerXMLHTTP gebruikt hetzelfde
+; onreadystatechange-mechanisme als het oorspronkelijke XMLHTTP en heeft
+; dit probleem niet. Object-hergebruik (met een van beide objecten) was
+; bewust ook geen optie: IPT_register() en IPT_poller() kunnen tegelijk in
+; de lucht zijn (de gebruiker kan op Verversen klikken terwijl een
+; GetEvent-aanvraag nog openstaat), en één COM-object kan geen twee
+; asynchrone aanvragen tegelijk afhandelen. Zie docs/DECISIONS.md D-067
+; voor de volledige analyse.
+;
+; RequestTimeoutsMs (resolve, connect, send, receive in ms) geldt voor de
+; korte request/antwoord-aanroepen (registreren, bellen). PollTimeoutsMs
+; geldt uitsluitend voor de bewuste long-poll (GetEvent) en heeft daarom
+; een veel ruimere receive-waarde: te kort zou een legitiem wachtende
+; long-poll voortijdig afbreken.
 global IPTConfig := Map(
-    "ComObject", "Msxml2.XMLHTTP.6.0",
+    "ComObject", "Msxml2.ServerXMLHTTP.6.0",
     "URL", LocalConfig["Telephony"]["BaseUrl"],
     "AllocatePage", LocalConfig["Telephony"]["AllocateEndpoint"],
     "EventPage", LocalConfig["Telephony"]["EventEndpoint"],
     "DialPage", LocalConfig["Telephony"]["DialEndpoint"],
     "DialPageNumberParam", "number",
     "DialPageSidParam", "sid",
-    "RegisterMinIntervalMs", 10000
+    "RegisterMinIntervalMs", 10000,
+    "RequestTimeoutsMs", [5000, 5000, 5000, 15000],
+    "PollTimeoutsMs", [5000, 5000, 5000, 120000]
 )
+
+; Expliciet vastgelegde sessiecookie voor het GetEvent-meldingskanaal (zie
+; CaptureIPTSessionCookie()/LogIPTResponseHeaders() verderop) — niet
+; afhankelijk van welk COM-object of welke object-instantie een aanvraag
+; doet, dus ongevoelig voor het hierboven beschreven probleem.
+;
+; Persistent in het Windows-register (HKCU), niet in settings.ini: een
+; telefoonkoppeling blijkt op de telefonieserver te blijven bestaan zolang
+; dezelfde sessiecookie later opnieuw wordt meegestuurd bij AllocNumber.xml
+; — empirisch bevestigd met tests/CookiePersistenceProbe.ahk, inclusief een
+; volledige Windows-herstart. settings.ini staat onder A_MyDocuments, dat in
+; deze Ivanti/OneDrive-omgeving bij het opstarten nog een niet-gehydrateerde
+; cloud-placeholder kan zijn (zie de toelichting bij LoadAppSettings()) —
+; precies de aanleiding voor de bestaande IniReadOrThrow()-voorzorg daar.
+; HKCU wordt synchroon met het gebruikersprofiel geladen, ruim vóór
+; OneDrive.exe zelf start, en kent daarom geen vergelijkbare "nog niet
+; beschikbaar"-faalmodus: een gewone RegRead() volstaat, zonder degraded-
+; mode-afhandeling of blokkering van koppelen/pollen/verversen/bellen bij
+; opstarten. Per releasekanaal gescheiden, net als UserDataDir. Zie
+; docs/DECISIONS.md D-067.
+global IPTSessionCookieRegistryKey := "HKCU\Software\" . AppDataFolderName
+    . (UserDataProfile = "main" ? "" : "-" . UserDataProfile)
+
+LoadPersistedIPTSessionCookie() {
+    global IPTSessionCookieRegistryKey
+    try
+        return RegRead(IPTSessionCookieRegistryKey, "SessionCookie", "")
+    catch
+        return ""
+}
+
+SavePersistedIPTSessionCookie(value) {
+    global IPTSessionCookieRegistryKey
+    try
+        RegWrite(value, "REG_SZ", IPTSessionCookieRegistryKey, "SessionCookie")
+}
+
+global IPTSessionCookie := LoadPersistedIPTSessionCookie()
+
+; Bewaakt of er al een GetEvent.xml-aanvraag onderweg is. Op Windows bleek
+; Msxml2.ServerXMLHTTP.6.0's onreadystatechange soms tweemaal af te vuren
+; voor dezelfde afgeronde respons; zonder deze vlag start IPT_poller() dan
+; een tweede, overlappende aanvraag die het gedeelde IPTPollRequest-object
+; overschrijft terwijl de eerste callback nog bezig is — de oorzaak van een
+; "data ... not yet available"-crash op .status. Zie docs/DECISIONS.md
+; D-067.
+global IPTPollInFlight := false
 
 ; SmsCallAction mag voor achterwaartse compatibiliteit één Map zijn, of een
 ; Array met meerdere Maps. In de GUI wordt uitsluitend Title getoond;
@@ -498,7 +583,7 @@ BuildMainGui() {
         DebugLog("✕", "Sidebar-logo", "Kon logo/slogan niet tekenen (" brandError.Message "); terugval op titel/subtitle.")
         appTitle := MainGui.AddText("x28 y20 w150 h28 Background" C["Sidebar"], "DocBot")
         appTitle.SetFont("s18 bold c" C["Text"], "Segoe UI")
-        appSub := MainGui.AddText("x28 y52 w170 h18 Background" C["Sidebar"], "Telefonie voor de werkplek")
+        appSub := MainGui.AddText("x28 y52 w170 h18 Background" C["Sidebar"], "een handje extra :)")
         appSub.SetFont("s9 c" C["Muted"], "Segoe UI")
     }
 
@@ -2631,6 +2716,19 @@ RefreshUsageStatistics() {
         OverviewLongHotstringActionsText.Value := Telemetry_GetLongHotstringActions()
     if IsObject(OverviewSmsActionsText)
         OverviewSmsActionsText.Value := Telemetry_GetSmsActions()
+
+    ; Een tip-conditie ("teller = 0") kan hierdoor net zijn vervallen zonder
+    ; dat de gebruiker via ShowPage() naar Overzicht is genavigeerd (bijv.
+    ; een lange hotstring uitvoeren terwijl Overzicht al de actieve pagina
+    ; is): zonder deze aanroep bleef de balk dan tonen terwijl de teller al
+    ; hoger dan 0 stond. Zie ReevaluateTipBannerCondition().
+    ; Telemetry_TryLoadCounters() (Telemetry.ahk) roept deze functie ook aan
+    ; zodra de echte, opgeslagen tellers laat bevestigen — dat kan al vóór
+    ; BuildMainGui() synchroon gebeuren, wanneer de tip-balk nog niet bestaat.
+    if IsObject(OverviewPhoneActionsText) {
+        ReevaluateTipBannerCondition()
+        ApplyTipBannerVisibility()
+    }
 }
 
 CallActionChanged(value, *) {
@@ -2861,8 +2959,105 @@ MoveSpeedDialDown(*) {
 ; IP-TELEFONIE (registratie, polling en bellen)
 ; =============================================================================
 
+; Meermaals gerapporteerde DocBot-vastlopers bleken samen te vallen met
+; precies dit punt: Send() op het IPT-COM-object kan minutenlang blokkeren
+; zonder ooit een fout te geven (zie docs/DECISIONS.md D-067). Een poging om
+; dit met SetTimeouts() te begrenzen (Msxml2.ServerXMLHTTP.6.0) bleek de
+; cookiegebaseerde sessie tussen registreren en pollen te breken en is
+; teruggedraaid — zie de toelichting bij IPTConfig hierboven. De try/catch
+; en de "Send() teruggekeerd/mislukt"-regels hieronder (met verstreken tijd)
+; blijven wél staan: ze bestaan specifiek om een volgend incident te kunnen
+; onderscheiden tussen "Send() zelf hing vast" (geen van beide regels
+; verschijnt) en "Send() keerde terug, iets anders liep vast" (wel de
+; "teruggekeerd"-regel, dan stilte) — beide met onmiddellijke flush, zodat
+; ze een vastloper overleven.
+
+; De StopEventLoop-regressie hierboven werd pas zichtbaar via de
+; responsinhoud (body); de responsheaders zelf — waar een eventuele
+; Set-Cookie zou staan — werden nooit gelogd. Nodig voor het vervolgonderzoek
+; in D-067 (cookie uitlezen/doorsturen): dat vereist eerst te weten óf, en
+; onder welke naam, de server een sessiecookie zet. Label bevat bewust
+; "response", zodat SanitizeStandardLogText() de inhoud in het standaardlog
+; afschermt tot "<responsinhoud niet opgenomen in standaardlog>" — precies
+; zoals nu al met statusregels/response-bodies gebeurt; de werkelijke
+; headerwaarden komen alleen in het uitgebreide log terecht, en alleen ná
+; expliciete toestemming daarvoor. In try/catch: niet elk COM-object dat
+; ooit voor IPTConfig["ComObject"] gekozen kan worden biedt
+; getAllResponseHeaders() gegarandeerd op ieder moment aan.
+LogIPTResponseHeaders(label, request) {
+    try
+        DebugLog("←", label . " response headers", request.getAllResponseHeaders())
+}
+
+; Legt de sessiecookie voor het GetEvent-meldingskanaal vast uit de
+; Set-Cookie-responseheader, zodat die expliciet kan worden meegestuurd bij
+; de volgende aanvraag (zie IPTSessionCookie hierboven en docs/DECISIONS.md
+; D-067) — in plaats van te vertrouwen op impliciete, COM-object-afhankelijke
+; cookie-opslag. Bewaart alleen het naam=waarde-deel vóór de eerste ";": een
+; Cookie-requestheader hoort geen responsattributen (expires/path/...) te
+; bevatten. Bij meerdere Set-Cookie-headers in één respons geeft
+; getResponseHeader() ze mogelijk kommagescheiden terug — komt in de
+; praktijk niet voor (de server zet er hier één), maar zou deze eenvoudige
+; parse wel kunnen verstoren. Laat een eerder vastgelegde cookie ongemoeid
+; als deze respons er zelf geen heeft (bijv. een foutrespons), in plaats van
+; 'm leeg te maken.
+CaptureIPTSessionCookie(request) {
+    global IPTSessionCookie
+
+    try
+        setCookie := request.getResponseHeader("Set-Cookie")
+    catch
+        return
+
+    if setCookie = ""
+        return
+
+    semicolonPos := InStr(setCookie, ";")
+    newCookie := semicolonPos ? SubStr(setCookie, 1, semicolonPos - 1) : setCookie
+
+    ; Alleen bij een echte wijziging naar het register schrijven — de
+    ; server stuurt op vrijwel elke respons een Set-Cookie met dezelfde
+    ; waarde (alleen expires schuift op), dus dit is in de praktijk een
+    ; zeldzame write, niet eentje per poll.
+    if newCookie != IPTSessionCookie {
+        IPTSessionCookie := newCookie
+        SavePersistedIPTSessionCookie(newCookie)
+    }
+}
+
+; Logt alleen de headers die DocBot zelf expliciet meestuurt
+; (Accept-Language, en de sessiecookie zodra die bekend is) — niet wat
+; WinInet/WinHTTP zelf automatisch kan toevoegen (bijv. een NTLM-
+; onderhandeling voor Windows-integrated authenticatie): geen van de
+; IPT-COM-objecten biedt een manier om de werkelijk verzonden headers terug
+; te lezen. Voor dát verschil (zie docs/DECISIONS.md D-067, de vraag hoe de
+; koppeling serverzijdig blijft bestaan) is een pakket-niveau tool (bijv.
+; Fiddler/Wireshark) op de Windows-machine nodig — niet iets wat DocBot
+; vanuit zijn eigen COM-aanroepen kan laten zien.
+LogIPTRequestHeaders(label) {
+    global IPTSessionCookie
+
+    text := "Accept-Language: nl-NL"
+    if IPTSessionCookie != ""
+        text .= "`r`nCookie: " . IPTSessionCookie
+
+    DebugLog("→", label . " request headers", text)
+}
+
+; Zet expliciete time-outs op een IPT-COM-verzoek, in try/catch: niet elk
+; COM-object dat ooit voor IPTConfig["ComObject"] gekozen kan worden
+; ondersteunt SetTimeouts() (alleen WinHttp.WinHttpRequest en
+; Msxml2.ServerXMLHTTP doen dat — zie de toelichting bij IPTConfig).
+; Ontbreekt de methode, dan gaat het verzoek gewoon zonder expliciete
+; time-out door (het oude gedrag) in plaats van te mislukken op een
+; ontbrekende COM-methode.
+ApplyIPTTimeouts(request, timeouts) {
+    try
+        request.SetTimeouts(timeouts[1], timeouts[2], timeouts[3], timeouts[4])
+}
+
 IPT_callNumber(telNummer := "", isRegistrationCall := false) {
-    global IPTConfig, IPTDialRequest, State
+    global IPTConfig, IPTDialRequest, State, IPTSessionCookie
 
     if telNummer = "" || telNummer <= 0
         return
@@ -2881,12 +3076,33 @@ IPT_callNumber(telNummer := "", isRegistrationCall := false) {
         . "&" . IPTConfig["DialPageSidParam"] . "=0." . A_TickCount . A_TimeIdle
 
     DebugLog("→", IPTConfig["DialPage"], url)
+    FlushDebugLog()
 
     IPTDialRequest := ComObject(IPTConfig["ComObject"])
     IPTDialRequest.Open("POST", url, true)
     IPTDialRequest.SetRequestHeader("Accept-Language", "nl-NL")
+    if IPTSessionCookie != ""
+        IPTDialRequest.SetRequestHeader("Cookie", IPTSessionCookie)
+    ApplyIPTTimeouts(IPTDialRequest, IPTConfig["RequestTimeoutsMs"])
     IPTDialRequest.onreadystatechange := IPT_DialResponse
-    IPTDialRequest.Send("")
+    LogIPTRequestHeaders(IPTConfig["DialPage"])
+
+    sendStartedAt := A_TickCount
+    try {
+        IPTDialRequest.Send("")
+    } catch as sendError {
+        DebugLog(
+            "✕",
+            IPTConfig["DialPage"] . " Send() mislukt",
+            "Na " . (A_TickCount - sendStartedAt) . "ms: " . sendError.Message
+        )
+        FlushDebugLog()
+        ShowNotification("Er is een fout opgetreden bij het bellen.", 4000, "error")
+        return
+    }
+    DebugLog("✓", IPTConfig["DialPage"] . " Send() teruggekeerd", "Na " . (A_TickCount - sendStartedAt) . "ms.")
+    FlushDebugLog()
+
     Telemetry_RecordPhoneAction()
     RefreshUsageStatistics()
 }
@@ -2904,6 +3120,8 @@ IPT_DialResponse() {
 
     try {
         DebugLog("←", IPTConfig["DialPage"] . " status " . IPTDialRequest.status, IPTDialRequest.ResponseText)
+        LogIPTResponseHeaders(IPTConfig["DialPage"], IPTDialRequest)
+        CaptureIPTSessionCookie(IPTDialRequest)
 
         if InStr(IPTDialRequest.ResponseText, "ERROR")
             ShowNotification("Er is een fout opgetreden bij het bellen.", 4000, "error")
@@ -2917,18 +3135,40 @@ IPT_DialResponse() {
 ; cooldown staat terwijl de gebruiker nog niets heeft geklikt. Een
 ; handmatige klik (via RefreshRegistrationStatus()) roept dit zonder
 ; argument aan en start de cooldown dus wel, zoals voorheen.
+; Zie de toelichting bij IPT_callNumber() over het waarom van de
+; try/catch en de "Send() teruggekeerd/mislukt"-regels hieronder.
 IPT_register(startCooldown := true) {
-    global IPTConfig, State, IPTRegisterRequest
+    global IPTConfig, State, IPTRegisterRequest, IPTSessionCookie
 
     url := IPTConfig["URL"] . IPTConfig["AllocatePage"] . "?sid=0." . A_TickCount . A_TimeIdle
 
     DebugLog("→", IPTConfig["AllocatePage"], url)
+    FlushDebugLog()
 
     IPTRegisterRequest := ComObject(IPTConfig["ComObject"])
     IPTRegisterRequest.Open("POST", url, true)
     IPTRegisterRequest.SetRequestHeader("Accept-Language", "nl-NL")
+    if IPTSessionCookie != ""
+        IPTRegisterRequest.SetRequestHeader("Cookie", IPTSessionCookie)
+    ApplyIPTTimeouts(IPTRegisterRequest, IPTConfig["RequestTimeoutsMs"])
     IPTRegisterRequest.onreadystatechange := IPT_RegisterResponse
-    IPTRegisterRequest.Send("")
+    LogIPTRequestHeaders(IPTConfig["AllocatePage"])
+
+    sendStartedAt := A_TickCount
+    try {
+        IPTRegisterRequest.Send("")
+    } catch as sendError {
+        DebugLog(
+            "✕",
+            IPTConfig["AllocatePage"] . " Send() mislukt",
+            "Na " . (A_TickCount - sendStartedAt) . "ms: " . sendError.Message
+        )
+        FlushDebugLog()
+        ShowNotification("Aanmelden bij de telefonieserver is mislukt.", 4000, "error")
+        return
+    }
+    DebugLog("✓", IPTConfig["AllocatePage"] . " Send() teruggekeerd", "Na " . (A_TickCount - sendStartedAt) . "ms.")
+    FlushDebugLog()
 
     ; Herstart de poll-keten als die gestopt was (bijv. na een eerdere
     ; StopEventLoop). Alleen opnieuw starten als hij niet al loopt, anders
@@ -2959,6 +3199,8 @@ IPT_RegisterResponse() {
 
     try {
         DebugLog("←", IPTConfig["AllocatePage"] . " status " . IPTRegisterRequest.status, IPTRegisterRequest.ResponseText)
+        LogIPTResponseHeaders(IPTConfig["AllocatePage"], IPTRegisterRequest)
+        CaptureIPTSessionCookie(IPTRegisterRequest)
 
         if InStr(IPTRegisterRequest.ResponseText, "ERROR")
             ShowNotification("Aanmelden bij de telefonieserver is mislukt.", 4000, "error")
@@ -2998,8 +3240,21 @@ UpdateRegisterButtonState() {
     }
 }
 
+; Zie de toelichting bij IPT_callNumber() over het waarom van de
+; try/catch en de "Send() teruggekeerd/mislukt"-regels hieronder. Anders dan
+; bij registreren/bellen mag de pollketen bij een mislukte Send() nooit
+; stilzwijgend stoppen: zonder herplanning ontvangt DocBot tot een herstart
+; geen telefonie-events meer. Zelfde "opnieuw plannen na deze ronde"-patroon
+; als IPT_PollResponse() al bij een ontvangen (ook een foutieve) respons
+; toepast.
+;
+; Critical voorkomt dat een timer-tick of een COM-callback deze functie
+; halverwege onderbreekt — nodig omdat IPTPollRequest een gedeelde global
+; is; zie de toelichting bij IPTPollInFlight hierboven.
 IPT_poller() {
-    global IPTConfig, State, IPTPollRequest
+    Critical
+
+    global IPTConfig, State, IPTPollRequest, IPTSessionCookie, IPTPollInFlight
 
     UpdateRegisterButtonState()
 
@@ -3008,65 +3263,109 @@ IPT_poller() {
         return
     }
 
+    if IPTPollInFlight  ; Vorige aanvraag nog niet afgerond, zie IPTPollInFlight.
+        return
+
     url := IPTConfig["URL"] . IPTConfig["EventPage"] . "?sid=0." . A_TickCount . A_TimeIdle
 
     DebugLog("→", IPTConfig["EventPage"], url)
+    FlushDebugLog()
 
     IPTPollRequest := ComObject(IPTConfig["ComObject"])
     IPTPollRequest.Open("POST", url, true)
     IPTPollRequest.SetRequestHeader("Accept-Language", "nl-NL")
+    if IPTSessionCookie != ""
+        IPTPollRequest.SetRequestHeader("Cookie", IPTSessionCookie)
+    ApplyIPTTimeouts(IPTPollRequest, IPTConfig["PollTimeoutsMs"])
+    IPTPollRequest.onreadystatechange := IPT_PollResponse
 
-    if IPTConfig["ComObject"] = "WinHttp.WinHttpRequest.5.1"
-        IPTPollRequest.OnResponseDataAvailable := IPT_PollResponse
-    else
-        IPTPollRequest.onreadystatechange := IPT_PollResponse
+    LogIPTRequestHeaders(IPTConfig["EventPage"])
 
-    IPTPollRequest.Send("")
+    IPTPollInFlight := true
+
+    sendStartedAt := A_TickCount
+    try {
+        IPTPollRequest.Send("")
+    } catch as sendError {
+        IPTPollInFlight := false
+        DebugLog(
+            "✕",
+            IPTConfig["EventPage"] . " Send() mislukt",
+            "Na " . (A_TickCount - sendStartedAt) . "ms: " . sendError.Message
+        )
+        FlushDebugLog()
+
+        if State["IPT"]["NeedUpdate"] > -1
+            SetTimer IPT_poller, -10
+        return
+    }
+    DebugLog("✓", IPTConfig["EventPage"] . " Send() teruggekeerd", "Na " . (A_TickCount - sendStartedAt) . "ms.")
+    FlushDebugLog()
 }
 
+; Critical + de IPTPollInFlight-controle hieronder voorkomen dat deze
+; callback tweemaal voor dezelfde afgeronde respons verwerkt wordt (zie de
+; toelichting bij IPTPollInFlight hierboven). De buitenste try/catch is
+; nieuw: .status/.ResponseText/getAllResponseHeaders() konden bij die
+; dubbele afvuring een COM-fout geven ("data ... not yet available") die
+; zonder afvangen deze functie halverwege afbrak — vóór de herplanning
+; onderaan — en zo de pollketen stil en blijvend liet stoppen.
 IPT_PollResponse() {
-    global IPTConfig, State, IPTPollRequest
+    Critical
+
+    global IPTConfig, State, IPTPollRequest, IPTPollInFlight
 
     if IPTPollRequest.readyState != 4  ; Nog niet klaar, callback vuurt opnieuw.
         return
 
-    if IPTPollRequest.status != 200 && IPTPollRequest.status != 201 {
-        DebugLog("←", IPTConfig["EventPage"] . " FOUT status " . IPTPollRequest.status, "")
-    } else {
-        DebugLog("←", IPTConfig["EventPage"] . " status " . IPTPollRequest.status, IPTPollRequest.ResponseText)
+    if !IPTPollInFlight  ; Al verwerkt (dubbele afvuring voor dezelfde respons).
+        return
+    IPTPollInFlight := false
 
-        ; Onbekende/afwijkende XML-structuur mag de poller nooit laten
-        ; crashen — bij een fout loggen we de ruwe respons en gaan we door.
-        try {
-            xml := IPTPollRequest.responseXML
-            if IsObject(xml) {
-                root := xml.documentElement
-                if IsObject(root) {
-                    eventName := root.getAttribute("Name")
+    try {
+        LogIPTResponseHeaders(IPTConfig["EventPage"], IPTPollRequest)
+        CaptureIPTSessionCookie(IPTPollRequest)
 
-                    switch eventName {
-                        case "NULL":
-                            ; niets te doen, keep-alive
-                        case "StopEventLoop":
-                            State["IPT"]["NeedUpdate"] := -1
-                        case "SetUpperText":
-                            msgNode := root.selectSingleNode("Message")
-                            if IsObject(msgNode)
-                                ParsePhoneNumbersFromMessage(msgNode.text)
-                        case "ShowAlert":
-                            msgNode := root.selectSingleNode("Text")
-                            if IsObject(msgNode)
-                                ShowNotification(msgNode.text, 4000, "info")
+        if IPTPollRequest.status != 200 && IPTPollRequest.status != 201 {
+            DebugLog("←", IPTConfig["EventPage"] . " FOUT status " . IPTPollRequest.status, "")
+        } else {
+            DebugLog("←", IPTConfig["EventPage"] . " status " . IPTPollRequest.status, IPTPollRequest.ResponseText)
+
+            ; Onbekende/afwijkende XML-structuur mag de poller nooit laten
+            ; crashen — bij een fout loggen we de ruwe respons en gaan we door.
+            try {
+                xml := IPTPollRequest.responseXML
+                if IsObject(xml) {
+                    root := xml.documentElement
+                    if IsObject(root) {
+                        eventName := root.getAttribute("Name")
+
+                        switch eventName {
+                            case "NULL":
+                                ; niets te doen, keep-alive
+                            case "StopEventLoop":
+                                State["IPT"]["NeedUpdate"] := -1
+                            case "SetUpperText":
+                                msgNode := root.selectSingleNode("Message")
+                                if IsObject(msgNode)
+                                    ParsePhoneNumbersFromMessage(msgNode.text)
+                            case "ShowAlert":
+                                msgNode := root.selectSingleNode("Text")
+                                if IsObject(msgNode)
+                                    ShowNotification(msgNode.text, 4000, "info")
+                        }
                     }
                 }
+            } catch as err {
+                DebugLog("←", IPTConfig["EventPage"] . " PARSE-FOUT: " . err.Message, IPTPollRequest.ResponseText)
             }
-        } catch as err {
-            DebugLog("←", IPTConfig["EventPage"] . " PARSE-FOUT: " . err.Message, IPTPollRequest.ResponseText)
-        }
 
-        RefreshRegistrationTexts()
-        RefreshSidebarStatuses()
-        BuildTrayMenu()
+            RefreshRegistrationTexts()
+            RefreshSidebarStatuses()
+            BuildTrayMenu()
+        }
+    } catch as err {
+        DebugLog("←", IPTConfig["EventPage"] . " RESPONS-FOUT: " . err.Message, "")
     }
 
     ; Poll-keten voortzetten: pas ná afronding van deze aanvraag een nieuwe
@@ -3448,6 +3747,7 @@ SanitizeStandardLogText(label, tekst) {
         && (
             InStr(labelLower, " status ")
             || InStr(labelLower, "response")
+            || InStr(labelLower, "headers")
             || InStr(labelLower, "parse-fout")
         )
         return "<responsinhoud niet opgenomen in standaardlog>"
@@ -4801,6 +5101,35 @@ ReadClipboardTextSafely() {
     return ""
 }
 
+; TIJDELIJK — alleen om de vereiste TeleQ window-/control-identifiers te
+; achterhalen voor docs/TODO.md "P2 — TeleQ → HiX patient search"
+; (niveau 1). Schrijft uitsluitend naar de uitgebreide log (nooit naar de
+; standaardlog), dus alleen zichtbaar tijdens een bewust gestarte,
+; consent-gated sessie via "Probleem melden...". Verwijderen zodra de
+; identifiers bekend en in dat TODO-item vastgelegd zijn.
+LogClipboardSourceDiagnostics_TeleQ() {
+    try {
+        hwnd := WinExist("A")
+        tekst := "Venster: title='" WinGetTitle("ahk_id " hwnd) "'"
+        tekst .= " proces='" WinGetProcessName("ahk_id " hwnd) "'"
+        tekst .= " class='" WinGetClass("ahk_id " hwnd) "'"
+    } catch as winError {
+        tekst := "Venster: onbekend (" winError.Message ")"
+    }
+
+    try {
+        elem := UIA.GetFocusedElement()
+        tekst .= " | Focuselement: AutomationId='" elem.AutomationId "'"
+        tekst .= " class='" elem.ClassName "'"
+        tekst .= " type='" elem.LocalizedControlType "'"
+        tekst .= " naam='" elem.Name "'"
+    } catch as uiaError {
+        tekst .= " | Focuselement: onbekend (" uiaError.Message ")"
+    }
+
+    ExtendedDebugLog("•", "TeleQ-diagnose", tekst)
+}
+
 ClipBoardPoller() {
     global State, StorageAllReady, PhoneActionDialogState
     static lastSeq := DllCall("GetClipboardSequenceNumber")  ; voorkomt dat de klembordinhoud bij opstarten al wordt opgepakt
@@ -4833,6 +5162,8 @@ ClipBoardPoller() {
 
     if externalTel = "" && internalTel = ""
         return
+
+    LogClipboardSourceDiagnostics_TeleQ()
 
     if !StorageAllReady {
         ; CallAction en de andere instellingen die de belactie-flow

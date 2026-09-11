@@ -497,15 +497,30 @@ risicoanalyse.
 Changelog
 ---------
 
+### 2.5 — In ontwikkeling
+- De sidebar viel bij een mislukte logo-tekening terug op de oude
+  ondertitel "Telefonie voor de werkplek", terwijl de sidebar inmiddels de
+  slogan "een handje extra :)" toont. De terugvaltekst is bijgewerkt zodat
+  deze zeldzame foutsituatie dezelfde slogan laat zien als de normale
+  weergave.
+- Een onboardingtip op Overzicht kon blijven staan nadat de bijbehorende
+  functie al was gebruikt, bijvoorbeeld de hint over hotstrings terwijl de
+  teller "Lange hotstrings" al hoger dan 0 stond. Dit gebeurde wanneer de
+  functie werd gebruikt terwijl Overzicht al de actieve pagina was: de tip
+  werd dan pas herbeoordeeld bij een volgende paginawissel. De tip
+  verdwijnt nu direct zodra de bijbehorende gebruiksteller wordt bijgewerkt.
+- DocBot kon tijdens het koppelen, verversen, pollen of bellen soms
+  minutenlang vastlopen zonder foutmelding, doordat een aanvraag naar de
+  telefonieserver geen tijdslimiet had. Zulke aanvragen krijgen nu een
+  tijdslimiet: bij een trage of onbereikbare server toont DocBot een
+  foutmelding in plaats van vast te lopen (`docs/DECISIONS.md` D-067).
+- Een telefoonkoppeling ging verloren zodra DocBot werd herstart, crashte
+  of de Windows-sessie opnieuw startte. DocBot bewaart de koppeling nu op
+  een manier die dit overleeft: bellen naar het weergegeven koppelnummer
+  is daarna niet meer nodig (`docs/DECISIONS.md` D-068).
+
 ### 2.4.2 — Huidige stabiele release
-- De poging in 2.4.1 om de spelfout in de standaard-hotstring "mvg" te
-  corrigeren, sloeg in de praktijk nergens op: de daadwerkelijk uitgerolde
-  tekst begon met "Met vriendelijk groet" gevolgd door een komma en een
-  regeleinde (bijvoorbeeld met een naam erna), terwijl 2.4.1 alleen de
-  volledige tekst zonder die toevoegingen herkende. De correctie matcht nu
-  op het begin van de tekst: alleen "vriendelijk" wordt "vriendelijke", al
-  het overige (komma, regeleinde, naam) blijft ongewijzigd. Is de aanhef
-  zelf al aangepast, dan blijft die aanpassing ongemoeid.
+- Spelfout in de standaard-hotstring "mvg" te gecorrigeerd.
 
 ### 2.4.1 — Vorige stabiele release
 - Bevatte een eerste, niet-effectieve poging om de spelfout in de
