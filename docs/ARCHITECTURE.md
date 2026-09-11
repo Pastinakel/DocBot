@@ -408,18 +408,28 @@ When a user edits or saves a package item as personal, the application writes a 
   `Telephony.BaseUrl`, so every request built from `IPTConfig["URL"]`
   inherits that guarantee without a separate per-call check
   (`docs/DECISIONS.md` D-043).
-- `IPTConfig["ComObject"]` is `Msxml2.XMLHTTP.6.0`, and stays that way for
-  now: a since-reverted attempt to switch to `Msxml2.ServerXMLHTTP.6.0`
-  (the only variant besides `WinHttp.WinHttpRequest.5.1`, which
-  `IPT_poller()` already special-cases for its response-event name, that
-  supports `SetTimeouts()`) broke registration on a real Windows test —
-  `ServerXMLHTTP` does not share cookies between separate COM object
-  instances, and `DocBot.ahk` creates a fresh one per call. See
-  `docs/DECISIONS.md` D-067. Plain `XMLHTTP` has no timeout mechanism at
-  all, so none of the three telephony COM calls currently has one — an
-  unresolved hang risk repeated field reports tied to multi-minute DocBot
-  freezes during registering/polling/dialing, still open pending the
-  cookie-propagation follow-up D-067 describes.
+- `IPTConfig["ComObject"]` is `WinHttp.WinHttpRequest.5.1`, chosen after two
+  earlier variants were ruled out on real Windows tests: `Msxml2.XMLHTTP.6.0`
+  (the long-standing default) has no timeout mechanism at all, so a genuine
+  hang on `.Send()` throws no exception and leaves DocBot's UI thread stuck
+  — the confirmed root cause of repeated field reports of multi-minute
+  freezes during registering/polling/dialing. `Msxml2.ServerXMLHTTP.6.0`
+  supports `SetTimeouts()` but does not share cookies between separate COM
+  object instances, and `DocBot.ahk` creates a fresh instance per call, so
+  switching to it broke registration outright. `WinHttp.WinHttpRequest.5.1`
+  also supports `SetTimeouts()`; its cookie storage is likewise per-object
+  rather than shared, but that gap is closed by the explicit cookie
+  propagation described below, independent of which COM object instance
+  handles a given call. `IPT_poller()` already special-cased this ComObject
+  for its response-event name (`OnResponseDataAvailable` vs.
+  `onreadystatechange`) before this change, so no further branching was
+  needed there. See `docs/DECISIONS.md` D-067.
+- `ApplyIPTTimeouts(request, timeouts)` calls `request.SetTimeouts(...)`
+  (wrapped in try/catch, since older/other COM variants may not implement
+  it) with `IPTConfig["RequestTimeoutsMs"]` for register/dial calls and the
+  more generous `IPTConfig["PollTimeoutsMs"]` for the long-poll, whose
+  receive timeout must stay well above the server's normal long-poll
+  duration to avoid cutting off a legitimate wait for the next event.
 - `LogIPTResponseHeaders(label, request)` logs `request.getAllResponseHeaders()`
   from all three response handlers — nothing logged response headers
   before this, only `.status`/`.ResponseText` — scrubbed in the always-on
@@ -440,19 +450,6 @@ When a user edits or saves a package item as personal, the application writes a 
   NTLM handshake), so this cannot show whether/how Windows-integrated
   authentication plays into the separately-durable phone-link mechanism
   (see D-067's discussion of that open question).
-- `ComObject` itself is still `Msxml2.XMLHTTP.6.0`: a since-reverted
-  attempt to switch to `Msxml2.ServerXMLHTTP.6.0` (the only variant
-  besides `WinHttp.WinHttpRequest.5.1`, which `IPT_poller()` already
-  special-cases for its response-event name, that supports
-  `SetTimeouts()`) broke registration on a real Windows test —
-  `ServerXMLHTTP` does not share cookies between separate COM object
-  instances, and `DocBot.ahk` creates a fresh one per call. Plain
-  `XMLHTTP` has no timeout mechanism at all, so none of the three
-  telephony COM calls currently has one — an unresolved hang risk
-  repeated field reports tied to multi-minute DocBot freezes during
-  registering/polling/dialing, still open pending validation of the
-  cookie propagation above and a retried `ComObject` switch on top of it.
-  See `docs/DECISIONS.md` D-067.
 
 ### 11.2 Request lifecycle
 

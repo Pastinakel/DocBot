@@ -761,25 +761,30 @@ on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
   `IPT_poller()` can be in flight concurrently (Verversen-click during an
   outstanding long-poll), and one COM object can't serve two concurrent
   async calls.
-- [ ] Validate step A on Windows: with `ComObject` still
-  `Msxml2.XMLHTTP.6.0`, confirm registering/polling/dialing behave
-  exactly as before (no regression expected — this step is additive) and
-  that the standard log's new `"... request headers"`/`"... response
-  headers"` lines appear (scrubbed) with real content visible only in the
-  opt-in extended log, including a non-empty `Cookie:` line on the second
-  and later requests.
-- [ ] Step B, only after step A is confirmed clean: retry the
-  `Msxml2.ServerXMLHTTP.6.0` (or `WinHttp.WinHttpRequest.5.1`) switch with
-  `SetTimeouts()` on top of the now-working cookie propagation — this is
-  the part that actually bounds `Send()` and addresses the original hang
-  risk. Validate on a real Windows machine against the real internal
-  telephony server exactly as the first attempt was tested — registering,
-  event-polling, and dialing must all keep working, and a koppelnummer
-  must still appear.
-- [ ] Confirm any new receive timeout for the long-poll (`IPT_poller()`)
-  does not get cut short during normal, legitimately quiet periods —
-  watch for unexpected `Send() mislukt`/reconnect churn in the standard
-  log during idle stretches.
+- [x] Validate step A on Windows: with `ComObject` still
+  `Msxml2.XMLHTTP.6.0`, confirmed registering/polling/dialing/SMS all
+  behave exactly as before (no regression), and the standard log's new
+  `"... request headers"`/`"... response headers"` lines appear (scrubbed)
+  with real content only in the opt-in extended log, including a
+  non-empty `Cookie:` line on the second and later requests, still
+  arriving at `SetUpperText` (the koppelnummer) normally.
+- [x] Implement step B: `IPTConfig["ComObject"]` switched to
+  `WinHttp.WinHttpRequest.5.1` (project owner's preference, on top of the
+  now-working cookie propagation rather than relying on the object's own
+  per-instance cookie handling), `ApplyIPTTimeouts()` reintroduced and
+  called in all three functions with `RequestTimeoutsMs`/`PollTimeoutsMs`.
+  This is the part that actually bounds `Send()` and addresses the
+  original hang risk.
+- [ ] Validate step B on a real Windows machine against the real internal
+  telephony server, exactly as thoroughly as the first (rejected) attempt
+  should have been — registering, event-polling, dialing, and SMS must
+  all keep working, and a koppelnummer must still appear.
+- [ ] Confirm the long-poll's receive timeout (`PollTimeoutsMs`,
+  120000ms) does not get cut short during normal, legitimately quiet
+  periods — watch for unexpected `Send() mislukt`/reconnect churn in the
+  standard log during idle stretches. Adjust the value if the real
+  server's long-poll behavior needs more room; it was chosen without
+  detailed knowledge of that behavior.
 - [ ] Get a build with the working fix to the reporting user (or another
   affected user) for field use — the original hangs leave no trace in
   `debug.log` while happening, so only continued/absent reports over time

@@ -2963,13 +2963,18 @@ closed" notice, even though the user had only copied once.
 - See the README `### 2.4` changelog for the user-facing summary of this
   fix.
 
-## D-067 — Diagnostic hardening of the telephony COM requests; timeout attempt reverted (open investigation)
+## D-067 — Diagnostic hardening of the telephony COM requests, cookie propagation, bound timeout (open investigation)
 
-**Status:** Partially implemented on `claude/ipt-comobject-timeouts`
-(branched from `develop`), not yet confirmed to fix the reported hangs —
-the bound-timeout part of this decision was reverted after a real Windows
-test broke registration; only the diagnostic hardening below is currently
-active. Note: a differently-numbered, unrelated D-067 exists on the
+**Status:** Implemented on `claude/ipt-comobject-timeouts` (branched from
+`develop`) in staged, individually-Windows-tested steps; not yet confirmed
+to fix the reported hangs. The first bound-timeout attempt
+(`Msxml2.ServerXMLHTTP.6.0`) was reverted after a real Windows test broke
+registration; diagnostic hardening plus explicit cookie propagation were
+added and validated with no regression; a second bound-timeout attempt
+(`WinHttp.WinHttpRequest.5.1`, on top of the now-working cookie
+propagation) is implemented but **not yet Windows-validated** — see
+"Step A validated on Windows; Step B implemented" below for the current
+state. Note: a differently-numbered, unrelated D-067 exists on the
 separate, unmerged `claude/klembord-hang-fix` branch (a clipboard-read
 isolation fix — see that branch's own `docs/DECISIONS.md`); if both
 branches are ever merged, one of the two entries needs renumbering.
@@ -3156,11 +3161,41 @@ staged-testing reasoning as D-067's rejected first attempt:
   Wireshark) run on the Windows machine — outside what DocBot's own COM
   calls can ever show, regardless of how much is logged.
 
-Not yet done: switching `ComObject` back to `Msxml2.ServerXMLHTTP.6.0` (or
-`WinHttp.WinHttpRequest.5.1`) with `SetTimeouts()` re-added on top of this
-— the actual bounded-timeout fix this whole decision is about. This step
-only proves the cookie plumbing itself doesn't regress anything while
-`ComObject` is unchanged; see `docs/TODO.md` for that remaining step.
+Not yet done at that point: switching `ComObject` with `SetTimeouts()`
+re-added on top of this — the actual bounded-timeout fix this whole
+decision is about. Step A only proved the cookie plumbing itself doesn't
+regress anything while `ComObject` stayed unchanged.
+
+**Step A validated on Windows; Step B implemented: `WinHttp.WinHttpRequest.5.1` + `SetTimeouts()`**
+
+A Windows test of step A alone (`ComObject` still `Msxml2.XMLHTTP.6.0`)
+confirmed no regression: registering, polling, calling, and SMS all kept
+working, and the standard log showed the captured `Cookie:
+JDMWEBCOOKIE=...` correctly attached from the second request onward, with
+`SetUpperText` (the koppelnummer) still arriving normally — no
+`StopEventLoop`.
+
+With that confirmed, `IPTConfig["ComObject"]` is now
+`WinHttp.WinHttpRequest.5.1` (the project owner's preference, having used
+it successfully before) instead of `Msxml2.ServerXMLHTTP.6.0` — chosen
+this time on top of the now-working `IPTSessionCookie` propagation rather
+than relying on either object's own cookie handling, so the choice
+between the two candidates for this switch no longer depends on their
+differing cookie behavior. `ApplyIPTTimeouts(request, timeouts)`
+(`try`/`catch`, degrades to "no explicit timeout" if the configured
+`ComObject` doesn't support `SetTimeouts()`) is called right after
+`ComObject()` in all three functions, using `IPTConfig["RequestTimeoutsMs"]`
+(register/dial) or `IPTConfig["PollTimeoutsMs"]` (the long-poll, far more
+generous receive bound). This is the change that actually bounds `Send()`
+— everything before this point in the decision (diagnostics, cookie
+propagation) made it *observable* and *safe to attempt*, but did not by
+itself stop a hang.
+
+Not yet done: Windows validation of step B itself. Per `docs/TODO.md`,
+this needs the same care as step A and the original (rejected) attempt —
+registering/polling/dialing/SMS must all still work, and this time the
+receive timeout on the long-poll needs watching too (a value picked
+without knowing the server's real long-poll behavior in detail).
 
 **Reasoning**
 
@@ -3190,15 +3225,23 @@ only proves the cookie plumbing itself doesn't regress anything while
 
 **Consequences**
 
-- The original hang risk (`Send()` blocking indefinitely with no timeout)
-  is confirmed **not fixed** by the currently-active state of this
-  decision. Registering, polling, and dialing behave exactly as before
-  this investigation, except that a thrown `Send()` error (a different,
-  rarer failure mode than an indefinite hang) is now caught, logged, and
-  shown to the user instead of crashing unhandled.
-- `docs/TODO.md` carries the cookie-propagation follow-up as explicitly
-  open, unstarted work — not a passive "maybe later."
-- Confirming a *future* timeout fix resolves the reported hangs will still
-  need field use: a fix for a failure mode that leaves no trace while it's
-  happening can only be confirmed by its absence over time, not by static
-  log analysis.
+- As of step B (implemented, not yet Windows-validated), the original hang
+  risk (`Send()` blocking indefinitely with no timeout) should finally be
+  bounded — `SetTimeouts()` is active on all three telephony COM calls,
+  backed by working cookie propagation instead of an implicit,
+  COM-object-dependent cookie jar. This is not yet confirmed; step B has
+  not been run against the real server yet.
+- If step B validates cleanly: registering/polling/dialing/SMS must all
+  still work exactly as before, `Send()` should now throw (caught, logged,
+  notified) rather than hang if the server is genuinely slow/unreachable
+  beyond the configured timeouts, and the long-poll's receive timeout
+  (120000ms) needs to not fire during normal, legitimately quiet periods —
+  a value chosen without detailed knowledge of the server's actual
+  long-poll behavior, worth revisiting if it proves wrong in practice.
+- `docs/TODO.md` tracks Windows validation of step B as the remaining
+  explicitly open work — not a passive "maybe later."
+- Confirming this resolves the reported hangs will still need field use
+  beyond just a clean validation pass: a fix for a failure mode that
+  leaves no trace while it's happening can only be confirmed by its
+  absence over time, not by static log analysis or a single successful
+  test session.
