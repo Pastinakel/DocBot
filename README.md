@@ -497,7 +497,15 @@ risicoanalyse.
 Changelog
 ---------
 
-### 2.4 — Huidige stabiele release
+### 2.4.1 — Huidige stabiele release
+- De standaard-hotstring "mvg" bevatte een spelfout in de vervangtekst
+  ("Met vriendelijk groet" in plaats van "Met vriendelijke groet"). Wie deze
+  hotstring nog ongewijzigd gebruikt, krijgt de gecorrigeerde tekst
+  automatisch bij de eerstvolgende start. Is de tekst zelf al aangepast —
+  inclusief een eigen fix van dezelfde spelfout — dan blijft die aanpassing
+  ongemoeid.
+
+### 2.4 — Vorige stabiele release
 - De sidebar toont niet langer de titel "DocBot" en de ondertitel
   "Telefonie voor de werkplek" als platte tekst, maar het DocBot-robotlogo
   naast een afgeronde chip met de titel "DocBot" en de slogan "een handje
