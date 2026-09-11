@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-ipt-comobject-timeouts.7"
+global AppVersion := "2.5-ipt-comobject-timeouts.8"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -142,6 +142,15 @@ global IPTConfig := Map(
 ; doet, dus ongevoelig voor het hierboven beschreven probleem. Leeg zolang
 ; er nog geen respons met een Set-Cookie-header is gezien.
 global IPTSessionCookie := ""
+
+; Bewaakt of er al een GetEvent.xml-aanvraag onderweg is. Op Windows bleek
+; Msxml2.ServerXMLHTTP.6.0's onreadystatechange soms tweemaal af te vuren
+; voor dezelfde afgeronde respons; zonder deze vlag start IPT_poller() dan
+; een tweede, overlappende aanvraag die het gedeelde IPTPollRequest-object
+; overschrijft terwijl de eerste callback nog bezig is — de oorzaak van een
+; "data ... not yet available"-crash op .status. Zie docs/DECISIONS.md
+; D-067.
+global IPTPollInFlight := false
 
 ; SmsCallAction mag voor achterwaartse compatibiliteit één Map zijn, of een
 ; Array met meerdere Maps. In de GUI wordt uitsluitend Title getoond;
@@ -3198,8 +3207,14 @@ UpdateRegisterButtonState() {
 ; geen telefonie-events meer. Zelfde "opnieuw plannen na deze ronde"-patroon
 ; als IPT_PollResponse() al bij een ontvangen (ook een foutieve) respons
 ; toepast.
+;
+; Critical voorkomt dat een timer-tick of een COM-callback deze functie
+; halverwege onderbreekt — nodig omdat IPTPollRequest een gedeelde global
+; is; zie de toelichting bij IPTPollInFlight hierboven.
 IPT_poller() {
-    global IPTConfig, State, IPTPollRequest, IPTSessionCookie
+    Critical
+
+    global IPTConfig, State, IPTPollRequest, IPTSessionCookie, IPTPollInFlight
 
     UpdateRegisterButtonState()
 
@@ -3207,6 +3222,9 @@ IPT_poller() {
         State["IPT"]["NeedUpdate"] := -1
         return
     }
+
+    if IPTPollInFlight  ; Vorige aanvraag nog niet afgerond, zie IPTPollInFlight.
+        return
 
     url := IPTConfig["URL"] . IPTConfig["EventPage"] . "?sid=0." . A_TickCount . A_TimeIdle
 
@@ -3223,10 +3241,13 @@ IPT_poller() {
 
     LogIPTRequestHeaders(IPTConfig["EventPage"])
 
+    IPTPollInFlight := true
+
     sendStartedAt := A_TickCount
     try {
         IPTPollRequest.Send("")
     } catch as sendError {
+        IPTPollInFlight := false
         DebugLog(
             "✕",
             IPTConfig["EventPage"] . " Send() mislukt",
@@ -3242,52 +3263,69 @@ IPT_poller() {
     FlushDebugLog()
 }
 
+; Critical + de IPTPollInFlight-controle hieronder voorkomen dat deze
+; callback tweemaal voor dezelfde afgeronde respons verwerkt wordt (zie de
+; toelichting bij IPTPollInFlight hierboven). De buitenste try/catch is
+; nieuw: .status/.ResponseText/getAllResponseHeaders() konden bij die
+; dubbele afvuring een COM-fout geven ("data ... not yet available") die
+; zonder afvangen deze functie halverwege afbrak — vóór de herplanning
+; onderaan — en zo de pollketen stil en blijvend liet stoppen.
 IPT_PollResponse() {
-    global IPTConfig, State, IPTPollRequest
+    Critical
+
+    global IPTConfig, State, IPTPollRequest, IPTPollInFlight
 
     if IPTPollRequest.readyState != 4  ; Nog niet klaar, callback vuurt opnieuw.
         return
 
-    LogIPTResponseHeaders(IPTConfig["EventPage"], IPTPollRequest)
-    CaptureIPTSessionCookie(IPTPollRequest)
+    if !IPTPollInFlight  ; Al verwerkt (dubbele afvuring voor dezelfde respons).
+        return
+    IPTPollInFlight := false
 
-    if IPTPollRequest.status != 200 && IPTPollRequest.status != 201 {
-        DebugLog("←", IPTConfig["EventPage"] . " FOUT status " . IPTPollRequest.status, "")
-    } else {
-        DebugLog("←", IPTConfig["EventPage"] . " status " . IPTPollRequest.status, IPTPollRequest.ResponseText)
+    try {
+        LogIPTResponseHeaders(IPTConfig["EventPage"], IPTPollRequest)
+        CaptureIPTSessionCookie(IPTPollRequest)
 
-        ; Onbekende/afwijkende XML-structuur mag de poller nooit laten
-        ; crashen — bij een fout loggen we de ruwe respons en gaan we door.
-        try {
-            xml := IPTPollRequest.responseXML
-            if IsObject(xml) {
-                root := xml.documentElement
-                if IsObject(root) {
-                    eventName := root.getAttribute("Name")
+        if IPTPollRequest.status != 200 && IPTPollRequest.status != 201 {
+            DebugLog("←", IPTConfig["EventPage"] . " FOUT status " . IPTPollRequest.status, "")
+        } else {
+            DebugLog("←", IPTConfig["EventPage"] . " status " . IPTPollRequest.status, IPTPollRequest.ResponseText)
 
-                    switch eventName {
-                        case "NULL":
-                            ; niets te doen, keep-alive
-                        case "StopEventLoop":
-                            State["IPT"]["NeedUpdate"] := -1
-                        case "SetUpperText":
-                            msgNode := root.selectSingleNode("Message")
-                            if IsObject(msgNode)
-                                ParsePhoneNumbersFromMessage(msgNode.text)
-                        case "ShowAlert":
-                            msgNode := root.selectSingleNode("Text")
-                            if IsObject(msgNode)
-                                ShowNotification(msgNode.text, 4000, "info")
+            ; Onbekende/afwijkende XML-structuur mag de poller nooit laten
+            ; crashen — bij een fout loggen we de ruwe respons en gaan we door.
+            try {
+                xml := IPTPollRequest.responseXML
+                if IsObject(xml) {
+                    root := xml.documentElement
+                    if IsObject(root) {
+                        eventName := root.getAttribute("Name")
+
+                        switch eventName {
+                            case "NULL":
+                                ; niets te doen, keep-alive
+                            case "StopEventLoop":
+                                State["IPT"]["NeedUpdate"] := -1
+                            case "SetUpperText":
+                                msgNode := root.selectSingleNode("Message")
+                                if IsObject(msgNode)
+                                    ParsePhoneNumbersFromMessage(msgNode.text)
+                            case "ShowAlert":
+                                msgNode := root.selectSingleNode("Text")
+                                if IsObject(msgNode)
+                                    ShowNotification(msgNode.text, 4000, "info")
+                        }
                     }
                 }
+            } catch as err {
+                DebugLog("←", IPTConfig["EventPage"] . " PARSE-FOUT: " . err.Message, IPTPollRequest.ResponseText)
             }
-        } catch as err {
-            DebugLog("←", IPTConfig["EventPage"] . " PARSE-FOUT: " . err.Message, IPTPollRequest.ResponseText)
-        }
 
-        RefreshRegistrationTexts()
-        RefreshSidebarStatuses()
-        BuildTrayMenu()
+            RefreshRegistrationTexts()
+            RefreshSidebarStatuses()
+            BuildTrayMenu()
+        }
+    } catch as err {
+        DebugLog("←", IPTConfig["EventPage"] . " RESPONS-FOUT: " . err.Message, "")
     }
 
     ; Poll-keten voortzetten: pas ná afronding van deze aanvraag een nieuwe

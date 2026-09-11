@@ -458,6 +458,25 @@ When a user edits or saves a package item as personal, the application writes a 
   NTLM handshake), so this cannot show whether/how Windows-integrated
   authentication plays into the separately-durable phone-link mechanism
   (see D-067's discussion of that open question).
+- `IPTPollInFlight` (global) guards `IPT_poller()`/`IPT_PollResponse()`
+  against a real concurrency bug found on Windows: `ServerXMLHTTP`'s
+  `onreadystatechange` can fire twice for one completed response, and
+  without this flag both firings would reschedule `IPT_poller()`,
+  producing two overlapping polls that clobber the single global
+  `IPTPollRequest`. `IPT_poller()` won't start a new poll while the flag
+  is set; `IPT_PollResponse()` clears it on the first `readyState == 4`
+  firing and returns immediately on any later one. Both functions run
+  `Critical` so a timer tick or overlapping COM callback can't interleave
+  with their handling of the shared global and flag. `IPT_PollResponse()`'s
+  full body also runs inside a `try`/`catch` now (previously only the
+  XML-parsing sub-block was protected): any COM-level failure while
+  reading the response still reaches the tail-end reschedule instead of
+  silently and permanently stopping the poll chain. Scoped to the poller
+  only — `IPT_RegisterResponse()`/`IPT_DialResponse()` already had
+  try/catch protection, and neither `IPT_register()` nor
+  `IPT_callNumber()` self-chains the way `IPT_poller()` does, so they
+  lack the repeated-firing window that exposed this bug. See
+  `docs/DECISIONS.md` D-067.
 
 ### 11.2 Request lifecycle
 

@@ -2978,9 +2978,14 @@ propagation) crashed twice on real Windows tests — first because it has no
 `onreadystatechange` property, then again because its real async events
 don't bind reliably from AHK v2 either — and was abandoned in favor of
 `ServerXMLHTTP` on top of the same cookie propagation, which needs no
-event-binding rework at all. **Not yet Windows-validated in this final
-form** — see "Final ComObject choice: `Msxml2.ServerXMLHTTP.6.0`" below for
-the current state and the full history above it for how the other two
+event-binding rework at all. That `ServerXMLHTTP` attempt then crashed a
+third time, on an unrelated concurrency bug in DocBot's own poller code
+(a duplicate `onreadystatechange` firing raced two overlapping polls on
+the shared `IPTPollRequest` global), fixed with an in-flight guard, a
+`Critical` section, and a missing `try`/`catch`. **Not yet Windows-validated
+after that fix** — see "Third crash: duplicate `onreadystatechange` firing
+raced two overlapping polls" below for the current state and the full
+history above it for how the other two
 candidates were ruled out. Note: a differently-numbered, unrelated D-067
 exists on the
 separate, unmerged `claude/klembord-hang-fix` branch (a clipboard-read
@@ -3282,6 +3287,85 @@ telephony functions go back to setting `.onreadystatechange` directly,
 matching the pre-step-B code and needing no event-binding abstraction at
 all.
 
+**Third crash: duplicate `onreadystatechange` firing raced two overlapping
+polls on the shared `IPTPollRequest` global**
+
+A Windows test of `Msxml2.ServerXMLHTTP.6.0` got much further than either
+prior attempt — registering worked, and several `GetEvent.xml` poll
+cycles completed cleanly with `NULL` keep-alive events at normal ~5s
+intervals — before crashing:
+
+```
+Error: (0x8000000A) The data necessary to complete this operation is not
+yet available.
+Source: msxml6.dll
+Specifically: status
+```
+
+...thrown from `IPTPollRequest.status` inside `IPT_PollResponse()`. The
+standard log showed the smoking gun right before the crash: the same
+`GetEvent.xml` response (`Sequence 38369`) logged as received *twice* in
+quick succession, immediately followed by *two* separate `GetEvent.xml`
+requests sent about 28ms apart — one poll cycle where there should only
+ever be one.
+
+Root cause: `Msxml2.ServerXMLHTTP.6.0`'s `onreadystatechange` fired twice
+for the same completed (`readyState == 4`) response. `IPT_PollResponse()`
+had no protection against being invoked twice for one logical poll — it
+only checked `readyState == 4`, true on both firings — so it ran fully
+twice, and each run's tail called `SetTimer IPT_poller, -10`. Because
+`IPT_poller()` had no guard against starting a second poll while the
+first was still awaiting its (about-to-arrive-twice) response, both timer
+firings went on to create and send a fresh `IPTPollRequest`. Since
+`IPTPollRequest` is a single global reused by every poll cycle, the
+second poll's `ComObject(...)`/`.Open()` overwrote the global while the
+first poll's (duplicate) response handler invocation was still mid-flight
+elsewhere, so one of the two handler invocations ended up reading
+`.status` off an object that either hadn't finished sending or had
+already been superseded — hence the "data not yet available" HRESULT.
+This is a plain concurrency bug in DocBot's own code, not a ComObject
+compatibility gap like the two crashes above; nothing here depends on
+which MSXML variant is used, so switching `ComObject` again would not
+have helped.
+
+A second, independent problem this surfaced: `IPT_PollResponse()`'s
+`.status`/`.ResponseText`/header access was *not* wrapped in `try`/`catch`
+(unlike the nested XML-parsing block right below it, and unlike
+`IPT_RegisterResponse()`/`IPT_DialResponse()`, which already wrap their
+own status/response access). Because the crash happened before reaching
+the tail-end `SetTimer IPT_poller, -10`, the exception unwound the whole
+function and silently, permanently stopped the poll chain — the same
+class of failure D-067 exists to eliminate, just triggered by a crash
+instead of a hang.
+
+Fix, both applied together:
+
+1. A new global `IPTPollInFlight` flag. `IPT_poller()` refuses to start a
+   new poll while one is already in flight; `IPT_PollResponse()` checks
+   the flag immediately after the `readyState == 4` guard and returns
+   without doing anything if it's already `false` (i.e. this response was
+   already handled by an earlier firing) — otherwise it clears the flag
+   immediately, before touching `.status` or anything else, so at most
+   one firing per poll cycle ever does real work.
+2. `Critical` added to both `IPT_poller()` and `IPT_PollResponse()`, so a
+   timer tick or an overlapping COM callback can't interleave with either
+   function's handling of the shared `IPTPollRequest` global and
+   `IPTPollInFlight` flag.
+3. `IPT_PollResponse()`'s entire body (status check, header logging,
+   cookie capture, the existing nested XML-parsing `try`/`catch`, and the
+   UI refresh calls) is now wrapped in an outer `try`/`catch`, so any
+   COM-level failure during response handling — this one included, and
+   any other the guard above doesn't fully rule out — still reaches the
+   tail-end `SetTimer IPT_poller, -10` instead of silently killing the
+   poll chain.
+
+Deliberately scoped to the poller only: `IPT_RegisterResponse()`/
+`IPT_DialResponse()` already had the try/catch protection, and neither
+`IPT_register()` nor `IPT_callNumber()` self-chains the way `IPT_poller()`
+does, so they lack the repeated-firing window that made this bug visible
+within minutes of testing. No evidence of the same race affecting
+register/dial has been seen; revisit if it ever is.
+
 **Reasoning**
 
 - Bounding the existing calls is far simpler than process isolation (the
@@ -3316,10 +3400,18 @@ all.
   telephony COM calls, backed by working cookie propagation instead of an
   implicit, COM-object-dependent cookie jar. This is not yet confirmed:
   this exact combination (`ServerXMLHTTP` + cookie propagation +
-  `SetTimeouts()`, all three together) has not yet been run against the
-  real server — only its individual pieces have been separately validated
+  `SetTimeouts()` + the `IPTPollInFlight`/`Critical`/outer-`try`/`catch`
+  concurrency fix, all together) has not yet been run against the real
+  server — only its individual pieces have been separately validated
   (cookie propagation under the original `XMLHTTP`; `SetTimeouts()` and
-  `onreadystatechange` binding under the since-abandoned `WinHttpRequest`).
+  `onreadystatechange` binding under the since-abandoned `WinHttpRequest`;
+  `ServerXMLHTTP` itself only up to the point of the third crash).
+- `IPT_poller()`/`IPT_PollResponse()` now guarantee at most one
+  `GetEvent.xml` request in flight at a time, regardless of how many times
+  the underlying COM object's `onreadystatechange` fires for a given
+  response — this closes a real concurrency bug, not just a symptom, so
+  it should hold regardless of which MSXML-family `ComObject` is
+  configured, not only `ServerXMLHTTP`.
 - `WinHttp.WinHttpRequest.5.1` is ruled out for this codebase going
   forward, not just for this decision: two independent real-Windows
   crashes showed it cannot be wired up for async use from AHK v2 without

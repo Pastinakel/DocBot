@@ -794,12 +794,33 @@ on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
   removed again — all three functions set `.onreadystatechange` directly,
   same as before step B. See `docs/DECISIONS.md` D-067, "Second crash:
   WinHttpRequest's real events don't bind reliably from AHK v2 either".
-- [ ] Validate this final combination (`Msxml2.ServerXMLHTTP.6.0` +
-  cookie propagation + `SetTimeouts()`) on a real Windows machine against
-  the real internal telephony server, exactly as thoroughly as every
-  earlier attempt should have been — registering, event-polling, dialing,
-  and SMS must all keep working, and a koppelnummer must still appear.
-  This exact combination has not been tested together before.
+- [x] Third Windows test got much further (registering worked, several
+  `GetEvent.xml` poll cycles completed cleanly) before crashing on
+  `IPTPollRequest.status` with `(0x8000000A) The data necessary to
+  complete this operation is not yet available`. Standard log showed the
+  same response (`Sequence 38369`) processed twice, immediately followed
+  by two separate `GetEvent.xml` requests ~28ms apart. Root cause:
+  `ServerXMLHTTP`'s `onreadystatechange` fired twice for one completed
+  response; `IPT_PollResponse()` had no guard against double-processing,
+  so both firings rescheduled `IPT_poller()`, and two polls ended up
+  sharing/overwriting the single global `IPTPollRequest`. A genuine
+  concurrency bug in DocBot's own code, unrelated to which `ComObject` is
+  configured. Also surfaced that `IPT_PollResponse()`'s `.status` access
+  had no `try`/`catch`, so this crash silently and permanently stopped the
+  poll chain instead of being caught and rescheduled. Fixed with a new
+  `IPTPollInFlight` guard flag, `Critical` on both `IPT_poller()` and
+  `IPT_PollResponse()`, and wrapping `IPT_PollResponse()`'s full body in
+  `try`/`catch`. Deliberately scoped to the poller only — see
+  `docs/DECISIONS.md` D-067, "Third crash: duplicate `onreadystatechange`
+  firing raced two overlapping polls".
+- [ ] Validate this combination (`Msxml2.ServerXMLHTTP.6.0` + cookie
+  propagation + `SetTimeouts()` + the `IPTPollInFlight`/`Critical`/outer-
+  `try`/`catch` concurrency fix) on a real Windows machine against the
+  real internal telephony server, exactly as thoroughly as every earlier
+  attempt should have been — registering, event-polling, dialing, and SMS
+  must all keep working, a koppelnummer must still appear, and polling
+  should now run indefinitely (several minutes at least) without a repeat
+  of the duplicate-response/crash pattern above.
 - [ ] Confirm the long-poll's receive timeout (`PollTimeoutsMs`,
   120000ms) does not get cut short during normal, legitimately quiet
   periods — watch for unexpected `Send() mislukt`/reconnect churn in the
