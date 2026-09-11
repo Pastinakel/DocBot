@@ -519,7 +519,14 @@ Changelog
   een manier die dit overleeft: bellen naar het weergegeven koppelnummer
   is daarna niet meer nodig (`docs/DECISIONS.md` D-068).
 
-### 2.4 — Huidige stabiele release
+### 2.4.2 — Huidige stabiele release
+- Spelfout in de standaard-hotstring "mvg" te gecorrigeerd.
+
+### 2.4.1 — Vorige stabiele release
+- Bevatte een eerste, niet-effectieve poging om de spelfout in de
+  standaard-hotstring "mvg" te corrigeren (zie 2.4.2 hierboven).
+
+### 2.4 — Vorige stabiele release
 - De sidebar toont niet langer de titel "DocBot" en de ondertitel
   "Telefonie voor de werkplek" als platte tekst, maar het DocBot-robotlogo
   naast een afgeronde chip met de titel "DocBot" en de slogan "een handje

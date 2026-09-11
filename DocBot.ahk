@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-ipt-comobject-timeouts.9"
+global AppVersion := "2.5-dev.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -212,7 +212,7 @@ global State := Map(
     )
 )
 
-global HotstringSchemaVersion := 5
+global HotstringSchemaVersion := 7
 global BundledPackageSchemaVersion := 1
 global PackageSettingsSchemaVersion := 1
 global BundledPackageDir := ""
@@ -7325,6 +7325,67 @@ AddMissingDefaultHotstrings(items) {
     return added
 }
 
+; Eenmalige correcties op een standaard-hotstring die al bij gebruikers is
+; uitgerold met een foute Replacement-tekst. Matcht bewust op Trigger EN de
+; exacte oude tekst, niet op Trigger alleen — zo blijft een bewuste
+; gebruikersaanpassing (inclusief een eigen fix van dezelfde typefout)
+; ongemoeid, conform D-010. Zie docs/MIGRATIONS.md schema 6.
+KnownDefaultHotstringTypoFixes() {
+    return [
+        Map("Trigger", "mvg", "OldReplacement", "Met vriendelijk groet", "NewReplacement", "Met vriendelijke groet")
+    ]
+}
+
+FixKnownDefaultHotstringTypos(items) {
+    fixed := 0
+    for _, fix in KnownDefaultHotstringTypoFixes() {
+        triggerKey := StrLower(Trim(fix["Trigger"]))
+        for _, rawItem in items {
+            item := NormalizeHotstringItem(rawItem)
+            if StrLower(Trim(item["Trigger"])) != triggerKey
+                continue
+            if item["Replacement"] != fix["OldReplacement"]
+                continue
+            rawItem["Replacement"] := fix["NewReplacement"]
+            fixed += 1
+        }
+    }
+    return fixed
+}
+
+; Vervolg op KnownDefaultHotstringTypoFixes()/FixKnownDefaultHotstringTypos()
+; hierboven (schema 6): die matchte op de volledige Replacement-tekst, maar
+; de daadwerkelijk uitgerolde "mvg"-tekst bleek een komma en regeleinden te
+; bevatten (bijvoorbeeld een naam op een volgende regel) die niet vooraf
+; bekend waren. Schema 6 matchte daardoor nergens en corrigeerde niets.
+; Deze correctie matcht in plaats daarvan op het BEGIN van de tekst en laat
+; al het overige (komma, regeleinden, naam) ongemoeid — zie
+; docs/MIGRATIONS.md schema 7.
+KnownDefaultHotstringPrefixTypoFixes() {
+    return [
+        Map("Trigger", "mvg", "OldPrefix", "Met vriendelijk groet", "NewPrefix", "Met vriendelijke groet")
+    ]
+}
+
+FixKnownDefaultHotstringPrefixTypos(items) {
+    fixed := 0
+    for _, fix in KnownDefaultHotstringPrefixTypoFixes() {
+        triggerKey := StrLower(Trim(fix["Trigger"]))
+        oldPrefix := fix["OldPrefix"]
+        for _, rawItem in items {
+            item := NormalizeHotstringItem(rawItem)
+            if StrLower(Trim(item["Trigger"])) != triggerKey
+                continue
+            replacement := item["Replacement"]
+            if SubStr(replacement, 1, StrLen(oldPrefix)) != oldPrefix
+                continue
+            rawItem["Replacement"] := fix["NewPrefix"] . SubStr(replacement, StrLen(oldPrefix) + 1)
+            fixed += 1
+        }
+    }
+    return fixed
+}
+
 DefaultHotstringOptions() {
     return Map(
         "NoEndChar", false,       ; *
@@ -8669,6 +8730,21 @@ LoadHotstringsFromJson(path, showMessage := false) {
         ; afkortingen blijven altijd leidend en worden nooit overschreven.
         if schemaVersion < 5
             AddMissingDefaultHotstrings(Hotstrings)
+
+        ; Schema 6 corrigeert eenmalig een bekende typefout in een standaard-
+        ; hotstring, maar uitsluitend waar de tekst nog exact de oude,
+        ; foutieve waarde heeft. Een bewuste gebruikersaanpassing (ook een
+        ; eigen fix van dezelfde typefout) wordt nooit overschreven.
+        if schemaVersion < 6
+            FixKnownDefaultHotstringTypos(Hotstrings)
+
+        ; Schema 7 herhaalt dezelfde soort correctie, maar dan op het begin
+        ; van de tekst: de daadwerkelijke "mvg"-tekst bleek een komma en
+        ; regeleinden na de aanhef te bevatten, waardoor de exacte-tekstmatch
+        ; van schema 6 nergens op sloeg. Alles ná het gematchte begin blijft
+        ; ongewijzigd.
+        if schemaVersion < 7
+            FixKnownDefaultHotstringPrefixTypos(Hotstrings)
 
         ; Schema 1 krijgt stabiele IDs en origin=custom. De bestaande
         ; atomaire opslag maakt eerst een .bak voordat het bestand wijzigt.

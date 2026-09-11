@@ -13,6 +13,9 @@
 ; InitializeBundledPackages() in DocBot.ahk), de idempotentie van de
 ; eenmalige standaardwaarde-migraties voor persoonlijke hotstrings en
 ; snelkiesnummers (AddMissingDefaultHotstrings / AddMissingDefaultSpeedDials),
+; de eenmalige, waardegematchte typefoutcorrecties op een standaard-hotstring
+; (FixKnownDefaultHotstringTypos / FixKnownDefaultHotstringPrefixTypos;
+; docs/MIGRATIONS.md schema 6/7),
 ; de gebruikersprofielkeuze (GetUserDataProfile; docs/DECISIONS.md D-056),
 ; de telefoonnummernormalisatie (NormalizePhoneNumber en de interne/externe
 ; varianten, NormalizeSmsPhoneNumber) en de standaardlog-opschoonclassificatie
@@ -38,6 +41,8 @@ RunSelfTests() {
     RunSelfTestCase(results, "TestRejectNewerSchemaVersion", TestRejectNewerSchemaVersion)
     RunSelfTestCase(results, "TestNormalizeHotstringItemIdempotency", TestNormalizeHotstringItemIdempotency)
     RunSelfTestCase(results, "TestAddMissingDefaultHotstringsIdempotency", TestAddMissingDefaultHotstringsIdempotency)
+    RunSelfTestCase(results, "TestFixKnownDefaultHotstringTypos", TestFixKnownDefaultHotstringTypos)
+    RunSelfTestCase(results, "TestFixKnownDefaultHotstringPrefixTypos", TestFixKnownDefaultHotstringPrefixTypos)
     RunSelfTestCase(results, "TestAddMissingDefaultSpeedDialsIdempotency", TestAddMissingDefaultSpeedDialsIdempotency)
     RunSelfTestCase(results, "TestCreateSpeedDialEntryDefaults", TestCreateSpeedDialEntryDefaults)
     RunSelfTestCase(results, "TestGetUserDataProfile", TestGetUserDataProfile)
@@ -224,6 +229,93 @@ TestAddMissingDefaultHotstringsIdempotency(results) {
     } finally {
         LocalConfig := originalConfig
     }
+}
+
+TestFixKnownDefaultHotstringTypos(results) {
+    untouched := [
+        CreateHotstringItem("mvg", "Met vriendelijk groet", "", true, DefaultHotstringOptions(), "")
+    ]
+    fixedCount := FixKnownDefaultHotstringTypos(untouched)
+    AssertEqual(results, "FixKnownDefaultHotstringTypos corrigeert de onaangeraakte standaardtekst", fixedCount, 1)
+    AssertEqual(
+        results,
+        "FixKnownDefaultHotstringTypos zet de tekst om naar de gecorrigeerde waarde",
+        untouched[1]["Replacement"],
+        "Met vriendelijke groet"
+    )
+
+    secondRun := FixKnownDefaultHotstringTypos(untouched)
+    AssertEqual(results, "FixKnownDefaultHotstringTypos is idempotent bij een tweede aanroep", secondRun, 0)
+
+    edited := [
+        CreateHotstringItem("mvg", "Groetjes", "", true, DefaultHotstringOptions(), "")
+    ]
+    editedFixedCount := FixKnownDefaultHotstringTypos(edited)
+    AssertEqual(results, "FixKnownDefaultHotstringTypos laat een bewuste gebruikersaanpassing ongemoeid", editedFixedCount, 0)
+    AssertEqual(
+        results,
+        "FixKnownDefaultHotstringTypos verandert de aangepaste tekst niet",
+        edited[1]["Replacement"],
+        "Groetjes"
+    )
+
+    alreadyFixed := [
+        CreateHotstringItem("mvg", "Met vriendelijke groet", "", true, DefaultHotstringOptions(), "")
+    ]
+    alreadyFixedCount := FixKnownDefaultHotstringTypos(alreadyFixed)
+    AssertEqual(results, "FixKnownDefaultHotstringTypos laat een al door de gebruiker gecorrigeerde tekst ongemoeid", alreadyFixedCount, 0)
+}
+
+TestFixKnownDefaultHotstringPrefixTypos(results) {
+    withSignature := [
+        CreateHotstringItem("mvg", "Met vriendelijk groet,`nJan", "", true, DefaultHotstringOptions(), "")
+    ]
+    fixedCount := FixKnownDefaultHotstringPrefixTypos(withSignature)
+    AssertEqual(results, "FixKnownDefaultHotstringPrefixTypos corrigeert de aanhef vóór een komma en regeleinde", fixedCount, 1)
+    AssertEqual(
+        results,
+        "FixKnownDefaultHotstringPrefixTypos laat de komma, het regeleinde en de naam ongewijzigd",
+        withSignature[1]["Replacement"],
+        "Met vriendelijke groet,`nJan"
+    )
+
+    secondRun := FixKnownDefaultHotstringPrefixTypos(withSignature)
+    AssertEqual(results, "FixKnownDefaultHotstringPrefixTypos is idempotent bij een tweede aanroep", secondRun, 0)
+
+    bareText := [
+        CreateHotstringItem("mvg", "Met vriendelijk groet", "", true, DefaultHotstringOptions(), "")
+    ]
+    bareFixedCount := FixKnownDefaultHotstringPrefixTypos(bareText)
+    AssertEqual(results, "FixKnownDefaultHotstringPrefixTypos corrigeert ook zonder tekst ná de aanhef", bareFixedCount, 1)
+    AssertEqual(
+        results,
+        "FixKnownDefaultHotstringPrefixTypos geeft exact de gecorrigeerde aanhef terug zonder toevoegingen",
+        bareText[1]["Replacement"],
+        "Met vriendelijke groet"
+    )
+
+    edited := [
+        CreateHotstringItem("mvg", "Groetjes,`nJan", "", true, DefaultHotstringOptions(), "")
+    ]
+    editedFixedCount := FixKnownDefaultHotstringPrefixTypos(edited)
+    AssertEqual(results, "FixKnownDefaultHotstringPrefixTypos laat een volledig andere aanhef ongemoeid", editedFixedCount, 0)
+    AssertEqual(
+        results,
+        "FixKnownDefaultHotstringPrefixTypos verandert de andere aanhef niet",
+        edited[1]["Replacement"],
+        "Groetjes,`nJan"
+    )
+
+    alreadyFixed := [
+        CreateHotstringItem("mvg", "Met vriendelijke groet,`nJan", "", true, DefaultHotstringOptions(), "")
+    ]
+    alreadyFixedCount := FixKnownDefaultHotstringPrefixTypos(alreadyFixed)
+    AssertEqual(
+        results,
+        "FixKnownDefaultHotstringPrefixTypos laat een al gecorrigeerde aanhef ongemoeid (geen dubbele 'vriendelijkee')",
+        alreadyFixedCount,
+        0
+    )
 }
 
 TestAddMissingDefaultSpeedDialsIdempotency(results) {
