@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-09-03. This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-09-11 (third update, registry-based cookie persistence). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -704,6 +704,175 @@ At minimum, validate the following on the managed Windows environment and, where
 - [x] Executable replacement and byte verification.
 - [x] Restart task preserves active/background/minimized state.
 - [x] Update signal is removed on both success and failure.
+
+---
+
+## P1 — Telephony COM-request hang: timeout attempt reverted, cookie-propagation fix still needed (open)
+
+Filed 2026-09-10 from a standard log with two same-pattern incidents (09:48
+and 10:10) from a user who had already reported a separate clipboard-copy
+freeze earlier (2026-09-07). See `docs/DECISIONS.md` D-067 on
+`claude/ipt-comobject-timeouts` (branched from `develop`, deliberately
+separate from the unrelated, unmerged `claude/klembord-hang-fix`) for the
+full diagnosis.
+
+**Update 2026-09-11:** the first fix attempt (`IPTConfig["ComObject"]`
+switched to `Msxml2.ServerXMLHTTP.6.0` so `.SetTimeouts()` becomes
+available) was tested on Windows against the real internal telephony
+server and **broke registration**: `AllocNumber.xml` kept succeeding, but
+`GetEvent.xml` immediately got `StopEventLoop` back instead of the
+`SetUpperText` event that carries the link/registration number — no
+koppelnummer ever appeared. Root cause: `ServerXMLHTTP` does not share
+cookies between separate COM object instances, and `DocBot.ahk` creates a
+fresh one per call; `Msxml2.XMLHTTP.6.0` only ever worked because it rides
+WinInet's implicit, process-wide shared cookie cache. The `ComObject`
+switch and the `ApplyIPTTimeouts()`/timeout-profile code have been
+reverted (`claude/ipt-comobject-timeouts`). What remains active: `try`/
+`catch` around each `.Send()` plus the immediate-flush diagnostic logging
+("Send() teruggekeerd"/"Send() mislukt", with elapsed ms) — independently
+useful, kept regardless of the timeout outcome.
+
+The original hang risk (`.Send()` blocking indefinitely with no timeout,
+on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
+**still open and unresolved** — this item is not close to done.
+
+- [x] Add response-header logging so the real server's headers are
+  actually visible before guessing at cookie propagation: none of
+  `IPT_RegisterResponse()`/`IPT_PollResponse()`/`IPT_DialResponse()`
+  previously logged anything but `.status`/`.ResponseText` (the body).
+  `LogIPTResponseHeaders()` now logs `.getAllResponseHeaders()` from all
+  three, scrubbed in the standard log (same `"response"`-label convention
+  as bodies/URLs) and only visible in the opt-in extended log.
+- [x] Get a build with this logging to a user with extended logging
+  enabled during a normal registration: confirmed. Both `AllocNumber.xml`
+  and `GetEvent.xml` responses carry `Set-Cookie: JDMWEBCOOKIE=<value>;
+  expires=...`, refreshed on every response. Separately confirmed (project
+  owner observation): the phone-to-extension *link* itself is durable and
+  survives closing DocBot entirely, and is unknown to the same AJAX call
+  made from a browser — so the link is not carried by this cookie or by
+  `sid`; the cookie is most likely scoped only to the `GetEvent.xml`
+  notification channel. See `docs/DECISIONS.md` D-067.
+- [x] Implement cookie capture/propagation (`IPTSessionCookie`,
+  `CaptureIPTSessionCookie()`, `LogIPTRequestHeaders()` — `DocBot.ahk`),
+  `ComObject` deliberately left at `Msxml2.XMLHTTP.6.0` for this step so
+  it can be validated in isolation from any COM-object change. Object
+  reuse (one persistent `WinHttpRequest` instance instead of manual
+  header propagation) was considered and rejected: `IPT_register()` and
+  `IPT_poller()` can be in flight concurrently (Verversen-click during an
+  outstanding long-poll), and one COM object can't serve two concurrent
+  async calls.
+- [x] Validate step A on Windows: with `ComObject` still
+  `Msxml2.XMLHTTP.6.0`, confirmed registering/polling/dialing/SMS all
+  behave exactly as before (no regression), and the standard log's new
+  `"... request headers"`/`"... response headers"` lines appear (scrubbed)
+  with real content only in the opt-in extended log, including a
+  non-empty `Cookie:` line on the second and later requests, still
+  arriving at `SetUpperText` (the koppelnummer) normally.
+- [x] Implement step B: `IPTConfig["ComObject"]` switched to
+  `WinHttp.WinHttpRequest.5.1` (project owner's preference, on top of the
+  now-working cookie propagation rather than relying on the object's own
+  per-instance cookie handling), `ApplyIPTTimeouts()` reintroduced and
+  called in all three functions with `RequestTimeoutsMs`/`PollTimeoutsMs`.
+  This is the part that actually bounds `Send()` and addresses the
+  original hang risk.
+- [x] First Windows test of step B crashed immediately on
+  `IPT_register()`: `WinHttp.WinHttpRequest.5.1` has no
+  `onreadystatechange` property (only `IPT_poller()` already branched on
+  `ComObject` for this; `IPT_register()`/`IPT_callNumber()` did not).
+  First fix attempt: extracted that branch into
+  `BindIPTResponseHandler()` and used it in all three telephony functions.
+- [x] Second Windows test crashed again, inside `BindIPTResponseHandler()`
+  itself: `WinHttpRequest` also has no `OnResponseDataAvailable` property
+  — its real async events are COM connection-point events, which plain
+  property assignment can't reach and `ComObjConnect()` can't either
+  (relies on `IProvideClassInfo`/`IDispatch`, which `WinHttpRequest`'s
+  event source doesn't expose usably). `IPT_poller()`'s original branch
+  had never actually been exercised against a real WinHttpRequest object.
+  Put to the project owner as an explicit choice; chose to drop
+  `WinHttp.WinHttpRequest.5.1` and go back to `Msxml2.ServerXMLHTTP.6.0`
+  on top of the now-working cookie propagation. `BindIPTResponseHandler()`
+  removed again — all three functions set `.onreadystatechange` directly,
+  same as before step B. See `docs/DECISIONS.md` D-067, "Second crash:
+  WinHttpRequest's real events don't bind reliably from AHK v2 either".
+- [x] Third Windows test got much further (registering worked, several
+  `GetEvent.xml` poll cycles completed cleanly) before crashing on
+  `IPTPollRequest.status` with `(0x8000000A) The data necessary to
+  complete this operation is not yet available`. Standard log showed the
+  same response (`Sequence 38369`) processed twice, immediately followed
+  by two separate `GetEvent.xml` requests ~28ms apart. Root cause:
+  `ServerXMLHTTP`'s `onreadystatechange` fired twice for one completed
+  response; `IPT_PollResponse()` had no guard against double-processing,
+  so both firings rescheduled `IPT_poller()`, and two polls ended up
+  sharing/overwriting the single global `IPTPollRequest`. A genuine
+  concurrency bug in DocBot's own code, unrelated to which `ComObject` is
+  configured. Also surfaced that `IPT_PollResponse()`'s `.status` access
+  had no `try`/`catch`, so this crash silently and permanently stopped the
+  poll chain instead of being caught and rescheduled. Fixed with a new
+  `IPTPollInFlight` guard flag, `Critical` on both `IPT_poller()` and
+  `IPT_PollResponse()`, and wrapping `IPT_PollResponse()`'s full body in
+  `try`/`catch`. Deliberately scoped to the poller only — see
+  `docs/DECISIONS.md` D-067, "Third crash: duplicate `onreadystatechange`
+  firing raced two overlapping polls".
+- [ ] Validate this combination (`Msxml2.ServerXMLHTTP.6.0` + cookie
+  propagation + `SetTimeouts()` + the `IPTPollInFlight`/`Critical`/outer-
+  `try`/`catch` concurrency fix) on a real Windows machine against the
+  real internal telephony server, exactly as thoroughly as every earlier
+  attempt should have been — registering, event-polling, dialing, and SMS
+  must all keep working, a koppelnummer must still appear, and polling
+  should now run indefinitely (several minutes at least) without a repeat
+  of the duplicate-response/crash pattern above.
+- [ ] Confirm the long-poll's receive timeout (`PollTimeoutsMs`,
+  120000ms) does not get cut short during normal, legitimately quiet
+  periods — watch for unexpected `Send() mislukt`/reconnect churn in the
+  standard log during idle stretches. Adjust the value if the real
+  server's long-poll behavior needs more room; it was chosen without
+  detailed knowledge of that behavior.
+- [ ] Get a build with the working fix to the reporting user (or another
+  affected user) for field use — the original hangs leave no trace in
+  `debug.log` while happening, so only continued/absent reports over time
+  can confirm or refute it.
+- [x] Separate, follow-on question raised by the "no longer linked after a
+  restart/crash" regression observed once the crash fix above was
+  confirmed: does the phone link survive a DocBot restart if
+  `IPTSessionCookie` is persisted and resent, the way it did for free
+  under the old `Msxml2.XMLHTTP.6.0` (WinInet's own persistent cookie
+  cache)? Tested empirically first with `tests/CookiePersistenceProbe.ahk`
+  (a standalone, non-shipped diagnostic script) before touching
+  `DocBot.ahk`. First attempt stored the cookie under `%A_Temp%`, which
+  turned out to be cleared on an Ivanti session restart in this
+  environment — moved to `A_MyDocuments`, matching where DocBot's real
+  persistent files already live. Confirmed after a full Windows reboot:
+  `AllocNumber.xml` with the old cookie reported `(geregistreerd is:
+  5758)` — the same extension as before the reboot. See `docs/DECISIONS.md`
+  D-068 for the full narrative, including why a bare `GetEvent.xml`-only
+  probe (the original test design) was inconclusive and had to be extended
+  with an `AllocNumber.xml`-with-old-cookie step to be decisive.
+- [x] Built the confirmed feature into `DocBot.ahk`: `IPTSessionCookie` is
+  now persisted to the Windows registry (`HKCU\Software\DocBot[-test|-dev]`,
+  value `SessionCookie`), not `settings.ini` — the project owner asked
+  whether the registry might be available earlier than a OneDrive-backed
+  `%MyDocuments%` at startup, which is correct (`HKCU` loads synchronously
+  with the profile before `OneDrive.exe` runs) and let the whole
+  degraded-mode-gating design get dropped: a `RegRead()` has no "not yet
+  available" state to gate against the way a cloud-synced file does, so
+  `LoadPersistedIPTSessionCookie()` is a plain, ungated call at startup.
+  See `docs/DECISIONS.md` D-068 for the full design and the accepted
+  roaming-vs-reliability trade-off.
+- [x] Validated the actual production path end-to-end on Windows (not just
+  the probe script): linked a phone, restarted DocBot, confirmed the link
+  was restored without needing a fresh koppelnummer.
+- [ ] Decide, once this has field evidence, whether
+  `claude/klembord-hang-fix` (clipboard-read process isolation) is still
+  needed, redundant, or addressing a genuinely separate problem — do not
+  let it merge or get discarded on assumption alone.
+- [ ] If confirmed: merge into `develop`, add a README changelog entry, and
+  update this item to done. If refuted: re-open the investigation in
+  D-067 rather than layering a third theory on top without retiring this
+  one.
+
+This changes `DocBot.ahk` behavior. `AppVersion` already follows the
+feature-branch counter in every commit on `claude/ipt-comobject-timeouts`;
+re-check the counter on `develop` when merging per the usual rule.
 
 ---
 
@@ -1924,6 +2093,39 @@ part of DocBot 2.4 after all. See `docs/DECISIONS.md` D-065 for the final
 design, the GDI+/non-standard-PNG-chunk bug it surfaced and its fix, and
 the fallback-to-text behavior. The original narrower text-only request
 above is superseded, not separately implemented.
+
+---
+
+## P2 — Consider which other settings.ini values should move to the registry
+
+D-068 moved `IPTSessionCookie` from `settings.ini` to `HKCU\Software\DocBot`
+specifically because `settings.ini` lives under `A_MyDocuments`, which in
+this Ivanti/OneDrive-managed environment can be an unhydrated cloud
+placeholder at startup — while `HKCU` loads synchronously with the Windows
+profile, before `OneDrive.exe` itself runs, so it has no equivalent
+"not yet available" failure mode. That same reasoning may apply to other
+`settings.ini` values, not just the telephony cookie.
+
+The clearest existing candidate: the telemetry installation ID
+(`Telemetry_TryEnsureInstallationId()`). `IniReadOrThrow()`'s own comment
+already flags the risk this item is about — a value that exists in
+`settings.ini` but can't be read yet is dangerous specifically when "the
+caller then treats 'read succeeded' as license to stop retrying, or worse,
+to write a freshly generated value over what may still be a real one" —
+which is exactly the failure mode that could mint a spurious new
+installation ID (and so fragment telemetry history for that install) if
+`settings.ini` isn't actually readable yet at the moment DocBot checks it.
+
+This is not a decision to migrate everything — most `settings.ini` values
+(`AutoSave`, `HotstringFile`, `CallAction`, `SmsCallActionTitle`,
+`TextReplacement`, the `[Tips]` counters) are lower-stakes, read later in
+startup after the GUI is already up, or don't have the same
+"first-run-vs-race-condition" ambiguity the installation ID and the
+telephony cookie both have. Before moving anything else, evaluate each
+value against that specific risk — not registry-vs-file as a general
+preference — and weigh it against the registry's own trade-off already
+documented in D-068 (local to this Windows profile/machine, doesn't roam
+the way a OneDrive-synced file eventually does).
 
 ---
 

@@ -78,6 +78,15 @@ validatie en `.bak`-back-ups. DocBot richt geen eigen versleuteling of
 expliciete bestands-ACL's in; toegang berust op Windows, het gebruikersprofiel,
 OneDrive en organisatorisch werkplekbeheer.
 
+### 2.2b Windows-register
+
+| Locatie | Inhoud | Reden voor deze locatie |
+| --- | --- | --- |
+| `HKCU\Software\DocBot` (of `DocBot-test`/`DocBot-dev`), waarde `SessionCookie` | De sessiecookie van de telefonieserver (§3.2) | Wordt, anders dan de bestanden in §2.2, synchroon met het Windows-profiel geladen — beschikbaar vóór OneDrive zelf start, dus zonder de "nog niet gehydrateerde cloud-placeholder"-vertraging die `%MyDocuments%` in deze omgeving kan hebben (zie `docs/DECISIONS.md` D-067) |
+
+Toegang berust, net als bij §2.2, uitsluitend op Windows en het
+gebruikersprofiel; DocBot voegt geen aanvullende registerbeveiliging toe.
+
 ### 2.3 LocalAppData en tijdelijke bestanden
 
 | Locatie | Inhoud | Technische begrenzing/verwijdering |
@@ -182,6 +191,19 @@ TLS-versie, poort) en serverauthenticatie op de beheerde Windows-werkplek
 moeten nog afzonderlijk worden bevestigd (zie `docs/TODO.md`). Tot die
 bevestiging blijft transportbeveiliging in productie een openstaand punt,
 ook al kan een niet-HTTPS-configuratie DocBot zelf niet meer laten starten.
+
+**Persistente sessiecookie:** de telefonieserver stuurt een sessiecookie
+(`JDMWEBCOOKIE`) mee die de koppeling tussen DocBot en een toestelnummer
+identificeert. DocBot bewaart deze cookiewaarde persistent in het
+Windows-register onder `HKCU\Software\DocBot` (of `DocBot-test`/`DocBot-dev`
+voor niet-stabiele releasekanalen), zodat een bestaande koppeling een
+herstart van DocBot of de Windows-sessie overleeft — bevestigd met een
+los diagnosescript (`tests/CookiePersistenceProbe.ahk`, zie
+`docs/DECISIONS.md` D-067) inclusief een volledige Windows-herstart. Er
+wordt geen ander gegeven dan deze technische cookiewaarde bewaard; geen
+telefoon- of toestelnummer, geen naam. De registerwaarde blijft bestaan
+tot de volgende sessiecookie deze overschrijft of het Windows-profiel
+wordt verwijderd — zie ook paragraaf 7.
 
 ### 3.3 SMS-assistentie via Edge
 
@@ -655,6 +677,7 @@ eventuele back-up- of securitydienstverleners.
 | Niet-herkende klembordinhoud | Alleen lokaal onderzocht; niet bewust persistent opgeslagen | OPENSTAAND — bevestig dat geen andere werkpleklogging bestaat |
 | Herkend klembordnummer | Tijdelijk in geheugen/status | OPENSTAAND — maximale procesduur vastleggen |
 | Telefonieservergegevens | Buiten repository | OPENSTAAND |
+| Persistente sessiecookie (telefonie) | In het Windows-register (`HKCU\Software\DocBot`, per releasekanaal), tot een nieuwe sessiecookie deze overschrijft; geen automatische verwijdering elders dan door een nieuwe waarde | OPENSTAAND — bevestig of/wanneer verwijdering bij profielbeheer nodig is |
 | SMS-webappgegevens | Buiten repository | OPENSTAAND |
 | Persoonlijke hotstrings | Tot wijziging/verwijdering/profielbeheer; `.bak` kan vorige versie bevatten | OPENSTAAND |
 | Snelkiesnummers en instellingen | Tot wijziging/verwijdering/profielbeheer | OPENSTAAND |

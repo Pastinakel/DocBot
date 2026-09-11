@@ -408,6 +408,88 @@ When a user edits or saves a package item as personal, the application writes a 
   `Telephony.BaseUrl`, so every request built from `IPTConfig["URL"]`
   inherits that guarantee without a separate per-call check
   (`docs/DECISIONS.md` D-043).
+- `IPTConfig["ComObject"]` is `Msxml2.ServerXMLHTTP.6.0`, chosen after two
+  other variants were ruled out on real Windows tests: `Msxml2.XMLHTTP.6.0`
+  (the long-standing default) has no timeout mechanism at all, so a genuine
+  hang on `.Send()` throws no exception and leaves DocBot's UI thread stuck
+  — the confirmed root cause of repeated field reports of multi-minute
+  freezes during registering/polling/dialing. `WinHttp.WinHttpRequest.5.1`
+  also supports `SetTimeouts()`, but does not expose the scriptable
+  `onreadystatechange` property that `Msxml2.XMLHTTP.6.0`/
+  `Msxml2.ServerXMLHTTP.6.0` share; setting it throws (`This value of type
+  "WinHttpRequest" has no property named "onreadystatechange"`), confirmed
+  by a real Windows crash. Its real async events
+  (`OnResponseDataAvailable`/`OnResponseFinished`/`OnError`) turned out not
+  to bind reliably from AHK v2 either — plain property assignment on those
+  names crashes the same way, and `ComObjConnect()` relies on
+  `IProvideClassInfo`/`IDispatch`, which `WinHttpRequest`'s event interface
+  does not implement, per the AHK community's own reports. Two separate
+  Windows crashes on this branch confirmed both failure modes before it
+  was ruled out. `ServerXMLHTTP` supports `SetTimeouts()` and keeps the
+  same `onreadystatechange` mechanism as the original `XMLHTTP`, so no
+  event-binding rework was needed for it. Its one known gap — not sharing
+  cookies between separate COM object instances, which broke registration
+  the first time this ComObject was tried — is closed by the explicit
+  cookie propagation described below, independent of which COM object
+  instance handles a given call. See `docs/DECISIONS.md` D-067.
+- `ApplyIPTTimeouts(request, timeouts)` calls `request.SetTimeouts(...)`
+  (wrapped in try/catch, since older/other COM variants may not implement
+  it) with `IPTConfig["RequestTimeoutsMs"]` for register/dial calls and the
+  more generous `IPTConfig["PollTimeoutsMs"]` for the long-poll, whose
+  receive timeout must stay well above the server's normal long-poll
+  duration to avoid cutting off a legitimate wait for the next event.
+- `LogIPTResponseHeaders(label, request)` logs `request.getAllResponseHeaders()`
+  from all three response handlers — nothing logged response headers
+  before this, only `.status`/`.ResponseText` — scrubbed in the always-on
+  standard log the same way response bodies/full URLs already are, real
+  values only in the opt-in extended log. This confirmed a session cookie
+  (`JDMWEBCOOKIE`, refreshed on every response) on `AllocNumber.xml`/
+  `GetEvent.xml` — see D-067.
+- `IPTSessionCookie` (global) holds that cookie as a plain `name=value`
+  string, captured by `CaptureIPTSessionCookie(request)` after every
+  response and resent via `SetRequestHeader("Cookie", ...)` on every
+  subsequent request, independent of which COM object instance handles
+  it. Deliberately not solved via reusing one persistent COM object
+  instance instead: `IPT_register()` and `IPT_poller()` can be in flight
+  concurrently, and one object can't serve two concurrent async calls —
+  see D-067. `LogIPTRequestHeaders(label)` logs only what DocBot itself
+  explicitly sets (`Accept-Language`, `Cookie`) — none of the IPT COM
+  objects expose a way to read back automatically-added headers (e.g. an
+  NTLM handshake), so this cannot show whether/how Windows-integrated
+  authentication plays into the separately-durable phone-link mechanism
+  (see D-067's discussion of that open question).
+- `IPTSessionCookie` is persisted to `HKCU\Software\DocBot` (or
+  `DocBot-test`/`DocBot-dev`, mirroring `UserDataDir`'s per-channel split)
+  rather than `settings.ini`, so an existing phone link survives a DocBot
+  restart, crash, or Windows restart — empirically confirmed with
+  `tests/CookiePersistenceProbe.ahk` (see D-068). `LoadPersistedIPTSessionCookie()`
+  runs once at global-initialization time via a plain `RegRead()`, ungated:
+  unlike a `%MyDocuments%` file that can be an unhydrated OneDrive
+  placeholder at startup, `HKCU` loads synchronously with the Windows
+  profile before `OneDrive.exe` itself runs, so there's no "not yet
+  available" state to guard registering/polling/refreshing/dialing
+  against. `SavePersistedIPTSessionCookie()` is called from
+  `CaptureIPTSessionCookie()` only when the value actually changes, since
+  the server sends the same cookie value on nearly every response.
+- `IPTPollInFlight` (global) guards `IPT_poller()`/`IPT_PollResponse()`
+  against a real concurrency bug found on Windows: `ServerXMLHTTP`'s
+  `onreadystatechange` can fire twice for one completed response, and
+  without this flag both firings would reschedule `IPT_poller()`,
+  producing two overlapping polls that clobber the single global
+  `IPTPollRequest`. `IPT_poller()` won't start a new poll while the flag
+  is set; `IPT_PollResponse()` clears it on the first `readyState == 4`
+  firing and returns immediately on any later one. Both functions run
+  `Critical` so a timer tick or overlapping COM callback can't interleave
+  with their handling of the shared global and flag. `IPT_PollResponse()`'s
+  full body also runs inside a `try`/`catch` now (previously only the
+  XML-parsing sub-block was protected): any COM-level failure while
+  reading the response still reaches the tail-end reschedule instead of
+  silently and permanently stopping the poll chain. Scoped to the poller
+  only — `IPT_RegisterResponse()`/`IPT_DialResponse()` already had
+  try/catch protection, and neither `IPT_register()` nor
+  `IPT_callNumber()` self-chains the way `IPT_poller()` does, so they
+  lack the repeated-firing window that exposed this bug. See
+  `docs/DECISIONS.md` D-067.
 
 ### 11.2 Request lifecycle
 
@@ -418,10 +500,15 @@ Core flows:
 ```text
 IPT_register()
   -> request registration/link information
+  -> Send() failed (caught, logged with elapsed ms, flushed immediately —
+       D-067): notify failure, stop here; poll chain is not (re)started
   -> update registration UI/state
 
 IPT_poller()
   -> issue one long/event poll
+  -> Send() failed (caught, logged with elapsed ms, flushed immediately —
+       D-067): reschedule the next poll anyway (same as a received
+       response, error or not) so the chain never silently stops
   -> IPT_PollResponse()
   -> process event/state
   -> schedule/start next poll after completion
@@ -430,8 +517,20 @@ IPT_callNumber()
   -> normalize/validate number
   -> ensure linked phone unless this is the linking call
   -> issue dial request
+  -> Send() failed (caught, logged with elapsed ms, flushed immediately —
+       D-067): notify failure, stop here
   -> update diagnostics/telemetry where appropriate
 ```
+
+Every `Send()` call above is wrapped so a failure is caught and logged
+with how long it took, and every outgoing-request log line is flushed
+immediately rather than left in `DebugLog()`'s normal buffer — see D-067.
+This only catches a `Send()` that throws; none of the three calls has an
+explicit timeout currently (see §11.1), so `Send()` itself can still block
+indefinitely with nothing to catch and nothing on disk to show it
+happened. The diagnostic logging exists precisely so the *next* incident
+is distinguishable from "returned fine, something else hung" — it does
+not by itself bound how long `Send()` can take.
 
 The event loop is chained rather than a fixed periodic timer to avoid overlapping long polls.
 
