@@ -25,11 +25,20 @@
 ;
 ; Vereist DocBot.local.ahk naast dit script (dezelfde niet-gecommitte lokale
 ; configuratie als de hoofdapplicatie). Slaat de cookiewaarde alleen buiten
-; de repository op (%A_Temp%), nooit in Git-versiebeheer.
+; de repository op, nooit in Git-versiebeheer.
+;
+; Bewust onder A_MyDocuments, niet A_Temp: in deze Ivanti-beheerde omgeving
+; bleek A_Temp leeg na een sessieherstart (op zijn minst sessiegebonden,
+; mogelijk elke keer gewist), terwijl DocBot.ahk zelf om precies deze reden
+; A_MyDocuments gebruikt voor alles wat een herstart moet overleven
+; (settings.ini, hotstrings.json, enz. — zie CLAUDE.md).
 #Include ..\DocBot.local.ahk
 
-CookieProbeFile := A_Temp "\docbot-cookie-probe.txt"
-LogFile := A_Temp "\docbot-cookie-probe-log.txt"
+ProbeDataDir := A_MyDocuments "\DocBot-cookie-probe"
+if !DirExist(ProbeDataDir)
+    DirCreate(ProbeDataDir)
+CookieProbeFile := ProbeDataDir "\cookie.txt"
+LogFile := ProbeDataDir "\log.txt"
 
 baseUrl := LocalConfig["Telephony"]["BaseUrl"]
 if !InStr(baseUrl, "https://") {
