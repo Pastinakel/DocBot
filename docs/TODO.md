@@ -736,15 +736,24 @@ The original hang risk (`.Send()` blocking indefinitely with no timeout,
 on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
 **still open and unresolved** — this item is not close to done.
 
-- [ ] Design and implement the actual fix: capture the `Set-Cookie`
-  response header from `AllocNumber.xml` and explicitly resend it as a
-  `Cookie` request header on every subsequent `GetEvent.xml`/
-  `DialNumber.xml` call, then retry the `Msxml2.ServerXMLHTTP.6.0` (or
-  `WinHttp.WinHttpRequest.5.1`) switch with `SetTimeouts()` on top of that.
-  Needs the real server's actual response headers first (not guessed) —
-  capture those from a working `Msxml2.XMLHTTP.6.0` session (e.g. a
-  temporary diagnostic log of `.getAllResponseHeaders()`) before writing
-  the propagation code.
+- [x] Add response-header logging so the real server's headers are
+  actually visible before guessing at cookie propagation: none of
+  `IPT_RegisterResponse()`/`IPT_PollResponse()`/`IPT_DialResponse()`
+  previously logged anything but `.status`/`.ResponseText` (the body).
+  `LogIPTResponseHeaders()` now logs `.getAllResponseHeaders()` from all
+  three, scrubbed in the standard log (same `"response"`-label convention
+  as bodies/URLs) and only visible in the opt-in extended log.
+- [ ] Get a build with this logging to a user with extended logging
+  enabled during a normal registration, and check whether/how a session
+  cookie (`Set-Cookie`) actually appears in the captured headers — this is
+  the prerequisite the cookie-propagation fix below needs, not yet done.
+- [ ] Design and implement the actual fix, once the above confirms a
+  cookie is really what's missing: capture the `Set-Cookie` response
+  header from `AllocNumber.xml` and explicitly resend it as a `Cookie`
+  request header on every subsequent `GetEvent.xml`/`DialNumber.xml` call,
+  then retry the `Msxml2.ServerXMLHTTP.6.0` (or
+  `WinHttp.WinHttpRequest.5.1`) switch with `SetTimeouts()` on top of
+  that.
 - [ ] Validate that fix on a real Windows machine against the real
   internal telephony server exactly as the first attempt was tested —
   registering, event-polling, and dialing must all keep working, and a

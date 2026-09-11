@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-ipt-comobject-timeouts.2"
+global AppVersion := "2.5-ipt-comobject-timeouts.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2899,6 +2899,24 @@ MoveSpeedDialDown(*) {
 ; verschijnt) en "Send() keerde terug, iets anders liep vast" (wel de
 ; "teruggekeerd"-regel, dan stilte) — beide met onmiddellijke flush, zodat
 ; ze een vastloper overleven.
+
+; De StopEventLoop-regressie hierboven werd pas zichtbaar via de
+; responsinhoud (body); de responsheaders zelf — waar een eventuele
+; Set-Cookie zou staan — werden nooit gelogd. Nodig voor het vervolgonderzoek
+; in D-067 (cookie uitlezen/doorsturen): dat vereist eerst te weten óf, en
+; onder welke naam, de server een sessiecookie zet. Label bevat bewust
+; "response", zodat SanitizeStandardLogText() de inhoud in het standaardlog
+; afschermt tot "<responsinhoud niet opgenomen in standaardlog>" — precies
+; zoals nu al met statusregels/response-bodies gebeurt; de werkelijke
+; headerwaarden komen alleen in het uitgebreide log terecht, en alleen ná
+; expliciete toestemming daarvoor. In try/catch: niet elk COM-object dat
+; ooit voor IPTConfig["ComObject"] gekozen kan worden biedt
+; getAllResponseHeaders() gegarandeerd op ieder moment aan.
+LogIPTResponseHeaders(label, request) {
+    try
+        DebugLog("←", label . " response headers", request.getAllResponseHeaders())
+}
+
 IPT_callNumber(telNummer := "", isRegistrationCall := false) {
     global IPTConfig, IPTDialRequest, State
 
@@ -2959,6 +2977,7 @@ IPT_DialResponse() {
 
     try {
         DebugLog("←", IPTConfig["DialPage"] . " status " . IPTDialRequest.status, IPTDialRequest.ResponseText)
+        LogIPTResponseHeaders(IPTConfig["DialPage"], IPTDialRequest)
 
         if InStr(IPTDialRequest.ResponseText, "ERROR")
             ShowNotification("Er is een fout opgetreden bij het bellen.", 4000, "error")
@@ -3032,6 +3051,7 @@ IPT_RegisterResponse() {
 
     try {
         DebugLog("←", IPTConfig["AllocatePage"] . " status " . IPTRegisterRequest.status, IPTRegisterRequest.ResponseText)
+        LogIPTResponseHeaders(IPTConfig["AllocatePage"], IPTRegisterRequest)
 
         if InStr(IPTRegisterRequest.ResponseText, "ERROR")
             ShowNotification("Aanmelden bij de telefonieserver is mislukt.", 4000, "error")
@@ -3126,6 +3146,8 @@ IPT_PollResponse() {
 
     if IPTPollRequest.readyState != 4  ; Nog niet klaar, callback vuurt opnieuw.
         return
+
+    LogIPTResponseHeaders(IPTConfig["EventPage"], IPTPollRequest)
 
     if IPTPollRequest.status != 200 && IPTPollRequest.status != 201 {
         DebugLog("←", IPTConfig["EventPage"] . " FOUT status " . IPTPollRequest.status, "")

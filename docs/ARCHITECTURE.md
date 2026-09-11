@@ -420,6 +420,14 @@ When a user edits or saves a package item as personal, the application writes a 
   unresolved hang risk repeated field reports tied to multi-minute DocBot
   freezes during registering/polling/dialing, still open pending the
   cookie-propagation follow-up D-067 describes.
+- `LogIPTResponseHeaders(label, request)` logs `request.getAllResponseHeaders()`
+  from all three response handlers — nothing logged response headers
+  before this, only `.status`/`.ResponseText` — scrubbed in the always-on
+  standard log the same way response bodies/full URLs already are, real
+  values only in the opt-in extended log. Exists to let a future Windows
+  test actually see whether/how the server sets a session cookie, which
+  the D-067 cookie-propagation follow-up needs before it can be written
+  instead of guessed.
 
 ### 11.2 Request lifecycle
 

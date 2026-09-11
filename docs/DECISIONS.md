@@ -3077,8 +3077,23 @@ with either `ServerXMLHTTP` or `WinHttpRequest` (both support
 `SetTimeouts()`) once the session no longer depends on an implicit,
 per-object cookie jar. It needs verifying against the real server's actual
 response headers first — not guessed blind — since this document only
-has the response *body* (`OK`) from the Windows test, not headers. See
-`docs/TODO.md`.
+has the response *body* (`OK`) from the Windows test, not headers.
+
+None of the existing logging showed response headers at all — only
+`.status` and `.ResponseText` (the body) were ever logged in
+`IPT_RegisterResponse()`/`IPT_PollResponse()`/`IPT_DialResponse()`. Added
+`LogIPTResponseHeaders(label, request)`, called from all three, which logs
+`request.getAllResponseHeaders()` (in `try`/`catch` — not every COM object
+this could ever be configured to necessarily supports the method reliably
+at every point) via `DebugLog()` with `"response"` in the label, so
+`SanitizeStandardLogText()` scrubs it to the usual
+`"<responsinhoud niet opgenomen in standaardlog>"` placeholder in the
+always-on standard log — exactly like response bodies and full URLs
+already are — while the real header values (any `Set-Cookie` included)
+land only in the opt-in extended log, same as those. The next Windows test
+with extended logging enabled should finally show whether/how a session
+cookie is actually set, which the cookie-propagation fix above needs
+before it can be written correctly instead of guessed. See `docs/TODO.md`.
 
 **Reasoning**
 
