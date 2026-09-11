@@ -858,10 +858,9 @@ on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
   `LoadPersistedIPTSessionCookie()` is a plain, ungated call at startup.
   See `docs/DECISIONS.md` D-068 for the full design and the accepted
   roaming-vs-reliability trade-off.
-- [ ] Validate the actual production path end-to-end on Windows (not just
-  the probe script): restart DocBot after it has linked a phone, confirm
-  the link is restored without a fresh koppelnummer, across a DocBot
-  restart, a crash, and ideally another full Windows reboot.
+- [x] Validated the actual production path end-to-end on Windows (not just
+  the probe script): linked a phone, restarted DocBot, confirmed the link
+  was restored without needing a fresh koppelnummer.
 - [ ] Decide, once this has field evidence, whether
   `claude/klembord-hang-fix` (clipboard-read process isolation) is still
   needed, redundant, or addressing a genuinely separate problem — do not

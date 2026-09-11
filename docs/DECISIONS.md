@@ -3539,12 +3539,13 @@ ungated function call at global-initialization time (before
 
 **Consequences**
 
-- A phone link should now survive a DocBot restart, a crash, an Ivanti
-  session restart, and a full Windows reboot — all four are empirically
-  confirmed via the probe script; production behavior itself (the actual
-  `IPTConfig["ComObject"]`/`IPT_register()` path, not the probe's
-  synchronous stand-in) has not yet been separately validated end-to-end,
-  though it uses the exact same server calls the probe already exercised.
+- A phone link now survives a DocBot restart, a crash, an Ivanti session
+  restart, and a full Windows reboot — the probe script confirmed all four
+  against the raw server calls, and the actual production path (the real
+  `IPTConfig["ComObject"]`/`IPT_register()`/registry read on startup, not
+  the probe's synchronous stand-in) has since been separately confirmed
+  too: linked a phone, restarted DocBot, and the link was restored without
+  a fresh koppelnummer.
 - `docs/DATA_PROTECTION.md` §2.2b/§3.2/§7 document this as a new
   persistent local data flow: only the technical cookie value, nothing
   else, kept until overwritten by a newer cookie.
