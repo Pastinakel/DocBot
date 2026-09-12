@@ -3656,3 +3656,62 @@ ever shown to need it.
   and the `ServerXMLHTTP`/cookie-propagation rework from D-067/D-068.
 - The NTLM/Windows-integrated-authentication question D-067 left open is
   now answered: it is not the mechanism at play here.
+
+## D-070 — The telephony link does not survive an Ivanti VPN session restart, independent of the session cookie (closed investigation)
+
+**Status:** Investigated and closed. Not a regression, and not something
+DocBot can fix by itself — confirmed to affect the stable `2.4` build
+identically.
+
+**Background**
+
+After D-068/D-069 shipped (`2.5-dev.3`), the project owner reported that a
+phone link still did not survive closing and reopening an Ivanti VPN
+session — distinct from a DocBot restart/crash/Windows reboot on the same
+network connection, which D-068 already validated as surviving.
+
+**Investigation**
+
+Extended logging on the affected session showed the request was
+mechanically correct — the persisted cookie was resent with the D-069
+headers, and the server accepted it (HTTP 200, a stable `Set-Cookie` echo)
+— but the `GetEvent.xml` response body was:
+
+```xml
+<Event Name="SetUpperText"><Message>&lt;span class="PhoneNumber"&gt;Bel 9564414 om uw huidige toestelnummer te registreren.&lt;/span&gt;</Message></Event>
+```
+
+This is the server's explicit "not linked, please register" message, not a
+delayed confirmation — the server has no link for this client at all,
+regardless of the cookie it just accepted. A comparison of the client's own
+IP address before and after an Ivanti session restart showed it changes
+(`10.2.54.68` → `10.2.50.7` in the reported case), while it stays constant
+across a DocBot restart/crash/Windows reboot on the same network
+connection — exactly the boundary between what does and doesn't survive.
+This points to the telephony server keying the phone-to-extension link (at
+least in part) on the client's network address, not purely on
+`JDMWEBCOOKIE` — something below the HTTP layer entirely, which no cookie
+or header sent by DocBot can influence.
+
+The project owner separately confirmed this exact scenario (closing and
+reopening an Ivanti session) against the stable `2.4` build and got the
+identical result: link lost, "Bel ... om uw huidige toestelnummer te
+registreren." This rules out a regression from D-067/D-068/D-069 — the
+stable build never handled this case either, since it also has no
+mechanism that operates below the HTTP layer.
+
+**Consequences**
+
+- D-068's actual goal — a link surviving a DocBot restart, crash, or a
+  Windows reboot without a network interruption — remains fully achieved
+  and does not need revisiting. It was never realistic for that same
+  cookie mechanism to also survive a client IP change, since the server's
+  own response here shows the cookie is not its sole source of truth for
+  whether a link exists.
+- No further investigation into preserving a link across an Ivanti session
+  restart is planned from the DocBot side: fixing this would require a
+  change on the telephony server itself, outside this project's control
+  and scope.
+- `docs/TODO.md`'s P2 item on an explicit unlink mechanism is unrelated —
+  that is about a user deliberately ending a link, not this case of a link
+  being lost unintentionally — and stays open on its own merits.

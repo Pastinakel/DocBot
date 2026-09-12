@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-09-11 (sixth update, investigate an explicit telephony unlink mechanism). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-09-12 (seventh update, close the Ivanti-session-restart link-loss investigation as D-070). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -892,8 +892,17 @@ on `IPT_register()`/`IPT_poller()`/`IPT_callNumber()`) is therefore
     working, calling the koppelnummer showed an immediate confirmation,
     and restarting DocBot showed the linked number without a manual
     refresh.
-  - [ ] Merge into `develop` via pull request (only once the project owner
-    explicitly asks for the merge), then update this item to done.
+  - [x] Merge into `develop` via pull request — merged as `2.5-dev.3`.
+- [x] Separately reported after this merge: a link still did not survive
+  closing and reopening an Ivanti VPN session specifically (distinct from
+  a DocBot restart/crash/Windows reboot, which D-068 already covers).
+  Investigated and closed as `docs/DECISIONS.md` D-070: the client's own
+  IP address changes across an Ivanti session restart, the server's
+  `GetEvent.xml` response explicitly said the client has no link at all
+  ("Bel ... om uw huidige toestelnummer te registreren"), and the project
+  owner confirmed stable `2.4` fails identically in this exact scenario.
+  Not a regression, not fixable from DocBot's side — no further action
+  planned.
 
 This changes `DocBot.ahk` behavior. `AppVersion` already follows the
 feature-branch counter in every commit on `claude/ipt-comobject-timeouts`
