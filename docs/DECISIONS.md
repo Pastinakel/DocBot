@@ -3715,3 +3715,43 @@ mechanism that operates below the HTTP layer.
 - `docs/TODO.md`'s P2 item on an explicit unlink mechanism is unrelated —
   that is about a user deliberately ending a link, not this case of a link
   being lost unintentionally — and stays open on its own merits.
+
+## D-071 — The telephony link is bound to the Citrix session, not something DocBot can meaningfully unlink itself (closed investigation)
+
+**Status:** Investigated and closed. No DocBot-side "ontkoppelen" action is
+planned.
+
+**Background**
+
+Following D-068/D-069 (the telephony link now survives a DocBot restart,
+crash, or Windows reboot), `docs/TODO.md` carried an open P2 item asking
+whether DocBot should offer an explicit "ontkoppelen" action, so a user
+could deliberately end a link — e.g. at the end of a shift, before handing
+an extension to a colleague.
+
+**Investigation**
+
+The project owner confirmed: the telephony server ties the phone/extension
+link to the user's Citrix session, not to anything DocBot itself sends or
+controls. As soon as that Citrix session expires or is renewed, the
+telephony server considers the link ended on its own.
+
+**Consequences**
+
+- This is the same shape of finding as D-070 (the Ivanti VPN case): the
+  server keys the link on network/session-layer state below anything
+  DocBot's own cookie or HTTP requests can influence. There, the factor
+  was the client's IP address; here it is the Citrix session specifically.
+- No DocBot-side action — clearing the persisted `IPTSessionCookie`, or
+  any request DocBot could send — would reliably or meaningfully end a
+  link whose real lifecycle is controlled by Citrix session state outside
+  DocBot's visibility. There is nothing for a DocBot "ontkoppelen" button
+  to act on.
+- The original use case (deliberately ending a link at shift end, before
+  handing an extension to a colleague) is already served by the normal
+  act of ending or renewing the Citrix session itself — no additional
+  DocBot feature is needed for it.
+- No further investigation or implementation of an explicit unlink action
+  is planned. Revisit only if a concrete, currently unknown server-side
+  unlink/logout endpoint independent of the Citrix-session binding is
+  identified later.
