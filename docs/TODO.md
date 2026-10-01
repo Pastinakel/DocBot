@@ -2283,14 +2283,29 @@ not need an `AppVersion` bump.
 
 ---
 
-## P2 — Store passwords in the Windows registry for DocBot to autofill
+## P2 — Store passwords via Windows Credential Manager for DocBot to autofill
 
 Filed by the project owner (2026-10-01). Let DocBot store one or more
 passwords locally so it can fill them into a field automatically, the same
 general shape as the existing SMS default-text autofill
 (`FillSmsDomFieldWithJavaScript()`/UIA in `RunSmsCallAction()`).
 
-### Open questions that need answering before this can be scoped into a design
+**Protection mechanism decided (2026-10-01):** Windows Credential Manager
+(`CredWrite`/`CredRead` via `advapi32.dll`, DPAPI-backed) — the
+project-owner confirmed this is what "een afgeschermd deel van het
+Windows-register" was meant to describe. This is a real, meaningful
+upgrade over how `IPTSessionCookie` is stored today (plain `RegWrite`
+under `HKCU`, no encryption — `docs/DATA_PROTECTION.md` §2.2b already says
+so explicitly: "DocBot voegt geen aanvullende registerbeveiliging toe").
+Credential Manager entries are DPAPI-encrypted at rest and only
+decryptable within that same Windows login session — still not a defense
+against malware or another process running as that same logged-in user,
+but a genuine step up from a plain registry value, and the OS-standard way
+to do this rather than hand-rolling DPAPI directly. No DPAPI-on-registry
+fallback needs further consideration; Credential Manager is the decided
+mechanism.
+
+### Still open before this can be scoped into a design
 
 - [ ] **Which password(s), and filled into what, exactly?** A web form in
   an Edge tab (the existing SMS/UIA integration already has a working
@@ -2299,41 +2314,9 @@ general shape as the existing SMS default-text autofill
   else — each is a materially different automation target with a
   different feasibility and risk profile, the same kind of
   target-identification gap the TeleQ → HiX item above had to close before
-  it could be scoped. Needs the actual use case from the project owner,
-  not assumed.
-- [ ] **"Een afgeschermd deel van het Windows register" does not exist as
-  a distinct OS mechanism.** `HKCU` (the only per-user registry hive
-  DocBot already uses, D-068) is readable and writable by anything running
-  under that same Windows login session — DocBot's own documentation
-  already says this plainly for the existing `SessionCookie` value:
-  "DocBot voegt geen aanvullende registerbeveiliging toe"
-  (`docs/DATA_PROTECTION.md` §2.2b). Storing a password there in plain
-  text, or behind a home-rolled obfuscation, would give it exactly the
-  same exposure as a plain text file — not real protection, regardless of
-  which registry key it sits under.
-- [ ] **Decide the actual protection mechanism** before writing any code.
-  Two credible options, both ultimately bounded by "anything running as
-  the same Windows user can decrypt it" — there is no mechanism available
-  to an ordinary user-mode app that protects against that, only against a
-  different user, a copied file/registry export, or a machine without that
-  Windows login:
-  - **Windows Credential Manager** (`CredWrite`/`CredRead` via
-    `advapi32.dll`) — the OS-standard, purpose-built facility for exactly
-    this ("an app stores a credential, decryptable only by that same
-    Windows login"), DPAPI-backed. Likely the better default over
-    hand-rolling the same thing.
-  - **DPAPI directly** (`CryptProtectData`/`CryptUnprotectData`) on a blob
-    stored under the existing `HKCU\Software\DocBot[-test|-dev]` key,
-    mirroring how `SessionCookie` is stored today — more code than
-    Credential Manager for no obvious extra protection, unless there's a
-    concrete reason (e.g. wanting the value visibly co-located with
-    DocBot's other registry data) to prefer it.
-  Be explicit with the project owner about this threat-model boundary
-  before describing either option to end users as "afgeschermd" —
-  neither protects against malware or another process running as the same
-  logged-in user, only DocBot's own `IPTSessionCookie` precedent currently
-  relies on that same boundary, and a password is more sensitive than a
-  session cookie.
+  it could be scoped. **This is the main remaining blocker** — needs the
+  actual use case from the project owner before any further design or
+  implementation.
 - [ ] Decide whether DocBot's UI ever reveals the stored password back to
   the user (e.g. a "Wachtwoorden beheren" section under Instellingen), or
   only ever uses it invisibly to fill a field — affects both the UX design
@@ -2343,24 +2326,63 @@ general shape as the existing SMS default-text autofill
   Windows account rather than an in-app toggle (`CLAUDE.md` "Toegang tot
   het debugvenster is gekoppeld aan het Windows-account") — i.e. no
   separate DocBot-level unlock/master-password step is planned unless the
-  project owner wants one.
-- [ ] Per `CLAUDE.md`'s documentation-navigation rules: this needs
-  `docs/DATA_PROTECTION.md` updated (a new, more sensitive persistent-data
-  category than anything currently in §2.2/§2.2b) and a
-  `docs/REGULATORY_ASSESSMENT.md` re-check before implementation — storing
-  and autonomously filling a credential is exactly the kind of new
-  autonomous action and new data category those reassessment triggers
-  exist for, similar to how the SMS-default-text autofill was logged there
-  as a new autonomous action. Needs explicit project-owner sign-off before
-  it ships, not just before the payload/README update the way a new
-  telemetry field does.
+  project owner wants one. Credential Manager itself adds no additional
+  gate beyond the Windows login either, so this is consistent either way.
 
-This is an open investigation/design question, not a committed design —
-the target application and the protection mechanism must be decided
-before any `DocBot.ahk` implementation work starts. Once scoped, implement
-on a dedicated feature/fix branch from the then-current `develop` and
-update the branch-specific `AppVersion` in every commit that changes
-`DocBot.ahk`.
+### Required documentation reassessment (per `CLAUDE.md`, do this before implementation, not after)
+
+- [ ] **`docs/DATA_PROTECTION.md`:**
+  - §2.2b (Windows-register) — add a row for the new Credential Manager
+    entry/entries: location, content (once the target app is known),
+    reason for this location (DPAPI-backed OS secret store, stronger than
+    the plain-registry `SessionCookie` precedent already documented there).
+  - §3 (Gegevensstromen) — a new subsection for the autofill flow itself:
+    what triggers the fill, which field/application receives the value,
+    and — mirroring the existing `MaskSmsPhoneNumber()`/scrubbed-header
+    convention used for `IPTSessionCookie` and SMS numbers — confirm the
+    password value itself is never written to the baseline or extended
+    debug log under any circumstance, including on a fill failure.
+  - §7 (Bewaartermijnen) — does a stored credential expire or get cleared
+    automatically, or persist indefinitely like `IPTSessionCookie` does
+    today? Needs an explicit answer, not silence.
+  - §9 (Transport- en opslagbeveiliging) — document the DPAPI/Credential
+    Manager mechanism and its actual threat-model boundary (protects
+    against a different Windows user or a copied file; does not protect
+    against another process running as the same logged-in user) rather
+    than describing it to end users as unconditionally "afgeschermd".
+  - §10 (DPIA-screening) — re-run the screening criteria: an authentication
+    credential is a more sensitive persistent-data category than anything
+    currently tracked in this document, even though it is not patient data.
+- [ ] **`docs/REGULATORY_ASSESSMENT.md`:**
+  - §7 (Beslisregels en autonome acties) — add this as a new autonomous
+    action, distinct from the existing SMS-default-text entry (that one is
+    about a configured message, not a credential).
+  - §8.3 (Herbeoordelingstriggers) — check explicitly against the listed
+    triggers rather than skipping this section: on a first read, storing
+    and autofilling a general-purpose credential does **not** appear to
+    hit any of the patient-data/diagnosis/treatment/triage/medication/
+    monitoring-worded triggers there, so this likely does not itself
+    require a full MDR/MDSW requalification — but record that conclusion
+    explicitly, with reasoning, rather than silently assuming it once the
+    actual target application is known (if that application turns out to
+    be something that handles patient data, e.g. HiX, revisit this
+    specific sub-point).
+  - §9.1 (NEN 7510) is the section this feature actually weighs on most:
+    it already lists "toegangsbeheer en least privilege" and
+    "vertrouwelijkheid en integriteit van... loggegevens" as relevant
+    scope items — a stored, autofillable credential belongs explicitly in
+    that list once implemented.
+- [ ] Explicit project-owner sign-off on both documentation updates is
+  needed before implementation ships, the same bar as a new telemetry
+  field gets per `CLAUDE.md`'s telemetry-transparency rule — not merely
+  before release.
+
+This is an open design question, gated on the target-application answer
+above — the documentation reassessment should happen alongside finalizing
+that design, not as a trailing afterthought once code already exists.
+Once scoped, implement on a dedicated feature/fix branch from the
+then-current `develop` and update the branch-specific `AppVersion` in
+every commit that changes `DocBot.ahk`.
 
 ---
 
