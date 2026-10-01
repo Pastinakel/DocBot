@@ -2286,9 +2286,11 @@ not need an `AppVersion` bump.
 ## P2 — Store passwords via Windows Credential Manager for DocBot to autofill
 
 Filed by the project owner (2026-10-01). Let DocBot store one or more
-passwords locally so it can fill them into a field automatically, the same
-general shape as the existing SMS default-text autofill
-(`FillSmsDomFieldWithJavaScript()`/UIA in `RunSmsCallAction()`).
+passwords locally so it can fill them into whatever field currently has
+focus. Initially described as "the same shape as the SMS default-text
+autofill" — turns out not to be, once the target application(s) were
+clarified below; see that section for the actual, more generic shape this
+needs.
 
 **Protection mechanism decided (2026-10-01):** Windows Credential Manager
 (`CredWrite`/`CredRead` via `advapi32.dll`, DPAPI-backed) — the
@@ -2305,22 +2307,64 @@ to do this rather than hand-rolling DPAPI directly. No DPAPI-on-registry
 fallback needs further consideration; Credential Manager is the decided
 mechanism.
 
-### Still open before this can be scoped into a design
+### Target application(s) clarified (2026-10-01), changes the shape of this feature
 
-- [ ] **Which password(s), and filled into what, exactly?** A web form in
-  an Edge tab (the existing SMS/UIA integration already has a working
-  pattern for this), a native Windows application's own login dialog, a
-  browser's own saved-password prompt, a VPN/Ivanti login, or something
-  else — each is a materially different automation target with a
-  different feasibility and risk profile, the same kind of
-  target-identification gap the TeleQ → HiX item above had to close before
-  it could be scoped. **This is the main remaining blocker** — needs the
-  actual use case from the project owner before any further design or
-  implementation.
-- [ ] Decide whether DocBot's UI ever reveals the stored password back to
-  the user (e.g. a "Wachtwoorden beheren" section under Instellingen), or
-  only ever uses it invisibly to fill a field — affects both the UX design
-  and the security review.
+**Not** a single, fixed integration like the SMS-page autofill. The
+project owner clarified this is end-user-configurable: hospital staff
+decide for themselves which password(s) to store, for whichever
+workplace application happens to prompt for one — named examples: HiX
+(sometimes) and MUSE. This has real consequences for both the design and
+the risk profile:
+
+- **MUSE is, in the common hospital-IT sense of the name, a cardiology/ECG
+  information system (GE Healthcare MUSE)** — i.e. plausibly a
+  patient-data-bearing clinical system, not a generic workplace tool.
+  Confirm with the project owner whether that is in fact what "MUSE" means
+  in this environment before finalizing the documentation reassessment
+  below; this specifically changes the §8.3/NEN 7510 read two sections
+  down. DocBot itself still would not see or process any patient data
+  either way — it only hands a credential to that application's own login
+  screen — but "this credential, if compromised, opens a door to a
+  clinical system" is a materially sharper risk statement than "opens a
+  door to a generic workplace app," worth stating plainly rather than
+  glossing over.
+- There is no fixed field DocBot can target via UIA/a hardcoded selector
+  the way `RunSmsCallAction()` targets a known Edge page — the field is
+  "whatever login prompt the user currently has focused when they choose
+  to fill it in," which only the user knows at the moment of use. The
+  natural implementation shape is therefore **not** a UIA integration but
+  reusing DocBot's existing generic text-output mechanism — the same
+  `SendText()` callback path already used for long/multiline hotstring
+  replacements (`DocBot.ahk` around line 7273/7279) — triggered by
+  whatever UI DocBot offers (e.g. a snelkiesnummer-style list, a tray
+  action, or a dedicated hotstring-like trigger) rather than a new
+  per-application automation per password.
+- **New safety risk this generic shape introduces, with no existing
+  precedent in DocBot to copy:** unlike the SMS integration (which only
+  ever fills a field DocBot has itself verified via UIA on a known page),
+  a generic "send the stored password to wherever focus currently is"
+  action has no way to confirm the target is actually the intended login
+  field. Triggered at the wrong moment, it would type a plaintext
+  password into whatever happens to have focus instead — a patient note,
+  a chat window, a search bar, HiX's own free-text fields. This needs an
+  explicit mitigation before implementation, not an assumption that users
+  will always get the timing right — e.g. showing the target window's
+  title/name and requiring an explicit confirmation before sending,
+  mirroring the existing call-confirmation-dialog pattern already used for
+  `Belactie`, rather than sending blind.
+
+### Still open before this can be scoped into a full design
+
+- [ ] Decide the trigger mechanism (hotstring-style typed trigger,
+  snelkiesnummer-style picker list, tray menu, dedicated Instellingen
+  page — or some combination) and the confirmation/safety step from the
+  point above.
+- [ ] Decide whether DocBot's UI ever reveals a *stored* password back to
+  the user for viewing (not just entering a new one) — e.g. a "Wachtwoorden
+  beheren" section under Instellingen needs at minimum an add/edit/delete
+  flow, since the user is the one typing the password in to begin with,
+  but "can it be read back later" (vs. write-only, overwrite-only) is a
+  separate, still-open password-manager-style design choice.
 - [ ] Confirm the trust boundary is "logged into this Windows account",
   matching how DocBot already gates its developer debug window on the
   Windows account rather than an in-app toggle (`CLAUDE.md` "Toegang tot
@@ -2359,14 +2403,13 @@ mechanism.
     about a configured message, not a credential).
   - §8.3 (Herbeoordelingstriggers) — check explicitly against the listed
     triggers rather than skipping this section: on a first read, storing
-    and autofilling a general-purpose credential does **not** appear to
-    hit any of the patient-data/diagnosis/treatment/triage/medication/
-    monitoring-worded triggers there, so this likely does not itself
-    require a full MDR/MDSW requalification — but record that conclusion
-    explicitly, with reasoning, rather than silently assuming it once the
-    actual target application is known (if that application turns out to
-    be something that handles patient data, e.g. HiX, revisit this
-    specific sub-point).
+    and autofilling a credential does **not** itself appear to hit any of
+    the patient-data/diagnosis/treatment/triage/medication/monitoring-
+    worded triggers there, since DocBot only relays the credential and
+    never sees or processes what the target application does with it —
+    but confirm this explicitly once MUSE's actual nature in this
+    environment is confirmed (see above), rather than assuming. Record the
+    conclusion with reasoning either way, don't leave it implicit.
   - §9.1 (NEN 7510) is the section this feature actually weighs on most:
     it already lists "toegangsbeheer en least privilege" and
     "vertrouwelijkheid en integriteit van... loggegevens" as relevant
