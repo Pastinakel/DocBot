@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-09-12 (seventh update, close the Ivanti-session-restart link-loss investigation as D-070). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-09-13 (eighth update, two diagnostic gaps found during the telephony investigation). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -2193,6 +2193,48 @@ desirable, for example:
 
 This is an open investigation, not a committed design — confirm the actual
 need and the server's supported behavior before implementing anything.
+
+---
+
+## P2 — Close two diagnostic gaps found during the D-067/D-068/D-069/D-070 telephony investigation
+
+Filed by the project owner (2026-09-13), as a self-assessment following
+that investigation: the fixes themselves are validated, but two gaps in
+DocBot's own diagnostics made parts of the investigation harder than they
+needed to be, and would do the same for any future telephony hang/link
+report.
+
+- **Extended logging cannot be armed before the telephony calls that most
+  need it.** `StartProblemReportExtendedLogging()` requires explicit,
+  interactive consent through the GUI, which is only reachable after
+  DocBot has already built its window — by which point the very first
+  `IPT_register(false)`/`IPT_poller()` calls in auto-execute (line ~514)
+  have already run and gone unlogged in detail. This was hit directly
+  during the D-070 investigation: the cold-start `AllocNumber.xml`/
+  `GetEvent.xml` exchange could only be inspected indirectly, by asking
+  the user to trigger a manual "Verversen" (which reuses the same
+  now-stable cookie) after turning logging on, rather than seeing the
+  actual first exchange. Investigate whether a narrowly-scoped mechanism
+  (e.g. a one-time opt-in that survives exactly one restart, or a
+  local/registry flag a user can set before relaunching when asked to by
+  support) could capture that first exchange without weakening the
+  existing consent model — this is privacy-sensitive (`docs/DECISIONS.md`
+  documents why extended logging requires explicit consent), so evaluate
+  carefully rather than just removing the gate.
+- **No automatic recovery from a silently stuck poll chain.** Today,
+  `State["IPT"]["NeedUpdate"]` only stops the poll chain deliberately (a
+  `StopEventLoop` event, see D-067), and nothing but a manual "Verversen"
+  click or an app restart resumes it. If the chain were ever to stop
+  silently for some other reason (e.g. an unhandled failure mode not yet
+  seen), a user would have no indication beyond the koppelnummer simply
+  not updating. Investigate a lightweight health-check — e.g. noticing
+  that no `GetEvent.xml` response has arrived for far longer than the
+  configured long-poll timeout and prompting the user or auto-retrying —
+  without reintroducing the duplicate-poll-chain risk that D-067's
+  `IPTPollInFlight` guard was built to prevent.
+
+Both are diagnostic/resilience improvements, not known active bugs — treat
+as backlog, not urgent.
 
 ---
 
