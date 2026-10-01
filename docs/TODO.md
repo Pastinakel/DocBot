@@ -1,6 +1,6 @@
 # DocBot — TODO
 
-_Last updated: 2026-09-13 (eighth update, two diagnostic gaps found during the telephony investigation). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
+_Last updated: 2026-10-01 (ninth update, closed the explicit-unlink investigation as D-071 and filed a new password-storage-for-autofill item). This file is a handover backlog, not a promise that every lower-priority idea must be implemented. Re-check repository/PR state before acting._
 
 ## Priority legend
 
@@ -2164,7 +2164,7 @@ the way a OneDrive-synced file eventually does).
 
 ---
 
-## P2 — Investigate an explicit unlink mechanism for the telephony link
+## P2 — Investigate an explicit unlink mechanism for the telephony link (closed — see D-071)
 
 Filed by the project owner (2026-09-11), following D-068/D-069. Now that
 `IPTSessionCookie` persists across a DocBot restart, crash, or Windows
@@ -2193,6 +2193,22 @@ desirable, for example:
 
 This is an open investigation, not a committed design — confirm the actual
 need and the server's supported behavior before implementing anything.
+
+**Closed (2026-10-01):** investigated and found no usable DocBot-side
+solution. The project owner confirmed the telephony server ties the
+phone/extension link to the user's Citrix session, not to anything DocBot
+sends or controls — as soon as that Citrix session expires or is renewed,
+the server considers the link ended on its own. The same shape of finding
+as D-070 (there: the Ivanti VPN/IP-address case), now specifically for the
+Citrix session. There is no DocBot-side action (clearing the cookie, or
+any request DocBot could send) that would reliably or meaningfully end a
+link whose real lifecycle is controlled by Citrix session state outside
+DocBot's visibility — nothing for a DocBot "ontkoppelen" button to act on.
+The original use case (deliberately ending a link at shift end) is already
+served by the normal act of ending/renewing the Citrix session itself. See
+`docs/DECISIONS.md` D-071. No further action planned unless a concrete
+server-side unlink/logout endpoint independent of the Citrix-session
+binding is identified later.
 
 ---
 
