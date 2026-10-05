@@ -3755,3 +3755,59 @@ telephony server considers the link ended on its own.
   is planned. Revisit only if a concrete, currently unknown server-side
   unlink/logout endpoint independent of the Citrix-session binding is
   identified later.
+
+## D-072 — Ignore clipboard phone numbers copied from TeleQ entirely
+
+**Status:** Implemented on `claude/determined-brahmagupta-pzpq7u` (branched
+from `develop` at `2.5-dev.3`, `AppVersion 2.5-teleq-negeren.1`). Not yet
+Windows-validated (D-037).
+
+**Background**
+
+TeleQ is the web application (opened in Edge) staff use to answer incoming
+calls. To find the right patient, they copy the caller's number shown in
+TeleQ and paste it into HiX's patient search. DocBot's clipboard detection
+could not tell this apart from a "call this number" copy, so depending on
+`Belactie` it showed a call/SMS dialog for, or directly called, a number
+that was only meant to be looked up (`docs/TODO.md`, P2 TeleQ → HiX,
+Level 1). An extended diagnostic log from the project owner (2026-10-05,
+temporary probe `LogClipboardSourceDiagnostics_TeleQ()`) showed the
+foreground window at copy time: process `msedge.exe`, class
+`Chrome_WidgetWin_1`, title `TeleQ en nog 2 andere pagina's - Profiel 1 -
+Microsoft Edge`, focused element the page document itself
+(`RootWebArea`, name `TeleQ`) — no field-level identifier to key on. The
+same log confirmed the problem: with `Belactie` 3 the call/SMS choice dialog
+opened for the copied TeleQ number.
+
+**Decision**
+
+- A clipboard number is ignored entirely — as if no phone number had been
+  copied — when the foreground window, captured when `ClipBoardPoller()`
+  notices the clipboard sequence change (before the read delay), is
+  `msedge.exe` with a title matching `i)^TeleQ(\s|$)` (Edge puts the active
+  tab's title first). No dialog, no call, no "settings still loading"
+  toast, and a still-open dialog for another number is left alone. Only a
+  content-free baseline log line ("Genegeerd: gekopieerd vanuit TeleQ") is
+  written.
+- Project-owner choice between "ignore entirely" and "detect but force
+  Niets doen": ignore entirely — simplest and safest.
+- The source list (`ClipboardIgnoredSources`) is a constant in
+  `DocBot.ahk`, not a `DocBot.local.ahk` setting: the value is neither
+  secret nor network-specific, and the protection must not depend on a
+  forgotten local configuration line in a compiled build.
+- The matcher `MatchIgnoredClipboardSource()` is pure and covered by
+  `tests/SelfTests.ahk`.
+- The temporary diagnostic probe is removed.
+
+**Consequences / known limits**
+
+- Detection is window-based, not content-based: a number copied from
+  another Edge tab or application is still handled per `Belactie`, even if
+  the user meant to look it up.
+- The foreground window is sampled up to ~100 ms (poll interval) after the
+  copy. A user who switches away from TeleQ within that window would get
+  the old behavior (dialog/call per `Belactie`) — the failure mode falls
+  back to the pre-existing behavior, never to an unexpected call.
+- If TeleQ's page title changes, or TeleQ is opened in another browser,
+  detection silently stops matching; update `ClipboardIgnoredSources`.
+- Level 2 (automating TeleQ → HiX) is unaffected and still open.

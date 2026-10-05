@@ -126,6 +126,7 @@ before declaring a change complete, not just source review.
 - Event polling is chained: the next poll starts after the previous request finishes. Do not restore a fixed-interval overlapping poll timer.
 - Clipboard detection supports Dutch external numbers and a deliberately separate path for internal four-digit numbers.
 - Reading the clipboard on a detected sequence-number change is deliberately delayed and retried (`ReadClipboardTextSafely()`), and the result is discarded if the sequence number changed again during that wait. Reading immediately can make another application's own multi-step clipboard write fail (observed as a clipboard error in HiX) or attach stale content to the earlier detection (`docs/DECISIONS.md` D-066). Do not remove the delay/retry or the staleness check to "simplify" this path.
+- A number copied while TeleQ (the Edge-based call-answering application) is the foreground window is ignored entirely — no dialog, no call, no toast — because staff copy it to search the patient in HiX, not to call back (`docs/DECISIONS.md` D-072). Recognition is by foreground process (`msedge.exe`) and window title (`ClipboardIgnoredSources` in `DocBot.ahk`), sampled when the clipboard change is noticed.
 
 ### 4.4 Call action and SMS assistance
 

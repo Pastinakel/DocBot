@@ -259,6 +259,10 @@ Functionaliteit — Telefonie
     Enter bevestigt de blauwe keuze. Interne nummers worden in deze stand
     direct gebeld. Deze optie is alleen beschikbaar wanneer lokaal ten minste
     één SMS-actie is geconfigureerd.
+- Een nummer dat je kopieert terwijl TeleQ in Edge het actieve venster is,
+  negeert DocBot volledig, ongeacht de Belactie: zo'n nummer kopieer je om
+  de patiënt in HiX op te zoeken, niet om te bellen. Er verschijnt geen
+  belvenster en er wordt niet gebeld.
 - Komt er via het klembord een nieuw nummer binnen terwijl er nog een niet
   afgehandeld belvenster open staat (bevestiging, of de keuze
   bellen/sms), dan sluit DocBot dat oude venster automatisch — met een
@@ -498,6 +502,10 @@ Changelog
 ---------
 
 ### 2.5 — In ontwikkeling
+- Een telefoonnummer dat je in TeleQ kopieert om de patiënt in HiX op te
+  zoeken, opende afhankelijk van de Belactie een belvenster of werd zelfs
+  direct gebeld. DocBot herkent nu dat het nummer uit TeleQ komt en negeert
+  het volledig, zodat er niet per ongeluk wordt gebeld.
 - De sidebar viel bij een mislukte logo-tekening terug op de oude
   ondertitel "Telefonie voor de werkplek", terwijl de sidebar inmiddels de
   slogan "een handje extra :)" toont. De terugvaltekst is bijgewerkt zodat

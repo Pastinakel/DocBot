@@ -46,7 +46,9 @@ DocBot verwerkt als functionele invoer:
 
 - door de gebruiker geconfigureerde of geselecteerde hotstrings;
 - ingeschakelde hotstrings uit meegeleverde pakketten;
-- telefoonnummers die op het Windows-klembord worden geplaatst;
+- telefoonnummers die op het Windows-klembord worden geplaatst, behalve
+  nummers die worden gekopieerd terwijl TeleQ het actieve venster is: die
+  zijn bedoeld om een patiënt in HiX op te zoeken en worden genegeerd;
 - snelkiesnummers en gebruikersinstellingen;
 - gebruikerskeuzes zoals bevestigen, bellen of SMS kiezen;
 - vrije tekst die de gebruiker aan een probleemrapport toevoegt.

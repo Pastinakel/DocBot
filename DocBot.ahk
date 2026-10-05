@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-dev.3"
+global AppVersion := "2.5-teleq-negeren.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -135,6 +135,23 @@ global IPTConfig := Map(
     "RequestTimeoutsMs", [5000, 5000, 5000, 15000],
     "PollTimeoutsMs", [5000, 5000, 5000, 120000]
 )
+
+; Klembordbronnen waarvan een gekopieerd telefoonnummer bewust volledig
+; wordt genegeerd, alsof er geen telefoonnummer gekopieerd is: geen
+; belvenster, geen oproep en geen melding (docs/DECISIONS.md D-072).
+; TeleQ is de toepassing waarmee inkomende gesprekken worden aangenomen;
+; medewerkers kopiëren daar het nummer van de beller om de patiënt in HiX op
+; te zoeken, niet om terug te bellen. Herkenning gebeurt op het
+; voorgrondvenster op het moment dat DocBot de klembordwijziging opmerkt:
+; procesnaam plus venstertitel. Edge zet de titel van de actieve tab vooraan
+; ("TeleQ en nog 2 andere pagina's - Profiel 1 - Microsoft Edge", of
+; "TeleQ - ..." met één tab), vastgesteld met een uitgebreid diagnoselog van
+; 2026-10-05. Geen geheime of netwerkspecifieke waarde, daarom bewust hier en
+; niet in DocBot.local.ahk: de bescherming mag niet afhangen van een
+; vergeten lokale configuratieregel.
+global ClipboardIgnoredSources := [
+    Map("Name", "TeleQ", "Process", "msedge.exe", "TitlePattern", "i)^TeleQ(\s|$)")
+]
 
 ; De telefonieserver (een legacy JDM-achtige middleware, te herkennen aan de
 ; JDMWEBCOOKIE-naam) herkent een bestaande koppeling via WinInet
@@ -5136,37 +5153,36 @@ ReadClipboardTextSafely() {
     return ""
 }
 
-; TIJDELIJK — alleen om de vereiste TeleQ window-/control-identifiers te
-; achterhalen voor docs/TODO.md "P2 — TeleQ → HiX patient search"
-; (niveau 1). Schrijft uitsluitend naar de uitgebreide log (nooit naar de
-; standaardlog), dus alleen zichtbaar tijdens een bewust gestarte,
-; consent-gated sessie via "Probleem melden...". Verwijderen zodra de
-; identifiers bekend en in dat TODO-item vastgelegd zijn.
-LogClipboardSourceDiagnostics_TeleQ() {
+; Procesnaam en titel van het voorgrondvenster, best effort. Een leeg
+; resultaat betekent "onbekend" en laat de klembordherkenning ongemoeid.
+GetForegroundWindowInfo() {
+    info := Map("Process", "", "Title", "")
     try {
         hwnd := WinExist("A")
-        tekst := "Venster: title='" WinGetTitle("ahk_id " hwnd) "'"
-        tekst .= " proces='" WinGetProcessName("ahk_id " hwnd) "'"
-        tekst .= " class='" WinGetClass("ahk_id " hwnd) "'"
-    } catch as winError {
-        tekst := "Venster: onbekend (" winError.Message ")"
+        if hwnd {
+            info["Process"] := WinGetProcessName("ahk_id " hwnd)
+            info["Title"] := WinGetTitle("ahk_id " hwnd)
+        }
     }
+    return info
+}
 
-    try {
-        elem := UIA.GetFocusedElement()
-        tekst .= " | Focuselement: AutomationId='" elem.AutomationId "'"
-        tekst .= " class='" elem.ClassName "'"
-        tekst .= " type='" elem.LocalizedControlType "'"
-        tekst .= " naam='" elem.Name "'"
-    } catch as uiaError {
-        tekst .= " | Focuselement: onbekend (" uiaError.Message ")"
+; Geeft de Name van de eerste bron in sources die bij dit venster past, of ""
+; als geen bron past. Pure functie (getest in tests/SelfTests.ahk).
+MatchIgnoredClipboardSource(sources, processName, windowTitle) {
+    if processName = "" || windowTitle = ""
+        return ""
+    for _, source in sources {
+        if StrLower(processName) != StrLower(source["Process"])
+            continue
+        if RegExMatch(windowTitle, source["TitlePattern"])
+            return source["Name"]
     }
-
-    ExtendedDebugLog("•", "TeleQ-diagnose", tekst)
+    return ""
 }
 
 ClipBoardPoller() {
-    global State, StorageAllReady, PhoneActionDialogState
+    global State, StorageAllReady, PhoneActionDialogState, ClipboardIgnoredSources
     static lastSeq := DllCall("GetClipboardSequenceNumber")  ; voorkomt dat de klembordinhoud bij opstarten al wordt opgepakt
 
     seq := DllCall("GetClipboardSequenceNumber")
@@ -5174,6 +5190,11 @@ ClipBoardPoller() {
         return
 
     lastSeq := seq
+
+    ; Het voorgrondvenster bewust vóór de leesvertraging vastleggen: dat ligt
+    ; het dichtst bij het moment van kopiëren, voordat de gebruiker
+    ; bijvoorbeeld al naar HiX is gewisseld.
+    sourceWindow := GetForegroundWindowInfo()
 
     clipboardText := ReadClipboardTextSafely()
 
@@ -5198,7 +5219,17 @@ ClipBoardPoller() {
     if externalTel = "" && internalTel = ""
         return
 
-    LogClipboardSourceDiagnostics_TeleQ()
+    ; Een nummer dat uit een genegeerde bron (TeleQ) komt, is een
+    ; opzoeknummer en nooit een belopdracht: volledig negeren, vóór elke
+    ; melding, duplicaatcontrole of belactie, en zonder een openstaand
+    ; belvenster voor een ander nummer te sluiten (docs/DECISIONS.md D-072).
+    ignoredSource := MatchIgnoredClipboardSource(
+        ClipboardIgnoredSources, sourceWindow["Process"], sourceWindow["Title"]
+    )
+    if ignoredSource != "" {
+        DebugLog("i", "Klembordnummer", "Genegeerd: gekopieerd vanuit " ignoredSource " (opzoeknummer, geen belopdracht).")
+        return
+    }
 
     if !StorageAllReady {
         ; CallAction en de andere instellingen die de belactie-flow
