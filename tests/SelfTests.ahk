@@ -19,7 +19,9 @@
 ; de gebruikersprofielkeuze (GetUserDataProfile; docs/DECISIONS.md D-056),
 ; de telefoonnummernormalisatie (NormalizePhoneNumber en de interne/externe
 ; varianten, NormalizeSmsPhoneNumber) en de standaardlog-opschoonclassificatie
-; (ClassifyDebugLogChunk; docs/DECISIONS.md D-062).
+; (ClassifyDebugLogChunk; docs/DECISIONS.md D-062) en de herkenning van
+; genegeerde klembordbronnen zoals TeleQ (MatchIgnoredClipboardSource;
+; docs/DECISIONS.md D-072).
 ; Dit dekt bewust niet de bestands-I/O, GUI-vernieuwing of showMessage-paden
 ; van LoadHotstringsFromJson/LoadSpeedDialFromJson zelf, en ook niet de
 ; daadwerkelijke profiel-bootstrapkopie (InitializeUserStorage) — dat vereist
@@ -51,6 +53,7 @@ RunSelfTests() {
     RunSelfTestCase(results, "TestNormalizePhoneNumber", TestNormalizePhoneNumber)
     RunSelfTestCase(results, "TestNormalizeSmsPhoneNumber", TestNormalizeSmsPhoneNumber)
     RunSelfTestCase(results, "TestClassifyDebugLogChunk", TestClassifyDebugLogChunk)
+    RunSelfTestCase(results, "TestMatchIgnoredClipboardSource", TestMatchIgnoredClipboardSource)
 
     logText := ""
     for _, line in results["lines"]
@@ -507,4 +510,31 @@ TestClassifyDebugLogChunk(results) {
         ClassifyDebugLogChunk("een willekeurige, niet-geformatteerde regel`r`n", cutoff),
         "onherkend-verlopen"
     )
+}
+
+; Herkenning van een genegeerde klembordbron (TeleQ) op procesnaam en
+; venstertitel; docs/DECISIONS.md D-072. Gebruikt de echte
+; ClipboardIgnoredSources-lijst niet (die is in --selftest nog niet
+; geïnitialiseerd), maar een identieke lokale kopie.
+TestMatchIgnoredClipboardSource(results) {
+    sources := [Map("Name", "TeleQ", "Process", "msedge.exe", "TitlePattern", "i)^TeleQ(\s|$)")]
+
+    AssertEqual(results, "TeleQ als actieve tab naast andere tabs wordt herkend",
+        MatchIgnoredClipboardSource(sources, "msedge.exe", "TeleQ en nog 2 andere pagina's - Profiel 1 - Microsoft Edge"), "TeleQ")
+    AssertEqual(results, "TeleQ als enige tab wordt herkend",
+        MatchIgnoredClipboardSource(sources, "msedge.exe", "TeleQ - Profiel 1 - Microsoft Edge"), "TeleQ")
+    AssertEqual(results, "Kale titel TeleQ (app-venster) wordt herkend",
+        MatchIgnoredClipboardSource(sources, "msedge.exe", "TeleQ"), "TeleQ")
+    AssertEqual(results, "Procesnaam is niet hoofdlettergevoelig",
+        MatchIgnoredClipboardSource(sources, "MSEDGE.EXE", "TeleQ - Microsoft Edge"), "TeleQ")
+    AssertEqual(results, "Andere actieve Edge-tab wordt niet herkend",
+        MatchIgnoredClipboardSource(sources, "msedge.exe", "HiX en nog 2 andere pagina's - Profiel 1 - Microsoft Edge"), "")
+    AssertEqual(results, "TeleQ alleen elders in de titel wordt niet herkend",
+        MatchIgnoredClipboardSource(sources, "msedge.exe", "Handleiding TeleQ - Microsoft Edge"), "")
+    AssertEqual(results, "TeleQ als deel van een langer woord (TeleQueue) wordt niet herkend",
+        MatchIgnoredClipboardSource(sources, "msedge.exe", "TeleQueue - Microsoft Edge"), "")
+    AssertEqual(results, "TeleQ-titel in een ander proces wordt niet herkend",
+        MatchIgnoredClipboardSource(sources, "notepad.exe", "TeleQ - Kladblok"), "")
+    AssertEqual(results, "Onbekend voorgrondvenster wordt niet herkend",
+        MatchIgnoredClipboardSource(sources, "", ""), "")
 }

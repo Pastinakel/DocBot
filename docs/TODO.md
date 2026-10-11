@@ -1915,59 +1915,22 @@ setting, directly call — a number that was only ever meant to be searched,
 not dialed. This is a workflow conflict with a real incorrect-call risk,
 not just a convenience gap.
 
-### Temporary diagnostic branch (2026-09-07)
-
-Prepared on `claude/teleq-diagnose-tijdelijk` (from `develop`,
-`AppVersion 2.5-teleq-diagnose.1`) to close the "needs the actual TeleQ
-window title/URL/tab pattern from the project owner" gap in Level 1 below.
-`ClipBoardPoller()` did not log anything about the source window of a
-detected clipboard number, not even in extended logging, so there was no
-way to find TeleQ's window/control identifiers without guessing.
-
-Adds `LogClipboardSourceDiagnostics_TeleQ()`, called once per recognized
-clipboard number, writing only to `ExtendedDebugLog()` (never the baseline
-log) — visible only during an explicitly started, consent-gated "Probleem
-melden..." session, matching the existing privacy model in
-`docs/PROJECT_CONTEXT.md` §4.9. It logs the foreground window's title,
-process name and class, plus (best effort, via the already-included
-`UIA-v2` library) the focused UI Automation element's `AutomationId`,
-`ClassName`, `LocalizedControlType` and `Name`.
-
-A colleague who actually uses TeleQ (the project owner does not) can run
-this branch on `DocBot-test`, start an extended-logging session, perform
-normal TeleQ → HiX copy/paste, and read back the "TeleQ-diagnose" lines —
-reviewing them for an actual caller number/name before sharing back, since
-the focused element's `Name` can carry that.
-
-**This is a probe, not a design decision:** no README changelog entry (it
-only adds visibility inside an already-documented, opt-in session — no new
-consent surface, no behavior change for a normal user) and no
-`docs/DECISIONS.md` entry. Once TeleQ's window/control identifiers are
-known and recorded in Level 1 below, remove
-`LogClipboardSourceDiagnostics_TeleQ()`, its call site, and this note.
-
 ### Level 1 — prevent DocBot from treating a TeleQ-sourced number as callable
 
-- [ ] Decide how DocBot recognizes that a clipboard number came from TeleQ's
-  web interface rather than a source it should still treat as callable —
-  most likely the foreground/source browser window title or URL at the
-  moment of copy, the same kind of technical identifier
-  `SmsCallAction.WindowTitle` already uses to identify a specific page.
-  Needs the actual TeleQ window title/URL/tab pattern from the project
-  owner; do not guess or hardcode a placeholder value.
-- [ ] Design where this check fits into the existing clipboard-detection
-  path (`ClipBoardPoller`/`NormalizePhoneNumber` and the code that reads
-  `State["IPT"]["ClipBoardNumber"]`) so a recognized TeleQ-sourced number
-  is suppressed before any call-related UI (confirmation dialog or direct
-  call) can trigger for it.
-- [ ] Confirm scope with the project owner: does a TeleQ-sourced number
-  get ignored by clipboard detection entirely (as if it were not a phone
-  number), or detected but always routed to "Niets doen" regardless of the
-  user's configured `Belactie`?
-- [ ] Once designed, this is a safety-relevant behavior change to a default
-  (do not call), not a cosmetic one — give it its own `docs/DECISIONS.md`
-  entry, and update `docs/PROJECT_CONTEXT.md` §4.3/§4.4 and
-  `docs/ARCHITECTURE.md`'s clipboard-detection description to match.
+- [x] Recognition: identifiers obtained from an extended diagnostic log by
+  the project owner (2026-10-05): process `msedge.exe`, window title
+  starting with `TeleQ` (active Edge tab), focused element only the page
+  document (no field-level identifier).
+- [x] Scope decided by the project owner: ignore entirely, as if no phone
+  number was copied.
+- [x] Implemented in `ClipBoardPoller()` before any toast/dialog/call,
+  with `docs/DECISIONS.md` D-072, `PROJECT_CONTEXT.md` §4.3 and
+  `ARCHITECTURE.md` updated; temporary diagnostic probe removed
+  (`AppVersion 2.5-teleq-negeren.1`).
+- [ ] Windows validation: copy a number in TeleQ with each `Belactie`
+  (expect nothing), copy a number from another Edge tab (expect normal
+  behavior), and check the baseline log shows "Genegeerd: gekopieerd vanuit
+  TeleQ" without the number.
 
 ### Level 2 — automate TeleQ → HiX
 

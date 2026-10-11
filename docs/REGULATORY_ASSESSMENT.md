@@ -358,6 +358,7 @@ nummerinvulling aan DocBot toegerekend.
 | Afsluiten, herladen of updatepad starten | Applicatiebeheer | Nee |
 | Nog niet bevestigd bel-/sms-keuzevenster sluiten en vervangen bij een nieuw klembordnummer | Voorkomt dat een verouderd venster later per ongeluk voor het verkeerde nummer wordt bevestigd; er staat nooit meer dan één venster tegelijk open | Nee |
 | Klembordnummer direct uit de centrale status wissen na overdracht, afronding of annulering | Begrenst hoe lang een herkend nummer intern zichtbaar blijft | Nee |
+| Klembordnummer negeren dat is gekopieerd terwijl TeleQ het voorgrondvenster was (D-072) | Voorkomt dat een nummer dat alleen is gekopieerd om de patiënt in HiX op te zoeken, een belvenster of directe oproep veroorzaakt; herkenning op venster, niet op inhoud | Nee — beperkt een autonome actie, voegt er geen toe |
 
 DocBot bevat geen regels die patiëntkenmerken omzet in een
 diagnose, prognose, behandeladvies, dosering, klinische score of medisch alarm.

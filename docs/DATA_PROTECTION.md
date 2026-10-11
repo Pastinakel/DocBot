@@ -110,6 +110,7 @@ Windows-klembord
   -> DocBot leest nieuwe klembordinhoud lokaal
   -> technische validatie/normalisatie
   -> geen geldig nummer: geen verdere telefoonactie
+  -> gekopieerd terwijl TeleQ het voorgrondvenster was: negeren
   -> geldig nummer: tijdelijk in State["IPT"]["ClipBoardNumber"]
        -> negeren / bevestigingsvenster / direct bellen / keuze bellen-SMS
 ```
@@ -120,6 +121,15 @@ enkele herpogingen (`docs/DECISIONS.md` D-066), om te bepalen of deze een
 ondersteund telefoonnummer is. Daardoor wordt technisch kortstondig ook
 klembordtekst gelezen die uiteindelijk geen telefoonnummer blijkt te zijn.
 DocBot slaat die niet-herkende inhoud niet bewust op of extern door.
+
+Om een nummer dat vanuit TeleQ wordt gekopieerd (om in HiX op te zoeken) te
+kunnen negeren, leest DocBot bij iedere klembordwijziging lokaal de
+procesnaam en venstertitel van het voorgrondvenster (`docs/DECISIONS.md`
+D-072). Die worden alleen vergeleken en niet opgeslagen, gelogd of
+verzonden; de standaardlog vermeldt alleen dát een nummer uit TeleQ werd
+genegeerd, zonder het nummer. Een TeleQ-nummer komt daardoor niet in
+`State["IPT"]["ClipBoardNumber"]` terecht en gaat naar geen enkele
+ontvanger.
 
 **Gegevens:** Nederlandse externe telefoonnummers, interne viercijferige
 nummers en kortstondig de onderzochte klembordinhoud.

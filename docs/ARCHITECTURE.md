@@ -553,6 +553,7 @@ Clipboard-triggered dialing is a separate entry path into the same call gate:
 ```text
 ClipBoardPoller()
   -> detect a clipboard sequence-number change
+  -> capture the foreground window (process + title) right away
   -> read the clipboard content with a short delay and a few retries
        (ReadClipboardTextSafely(); reading immediately on the raw sequence-
        number change could make another application's own multi-step
@@ -563,6 +564,9 @@ ClipBoardPoller()
        the by-then-settled content in a clean round
   -> normalize (external Dutch number / internal four-digit number)
   -> no match: ignore
+  -> foreground window matches ClipboardIgnoredSources (TeleQ in Edge):
+       ignore entirely — no toast, no dialog, an open dialog for another
+       number stays open (docs/DECISIONS.md D-072)
   -> a dialog is already open for this exact number: ignore as a duplicate
        detection (e.g. Windows Clipboard History re-touching the clipboard,
        or a source that writes the clipboard in more than one step)

@@ -26,7 +26,10 @@ logica zonder bestands-I/O, GUI of netwerk:
   +31/0031-varianten en te korte/ongeldige invoer;
 - de standaardlog-opschoonclassificatie `ClassifyDebugLogChunk()` (huidig
   formaat binnen/buiten de bewaartermijn, het bekende pre-v2-legacyformaat en
-  onherkende inhoud), zie `docs/DECISIONS.md` D-062.
+  onherkende inhoud), zie `docs/DECISIONS.md` D-062;
+- de herkenning van genegeerde klembordbronnen
+  `MatchIgnoredClipboardSource()` (TeleQ als actieve Edge-tab, andere tabs
+  en processen niet), zie `docs/DECISIONS.md` D-072.
 
 Zie `docs/MIGRATIONS.md` voor het volledige migratieoverzicht per
 opslagformaat en de betekenis van "idempotent" in deze context.
