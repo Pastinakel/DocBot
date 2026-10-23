@@ -3814,7 +3814,10 @@ opened for the copied TeleQ number.
 
 ## D-073 — Do not add the telemetry installation ID to the problem report
 
-**Context**
+**Status:** Decided by the project owner on `claude/installatie-id-over-pagina`
+(`AppVersion 2.5-installatie-id.1`). No code change; documentation only.
+
+**Background**
 
 Since 2.5-installatie-id.1 the Over page shows the pseudonymous telemetry
 installation ID (`[Telemetry] InstallationId` in `settings.ini`) with a copy
