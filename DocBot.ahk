@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-dev.4"
+global AppVersion := "2.5-installatie-id.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -350,6 +350,15 @@ global OverviewPhoneActionsText := 0
 global OverviewLongHotstringActionsText := 0
 global OverviewSmsActionsText := 0
 
+; Installatie-ID-regel in de voettekststrook van de Over-pagina
+; (docs/TODO.md, "Make the telemetry installation ID visible"). Opgebouwd in
+; BuildMainGui(), bijgewerkt door RefreshAboutInstallationId().
+global AboutInstallationIdValueText := 0
+global AboutInstallationIdPendingIcon := 0
+global AboutInstallationIdCopyButton := 0
+; Eén gedeeld Win32-tooltipvenster voor AddControlTooltip().
+global ControlTooltipHwnd := 0
+
 ; Startup-onboardingtips (docs/TODO.md): een blijvende gele hint-balk op
 ; Overzicht die willekeurig één van de onderstaande tips toont, op de plek
 ; van de vroegere vaste footertekst "Sluiten verbergt DocBot in het
@@ -568,6 +577,7 @@ BuildMainGui() {
     global RegistrationHelperText
     global CallActionSelector, TextReplacementCheck
     global OverviewPhoneActionsText, OverviewLongHotstringActionsText, OverviewSmsActionsText
+    global AboutInstallationIdValueText, AboutInstallationIdPendingIcon, AboutInstallationIdCopyButton
     global HotLV, HotSearch, HotTriggerEdit, HotEnabledCheck
     global HotReplacementSingleGroup, HotReplacementMultiGroup
     global HotReplacementExpandButton, HotReplacementCollapseButton
@@ -1124,11 +1134,43 @@ BuildMainGui() {
     AddRound(aboutEdit, 10)
     AddPageControl("over", aboutEdit)
 
-    ; y=662 centreert deze 24px-hoge link verticaal in de 52px-ruimte
-    ; tussen het einde van de kaart hierboven (y=648) en de vensterrand
-    ; (700): 648 + (52-24)/2 = 662, met 14px marge boven en onder.
+    ; y=662 centreert deze 24px-hoge voettekstregel verticaal in de
+    ; 52px-ruimte tussen het einde van de kaart hierboven (y=648) en de
+    ; vensterrand (700): 648 + (52-24)/2 = 662, met 14px marge boven en
+    ; onder. Links het installatie-ID, rechts de GitHub-link.
+    aboutIdLabel := MainGui.AddText("x262 y662 w84 h24 0x200 Background" C["Window"], "Installatie-ID")
+    aboutIdLabel.SetFont("s9 c" C["Muted"], "Segoe UI")
+    AddPageControl("over", aboutIdLabel)
+
+    ; 0x300 = SS_CENTERIMAGE | SS_NOTIFY. Zonder SS_NOTIFY krijgt een static
+    ; control geen muisberichten en verschijnt de tooltip nooit.
+    aboutIdInfoIcon := MainGui.AddText("x348 y662 w18 h24 Center 0x300 Background" C["Window"], Chr(0xE946))
+    aboutIdInfoIcon.SetFont("s9 c" C["Muted"], "Segoe MDL2 Assets")
+    AddPageControl("over", aboutIdInfoIcon)
+    AddControlTooltip(
+        aboutIdInfoIcon,
+        "Pseudoniem nummer van deze DocBot-installatie. Geef dit door bij een "
+        . "probleemmelding, zodat support de technische gegevens van jouw "
+        . "installatie kan terugvinden."
+    )
+
+    AboutInstallationIdPendingIcon := MainGui.AddText("x372 y662 w18 h24 Center 0x200 Background" C["Window"], Chr(0xE72C))
+    AboutInstallationIdPendingIcon.SetFont("s9 c" C["Muted"], "Segoe MDL2 Assets")
+    AddPageControl("over", AboutInstallationIdPendingIcon)
+
+    AboutInstallationIdValueText := MainGui.AddText("x372 y662 w284 h24 0x200 Background" C["Window"], "")
+    AddPageControl("over", AboutInstallationIdValueText)
+
+    AboutInstallationIdCopyButton := MainGui.AddText("x660 y662 w24 h24 Center 0x200 Background" C["Button"], Chr(0xE8C8))
+    AboutInstallationIdCopyButton.SetFont("s10 c" C["Primary"], "Segoe MDL2 Assets")
+    AboutInstallationIdCopyButton.OnEvent("Click", CopyAboutInstallationId)
+    AddRound(AboutInstallationIdCopyButton, 6)
+    AddPageControl("over", AboutInstallationIdCopyButton)
+    AddControlTooltip(AboutInstallationIdCopyButton, "Kopieer installatie-ID naar het klembord")
+
+    ; 0x20 = LWS_RIGHT: lijnt de linktekst rechts uit tegen de kaartrand.
     githubLink := MainGui.AddLink(
-        "x262 y662 w300 h24",
+        "x762 y662 w210 h24 0x20",
         'Bekijk DocBot op <a href="https://github.com/Pastinakel/DocBot">GitHub</a>'
     )
     githubLink.SetFont("s10 c" C["Text"], "Segoe UI")
@@ -1157,6 +1199,70 @@ BuildMainGui() {
 ; "Invalid callback function"-fout kan veroorzaken.
 OpenGithubLink(*) {
     Run("https://github.com/Pastinakel/DocBot")
+}
+
+; Toont het telemetrie-installatie-ID in de voettekst van de Over-pagina.
+; Drie toestanden, nooit een lege of half-geschreven waarde:
+; - telemetrie uit: er wordt bewust geen ID aangemaakt;
+; - telemetrie aan, ID nog niet bevestigd opgeslagen (Telemetry.ahk blijft
+;   het op de achtergrond proberen, D-063): "wordt opgehaald…";
+; - bevestigd ID: de waarde plus een kopieerknop.
+; Telemetry_TryEnsureInstallationId() roept deze functie ook aan zodra het
+; ID alsnog bevestigd is, zodat een open Over-pagina direct bijwerkt.
+RefreshAboutInstallationId() {
+    global AboutInstallationIdValueText, AboutInstallationIdPendingIcon
+    global AboutInstallationIdCopyButton, TelemetryConfig, TelemetryInstallationId
+    global CurrentPage, C
+
+    if !IsObject(AboutInstallationIdValueText)
+        return
+
+    onPage := CurrentPage = "over"
+
+    if !TelemetryConfig["Enabled"] {
+        state := "disabled"
+        AboutInstallationIdValueText.Value := "niet beschikbaar — telemetrie staat uit"
+    } else if TelemetryInstallationId = "" {
+        state := "pending"
+        AboutInstallationIdValueText.Value := "wordt opgehaald…"
+    } else {
+        state := "available"
+        AboutInstallationIdValueText.Value := TelemetryInstallationId
+    }
+
+    if state = "available"
+        AboutInstallationIdValueText.SetFont("s10 norm c" C["Text"], "Consolas")
+    else
+        AboutInstallationIdValueText.SetFont("s10 italic c" C["Muted"], "Segoe UI")
+
+    ; Het draai-icoon schuift de statustekst 20px op, net als in het ontwerp.
+    AboutInstallationIdValueText.Move(state = "pending" ? 392 : 372)
+    AboutInstallationIdPendingIcon.Opt(onPage && state = "pending" ? "-Hidden" : "+Hidden")
+    AboutInstallationIdCopyButton.Opt(onPage && state = "available" ? "-Hidden" : "+Hidden")
+
+    if onPage {
+        ApplyRoundedControls(true)
+        AboutInstallationIdValueText.Redraw()
+    }
+}
+
+; Kopieert uitsluitend op expliciete klik van de gebruiker. Een GUID haalt
+; nooit de telefoonnummerpatronen van ClipBoardPoller() (10–13 tekens
+; resp. precies vier cijfers), dus dit start geen belactie.
+CopyAboutInstallationId(*) {
+    global TelemetryConfig, TelemetryInstallationId
+
+    if !TelemetryConfig["Enabled"] || TelemetryInstallationId = ""
+        return
+
+    try {
+        A_Clipboard := TelemetryInstallationId
+    } catch {
+        ShowNotification("Het installatie-ID kon niet naar het klembord worden gekopieerd.", 4000, "error")
+        return
+    }
+
+    ShowNotification("Installatie-ID gekopieerd naar het klembord.", 3000, "info")
 }
 
 ; =============================================================================
@@ -2281,6 +2387,38 @@ AddDegradedBanner(pageKey, y, message) {
     AddPageControl(pageKey, body)
 }
 
+; Hover-tooltip voor een control via één gedeeld Win32-tooltipvenster.
+; TTF_SUBCLASS laat het tooltipvenster zelf de muisberichten van het
+; control onderscheppen, zodat er geen eigen WM_MOUSEMOVE-afhandeling nodig
+; is. Een Text-control heeft daarvoor SS_NOTIFY (0x100) nodig.
+AddControlTooltip(ctrl, text) {
+    global MainGui, ControlTooltipHwnd
+
+    if !ControlTooltipHwnd {
+        ; WS_EX_TOPMOST; WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP; CW_USEDEFAULT
+        ControlTooltipHwnd := DllCall(
+            "CreateWindowEx", "UInt", 0x8, "Str", "tooltips_class32", "Ptr", 0,
+            "UInt", 0x80000003,
+            "Int", 0x80000000, "Int", 0x80000000, "Int", 0x80000000, "Int", 0x80000000,
+            "Ptr", MainGui.Hwnd, "Ptr", 0, "Ptr", 0, "Ptr", 0, "Ptr"
+        )
+        if !ControlTooltipHwnd
+            return
+        ; TTM_SETMAXTIPWIDTH: lange teksten afbreken in plaats van één brede regel.
+        DllCall("SendMessage", "Ptr", ControlTooltipHwnd, "UInt", 0x418, "Ptr", 0, "Ptr", 320)
+    }
+
+    ; TOOLINFOW: cbSize, uFlags, hwnd, uId, rect, hinst, lpszText, lParam, lpReserved.
+    toolInfo := Buffer(24 + 6 * A_PtrSize, 0)
+    NumPut("UInt", toolInfo.Size, toolInfo, 0)
+    NumPut("UInt", 0x11, toolInfo, 4)   ; TTF_IDISHWND | TTF_SUBCLASS
+    NumPut("Ptr", MainGui.Hwnd, toolInfo, 8)
+    NumPut("Ptr", ctrl.Hwnd, toolInfo, 8 + A_PtrSize)
+    NumPut("Ptr", StrPtr(text), toolInfo, 24 + 3 * A_PtrSize)
+    ; TTM_ADDTOOLW; het tooltipvenster kopieert de tekst zelf.
+    DllCall("SendMessage", "Ptr", ControlTooltipHwnd, "UInt", 0x432, "Ptr", 0, "Ptr", toolInfo)
+}
+
 SetCueText(editCtrl, text) {
     ; EM_SETCUEBANNER = 0x1501
     SendMessage(0x1501, 0, StrPtr(text), editCtrl)
@@ -2495,6 +2633,8 @@ ShowPage(pageKey, *) {
         ReevaluateTipBannerCondition()
     } else if pageKey = "help"
         RefreshHelpAccordion()
+    else if pageKey = "over"
+        RefreshAboutInstallationId()
 
     ; De onboardingtip-balk staat buiten Pages[]/de gating hierboven (zie
     ; ApplyTipBannerVisibility()): elke paginawissel moet 'm alsnog tonen of

@@ -389,6 +389,12 @@ zijn gelukt. Bij een tijdelijk niet-beschikbare OneDrive-map probeert DocBot
 dit in totaal vijf keer tijdens de eerste minuten en daarna ieder uur opnieuw;
 de overige functies van DocBot blijven intussen beschikbaar.
 
+Het installatie-ID staat ook voor de gebruiker zelf onderaan de Over-pagina
+en kan daar naar het klembord worden gekopieerd, zodat het bij een
+probleemmelding kan worden doorgegeven. Staat telemetrie uit, dan maakt
+DocBot geen installatie-ID aan en meldt de Over-pagina dat het niet
+beschikbaar is. Deze weergave verandert niets aan de verzonden gegevens.
+
 De drie cumulatieve gebruikstellers hieronder volgen dezelfde
 lees-en-bevestig-voordat-er-geschreven-wordt-aanpak: bij een tijdelijk
 niet-beschikbare opslag telt DocBot een actie tijdens die sessie gewoon
@@ -502,6 +508,11 @@ Changelog
 ---------
 
 ### 2.5 — In ontwikkeling
+- Het installatie-ID waarmee support jouw DocBot-installatie in de
+  telemetrie terugvindt, staat nu onderaan de Over-pagina, met een knop om
+  het te kopiëren voor een probleemmelding. Staat telemetrie uit of is het
+  ID nog niet bevestigd opgeslagen, dan toont DocBot dat expliciet in
+  plaats van een lege waarde.
 - Een telefoonnummer dat je in TeleQ kopieert om de patiënt in HiX op te
   zoeken, opende afhankelijk van de Belactie een belvenster of werd zelfs
   direct gebeld. DocBot herkent nu dat het nummer uit TeleQ komt en negeert

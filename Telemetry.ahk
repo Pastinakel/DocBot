@@ -221,6 +221,9 @@ Telemetry_TryEnsureInstallationId(*) {
         TelemetryPendingInstallationId := ""
         TelemetryInstallationIdPersistenceAttempts := 0
         SetTimer Telemetry_TryEnsureInstallationId, 0
+        ; Werk een open Over-pagina bij (DocBot.ahk); onschuldig zolang de
+        ; GUI nog niet is opgebouwd.
+        try RefreshAboutInstallationId()
         Telemetry_Start()
         return
     }
@@ -254,6 +257,9 @@ Telemetry_TryEnsureInstallationId(*) {
         TelemetryPendingInstallationId := ""
         TelemetryInstallationIdPersistenceAttempts := 0
         SetTimer Telemetry_TryEnsureInstallationId, 0
+        ; Werk een open Over-pagina bij (DocBot.ahk); onschuldig zolang de
+        ; GUI nog niet is opgebouwd.
+        try RefreshAboutInstallationId()
         Telemetry_Start()
     } catch as installationIdError {
         Telemetry_LogError(
