@@ -3811,3 +3811,44 @@ opened for the copied TeleQ number.
 - If TeleQ's page title changes, or TeleQ is opened in another browser,
   detection silently stops matching; update `ClipboardIgnoredSources`.
 - Level 2 (automating TeleQ → HiX) is unaffected and still open.
+
+## D-073 — Do not add the telemetry installation ID to the problem report
+
+**Context**
+
+Since 2.5-installatie-id.1 the Over page shows the pseudonymous telemetry
+installation ID (`[Telemetry] InstallationId` in `settings.ini`) with a copy
+button, so a user can hand it to support. That raised the question of
+including it automatically in the "Probleem melden" report
+(`probleemrapport.txt` and the Outlook draft body built by
+`BuildProblemReportPackage()` / `OpenProblemReportEmail()`), so support could
+match a report to its telemetry records without asking.
+
+**Decision**
+
+- Project-owner choice: the problem report does **not** include the
+  installation ID. It keeps its current contents (version, time, user
+  description, whether extended logging was used, the logs).
+- If support needs the ID for a specific report, it asks the user for it;
+  the user copies it from the Over page.
+- The README statement that the telemetry ID is never added to the report,
+  and the `probleemrapport.txt` contents listed in `docs/DATA_PROTECTION.md`
+  §3.7, stay as they are.
+
+**Rationale**
+
+- Sending it automatically would place the pseudonymous ID next to the
+  sender's name and mail address in the developer's mailbox for every
+  report, making it non-pseudonymous for that recipient by default. Leaving
+  it out keeps that link a deliberate, per-case user action — the owner
+  considers this the more respectful default.
+- Support lookups remain possible without it (version and timestamp), and
+  the ID is one copy-click away when actually needed.
+
+**Consequences**
+
+- Matching a report to telemetry records may take one extra question to the
+  user.
+- Revisit only together with the P2 "Reassess the telemetry username after
+  the startup phase" item in `docs/TODO.md`, and update README and
+  `docs/DATA_PROTECTION.md` in the same change if this is ever reversed.
