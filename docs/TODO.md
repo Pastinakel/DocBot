@@ -1979,24 +1979,40 @@ records does not depend on cross-referencing username/timestamps.
 
 ### Scope
 
-- [ ] Add the installation ID to the Over page, most likely alongside the
-  existing version text built in `BuildAboutText()` (`DocBot.ahk`).
-- [ ] `Telemetry_TryEnsureInstallationId()` only creates/loads an ID when
+- [x] Add the installation ID to the Over page. Implemented in 2.5-installatie-id.1
+  as a footer row below the Over card (left of the GitHub link, which moved
+  to the right edge) rather than inside `BuildAboutText()`, following the
+  owner's design mockup; see `RefreshAboutInstallationId()` in `DocBot.ahk`.
+- [x] `Telemetry_TryEnsureInstallationId()` only creates/loads an ID when
   `TelemetryConfig["Enabled"]` is true — decide and implement what the Over
   page shows when telemetry is disabled or the ID has not yet been
   confirmed/persisted (e.g. still retrying after a startup storage hiccup,
   D-063): omit the line entirely, or show an explicit "niet beschikbaar"
-  state. Do not show a blank or partially-written value.
-- [ ] Consider a copy-to-clipboard affordance so a user can paste the ID
+  state. Do not show a blank or partially-written value. Implemented:
+  telemetry off shows "niet beschikbaar — telemetrie staat uit"; enabled but
+  not yet confirmed shows "wordt opgehaald…" (no copy button), and
+  `Telemetry_TryEnsureInstallationId()` refreshes an open Over page once the
+  ID is confirmed.
+- [x] Consider a copy-to-clipboard affordance so a user can paste the ID
   into a problem report or support message — if added, confirm it does not
   conflict with DocBot's own clipboard-based phone-number detection (a
   copied installation ID should not be picked up as a phone number by
   `ClipBoardPoller()`; it won't match `NormalizePhoneNumber()`'s patterns,
-  but verify rather than assume).
+  but verify rather than assume). Implemented as a copy button with a
+  `ShowNotification()` confirmation. Verified against the code: a 36-char
+  GUID fails `NormalizePhoneNumberExternal()` (length 10–13) and
+  `NormalizePhoneNumberInternal()` (exactly four digits), so
+  `ClipBoardPoller()` returns before any call action. Still to confirm on
+  Windows.
 - [ ] Decide the exact label/wording with the project owner — this is
   user-facing text, not just a technical identifier dump; briefly explain
   what it is for (support lookups) so it isn't mistaken for something more
-  sensitive.
+  sensitive. Interim wording (tooltip on the ⓘ icon): "Pseudoniem nummer
+  van deze DocBot-installatie. Geef dit door bij een probleemmelding, zodat
+  support de technische gegevens van jouw installatie kan terugvinden."
+  The mockup's "niet tot u persoonlijk herleidbaar" was deliberately not
+  used: the heartbeat still carries the Windows username alongside the ID.
+  Still open for owner sign-off.
 - [ ] This does not change what data is collected or sent — the
   installation ID is already generated, stored, and transmitted today; this
   only adds a display surface for a value the user's own installation
