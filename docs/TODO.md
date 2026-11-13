@@ -39,9 +39,19 @@ Findings from the standard log:
   non-keep-alive event is logged as `Telefonie-event` with its name, message
   length, digit-run lengths, whether the extension (4 digits) and koppelnummer
   (7 digits) patterns matched, and the resulting state, without message text.
-- [ ] Re-test a startup with that build and decide on the fix (ordering of
-  register/poll at startup, or the number pattern in
-  `ParsePhoneNumbersFromMessage()`).
+- [x] Re-tested with `2.5-telefonie-event-log.1`: the two real events right
+  after startup (227 and 91 characters) arrive with status 200, but
+  `responseXML` has no document element, so they are silently dropped;
+  later keep-alives parse fine. Not an ordering problem and not the number
+  pattern: the events never reach `ParsePhoneNumbersFromMessage()`.
+  Likely related to the `Msxml2.ServerXMLHTTP.6.0` switch (D-067), whose
+  `responseXML` depends on the response `Content-Type` and encoding.
+- [x] Fix in `2.5-telefonie-event-log.2`: `GetIPTEventRoot()` falls back to
+  parsing `ResponseText` with `Msxml2.DOMDocument.6.0`, and retries without
+  the XML declaration; the standard log records `Content-Type`,
+  `Content-Encoding` and the MSXML parse error when that is needed.
+- [ ] Windows validation: number visible right after startup, without
+  Verversen; check the `Telefonie-event` lines for which fallback worked.
 
 ---
 
