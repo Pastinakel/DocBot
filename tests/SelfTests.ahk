@@ -48,6 +48,7 @@ RunSelfTests() {
     RunSelfTestCase(results, "TestAddMissingDefaultSpeedDialsIdempotency", TestAddMissingDefaultSpeedDialsIdempotency)
     RunSelfTestCase(results, "TestCreateSpeedDialEntryDefaults", TestCreateSpeedDialEntryDefaults)
     RunSelfTestCase(results, "TestGetUserDataProfile", TestGetUserDataProfile)
+    RunSelfTestCase(results, "TestGetUserRegistryKey", TestGetUserRegistryKey)
     RunSelfTestCase(results, "TestNormalizePhoneNumberInternal", TestNormalizePhoneNumberInternal)
     RunSelfTestCase(results, "TestNormalizePhoneNumberExternal", TestNormalizePhoneNumberExternal)
     RunSelfTestCase(results, "TestNormalizePhoneNumber", TestNormalizePhoneNumber)
@@ -366,6 +367,15 @@ TestCreateSpeedDialEntryDefaults(results) {
 ; Stable heeft voorrang; binnen niet-stabiel bepaalt uitsluitend isCompiled,
 ; nooit het prereleaselabel zelf, of het testprofiel of het devprofiel wordt
 ; gebruikt (docs/DECISIONS.md D-056).
+; Registersleutel per profiel voor sessiecookie en Belactie (D-068/D-075):
+; main zonder achtervoegsel, test/dev met hetzelfde achtervoegsel als de
+; profielmap onder A_MyDocuments.
+TestGetUserRegistryKey(results) {
+    AssertEqual(results, "main -> zonder achtervoegsel", GetUserRegistryKey("DocBot", "main"), "HKCU\Software\DocBot")
+    AssertEqual(results, "test -> -test", GetUserRegistryKey("DocBot", "test"), "HKCU\Software\DocBot-test")
+    AssertEqual(results, "dev -> -dev", GetUserRegistryKey("DocBot", "dev"), "HKCU\Software\DocBot-dev")
+}
+
 TestGetUserDataProfile(results) {
     AssertEqual(results, "Stabiel, compiled -> main", GetUserDataProfile("2.3", true), "main")
     AssertEqual(results, "Stabiel, noncompiled -> main", GetUserDataProfile("2.3", false), "main")

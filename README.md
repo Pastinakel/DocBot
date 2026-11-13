@@ -106,6 +106,9 @@ Functionaliteit — Hotstrings
 - Hotstrings worden opgeslagen als JSON. Standaardlocatie is
   `%MyDocuments%\DocBot\hotstrings.json`; instellingen (waaronder AutoSave en
   het gekozen hotstringbestand) staan in `%MyDocuments%\DocBot\settings.ini`.
+  De Belactie en de gekozen sms-pagina staan in het Windows-register onder
+  `HKCU\Software\DocBot` (reist via Ivanti mee), zodat ze ook bij een
+  OneDrive-storing beschikbaar zijn.
   Keuzes voor meegeleverde pakketten staan afzonderlijk in
   `%MyDocuments%\DocBot\package-settings.json`.
 - Gebruikersgegevens zijn per releasekanaal gescheiden: stabiele numerieke
@@ -508,6 +511,14 @@ Changelog
 ---------
 
 ### 2.5 — In ontwikkeling
+- Bij een OneDrive-storing kon je tijdens het laden van de instellingen
+  niet bellen vanaf het klembord: DocBot meldde alleen dat de instellingen
+  nog laadden. De Belactie staat nu in het Windows-register en werkt
+  daardoor ook tijdens zo'n storing, inclusief bellen of sms kiezen, en
+  blijft op Overzicht en in het tray-menu aanpasbaar. Je instelling wordt
+  eenmalig automatisch overgezet. Is die nog niet bekend,
+  dan verschijnt "Nummer bellen?". De sidebar toont Telefonie dan als
+  "Beperkt".
 - Het installatie-ID waarmee support jouw DocBot-installatie in de
   telemetrie terugvindt, staat nu onderaan de Over-pagina, met een knop om
   het te kopiëren voor een probleemmelding. Staat telemetrie uit of is het

@@ -118,7 +118,9 @@ The current startup flow in `DocBot.ahk` is approximately:
     once storage finishes loading can still appear that session;
 12. register Windows messages and exit handler;
 13. show GUI and apply custom visual rendering;
-14. start clipboard polling (suppressed while degraded — §7.4/D-064);
+14. start clipboard polling (while degraded, a recognized number follows the
+    call action from the registry, or opens the call-confirmation dialog if
+    that is not known yet — §7.4/D-074/D-075);
 15. start registration-button countdown timer;
 16. request telephony registration and start chained event polling —
     unaffected by user-data availability throughout;
@@ -209,6 +211,7 @@ Primary persisted state:
 
 ```text
 settings.ini             application settings + telemetry ID/counters
+                         (not the call action; see below)
 hotstrings.json          personal hotstrings
 package-settings.json    package enabled/disabled/conflict choices
 speeddial.json           speed-dial entries
@@ -216,6 +219,20 @@ sms-default-texts.json   default SMS message text per configured SMS page
 ```
 
 Storage routines use defensive patterns such as `.bak`, temporary files, validation, and replacement where implemented.
+
+Registry (`HKCU\Software\DocBot`, `DocBot-test`, `DocBot-dev` via
+`GetUserRegistryKey()`; roams with the user via Ivanti):
+
+```text
+SessionCookie            telephony session cookie (D-068)
+CallAction               call action 0-3 (D-075)
+SmsCallActionTitle       chosen SMS page title (D-075)
+```
+
+`CallAction`/`SmsCallActionTitle` are read at global initialization, before
+the storage loaders, so the user's own call action applies during degraded
+mode. They are migrated once from `settings.ini` by `LoadAppSettings()` and
+copied from the seed profile when a new profile is bootstrapped (D-075).
 
 ### 7.3 LocalAppData
 
@@ -263,10 +280,14 @@ startup. This is handled uniformly, not per-loader:
   itself does not depend on any of these loaders); Telefonie/Hotstrings/
   Instellingen show only the banner, with their entire normal content —
   save buttons included — hidden rather than disabled; the sidebar's
-  "Telefonie:"/"Tekst vervangen:" dots show a neutral "Laden…" state; the
+  "Tekst vervangen:" dot shows a neutral "Laden…" state and the
+  "Telefonie:" dot shows "Beperkt" when linked or "Niet gekoppeld" (D-074); the
   tray menu's "Belactie"/"Tekstvervanging" items are disabled; a
-  recognized clipboard number shows a one-off toast instead of acting on
-  not-yet-reliable settings. See D-064 for the full reasoning, including
+  recognized clipboard number follows the call action from the registry
+  (D-075), or opens the call-confirmation dialog when that is not known yet
+  (D-074, which replaced D-064's toast); the tray "Belactie" submenu and
+  the Overzicht "Belactie" card stay available once the call action is
+  known, with the banner moved below the card (`IsDegradedGateOpen()`). See D-064 for the full reasoning, including
   why this is hide-not-dim and all-or-nothing rather than per-feature.
 - `ShowPage()` gained a per-control `_degradedGate` property so gated
   controls stay hidden across page navigation — its pre-existing

@@ -170,6 +170,26 @@ the rest of this proposal before implementation.
 
 ### Degraded mode: block functionality visibly, not startup
 
+> **Update (D-074):** the clipboard-number toast described below has been
+> replaced: during degraded mode a recognized number now always opens the
+> call-confirmation dialog. Open: validate on Windows with the
+> locked-profile test from the D-064 validation notes — external number,
+> internal 4-digit number, a TeleQ-copied number (must stay ignored),
+> copying the same number twice, and the degraded-to-ready transition with
+> the dialog still open.
+>
+> **Update (D-075):** the call action now lives in the registry. Also
+> validate: the one-time migration from `settings.ini` (including a legacy
+> `AutoCall`/`DirectCall` file) and removal of the old keys; degraded mode
+> with a known call action (own action applies, tray Belactie enabled,
+> Overzicht Belactie card visible with the banner below it and changeable,
+> sidebar "Inactief"/"Beperkt"); the call action becoming known mid-episode
+> (only the banner/card swap, no other content appears); degraded mode on the first start after
+> the update (confirmation-dialog fallback); bootstrapping `DocBot-test`/
+> `DocBot-dev` copies the registry values; that closing DocBot while
+> degraded no longer writes `settings.ini`/`hotstrings.json`; and that the
+> values really roam to another workstation via Ivanti.
+
 Project owner requirement (2026-08-28): silently running on defaults, as
 today, is not acceptable even once the retry mechanism above exists —
 retries can still take minutes. The user must be able to see that settings
