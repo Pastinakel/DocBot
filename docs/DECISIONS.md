@@ -3979,6 +3979,15 @@ SMS route works without user storage; only the per-page default text
     `sms-default-texts.json` has loaded);
   - the tray "Belactie" submenu stays enabled (it now writes only the
     registry, not `settings.ini`);
+  - the Overzicht "Belactie" card stays visible (added in
+    `2.5-klembord-degraded.4`): its controls use the gate
+    `hide-while-degraded-unless-callaction-known`, and the degraded banner
+    moves down to the Tekstvervanging/Gebruik position, which stay hidden.
+    Two banners exist; `IsDegradedGateOpen()` shows exactly one of them
+    (`show-only-while-degraded-callaction-unknown`/`-known`). If the call
+    action becomes known mid-episode (migration succeeded, another loader
+    still failing), `MarkCallActionSettingsKnown()` re-applies `ShowPage()`,
+    the sidebar and the tray menu at once;
   - the sidebar "Telefonie:" dot shows "Inactief" for call action "none",
     otherwise "Beperkt"/"Niet gekoppeld" as in D-074.
   When it is false (first start after this update during an outage), D-074's
@@ -4000,6 +4009,6 @@ SMS route works without user storage; only the per-page default text
 - `docs/DATA_PROTECTION.md` §2.2b lists the new registry values; they are
   user preferences, not personal data.
 - The overall degraded-mode gating (D-064's all-or-nothing `StorageAllReady`)
-  is otherwise unchanged: speed dials, hotstrings and the Overzicht Belactie
-  card stay hidden until all storage has loaded.
+  is otherwise unchanged: speed dials, hotstrings, Tekstvervanging and
+  Gebruik stay hidden until all storage has loaded.
 

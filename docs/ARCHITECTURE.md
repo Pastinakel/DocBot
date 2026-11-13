@@ -285,8 +285,9 @@ startup. This is handled uniformly, not per-loader:
   tray menu's "Belactie"/"Tekstvervanging" items are disabled; a
   recognized clipboard number follows the call action from the registry
   (D-075), or opens the call-confirmation dialog when that is not known yet
-  (D-074, which replaced D-064's toast); the tray "Belactie" submenu stays
-  enabled once the call action is known. See D-064 for the full reasoning, including
+  (D-074, which replaced D-064's toast); the tray "Belactie" submenu and
+  the Overzicht "Belactie" card stay available once the call action is
+  known, with the banner moved below the card (`IsDegradedGateOpen()`). See D-064 for the full reasoning, including
   why this is hide-not-dim and all-or-nothing rather than per-feature.
 - `ShowPage()` gained a per-control `_degradedGate` property so gated
   controls stay hidden across page navigation — its pre-existing

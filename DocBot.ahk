@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-klembord-degraded.3"
+global AppVersion := "2.5-klembord-degraded.4"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -705,10 +705,16 @@ BuildMainGui() {
     ; verschuiven. De registratiekaart hierboven blijft altijd zichtbaar:
     ; telefonie-koppeling hangt niet af van settings.ini/hotstrings/
     ; pakketkeuzes/snelkiesnummers/sms-standaardteksten.
+    ;
+    ; Is de Belactie al bekend uit het register (D-075), dan blijft de
+    ; Belactie-kaart ook tijdens degraded mode zichtbaar en staat er een
+    ; tweede banner op de plek van Tekstvervanging/Gebruik eronder. Precies
+    ; één van beide banners is tegelijk zichtbaar (zie ShowPage()).
     AddDegradedBanner(
         "overzicht",
         246,
-        "Instellingen worden geladen. Functionaliteit hieronder is tijdelijk beperkt. Telefonie-koppeling werkt gewoon door."
+        "Instellingen worden geladen. Functionaliteit hieronder is tijdelijk beperkt. Telefonie-koppeling werkt gewoon door.",
+        "show-only-while-degraded-callaction-unknown"
     )
     MarkDegradedGateStart("overzicht")
 
@@ -730,6 +736,15 @@ BuildMainGui() {
             : "Configureer eerst een SMS-pagina om de keuze tussen bellen en sms beschikbaar te maken.",
         "s8 c" C["Muted"]
     )
+    MarkDegradedGateEnd("overzicht", "hide-while-degraded-unless-callaction-known")
+
+    AddDegradedBanner(
+        "overzicht",
+        400,
+        "Instellingen worden geladen. Tekstvervanging en gebruik zijn tijdelijk niet beschikbaar. Telefonie werkt gewoon door.",
+        "show-only-while-degraded-callaction-known"
+    )
+    MarkDegradedGateStart("overzicht")
 
     AddCard("overzicht", 236, 400, 736, 104)
     AddCardLabel("overzicht", 260, 416, 240, 22, "Tekstvervanging", "s13 bold c" C["Text"])
@@ -2355,22 +2370,45 @@ MarkDegradedGateStart(pageKey) {
 ; MarkDegradedGateStart(pageKey) aan Pages[pageKey] zijn toegevoegd als
 ; "verberg zolang niet alle opslag geladen is" (StorageAllReady=false).
 ; ShowPage() respecteert dit, onafhankelijk van paginawissels.
-MarkDegradedGateEnd(pageKey) {
+; Met gate "hide-while-degraded-unless-callaction-known" blijft het bereik
+; tijdens degraded mode zichtbaar zodra de Belactie uit het register bekend
+; is (CallActionSettingsKnown, D-075) — alleen voor de Belactie-kaart.
+MarkDegradedGateEnd(pageKey, gate := "hide-while-degraded") {
     global Pages, DegradedGateRangeStart
 
     startIndex := DegradedGateRangeStart.Has(pageKey) ? DegradedGateRangeStart[pageKey] : 0
     loop Pages[pageKey].Length - startIndex {
         ctrl := Pages[pageKey][startIndex + A_Index]
-        ctrl._degradedGate := "hide-while-degraded"
+        ctrl._degradedGate := gate
     }
 }
 
 ; Omgekeerd: ctrl is normaal verborgen en verschijnt uitsluitend zolang
 ; StorageAllReady nog false is. Voor de degraded-mode-banner, zie
 ; AddDegradedBanner().
-ShowOnlyWhileDegraded(ctrl) {
-    ctrl._degradedGate := "show-only-while-degraded"
+ShowOnlyWhileDegraded(ctrl, gate := "show-only-while-degraded") {
+    ctrl._degradedGate := gate
     return ctrl
+}
+
+; Zichtbaarheid volgens ctrl._degradedGate (zie MarkDegradedGateEnd(),
+; ShowOnlyWhileDegraded()) bovenop de gewone paginazichtbaarheid.
+IsDegradedGateOpen(gate) {
+    global StorageAllReady, CallActionSettingsKnown
+
+    switch gate {
+        case "hide-while-degraded":
+            return StorageAllReady
+        case "hide-while-degraded-unless-callaction-known":
+            return StorageAllReady || CallActionSettingsKnown
+        case "show-only-while-degraded":
+            return !StorageAllReady
+        case "show-only-while-degraded-callaction-unknown":
+            return !StorageAllReady && !CallActionSettingsKnown
+        case "show-only-while-degraded-callaction-known":
+            return !StorageAllReady && CallActionSettingsKnown
+    }
+    return true
 }
 
 ; Blijvende (niet-vanzelf-verdwijnende) melding dat opslag nog niet
@@ -2383,20 +2421,20 @@ ShowOnlyWhileDegraded(ctrl) {
 ; renderen niet correct zonder de custom-draw-aanpak van AddFlatButton(),
 ; en een los animatietimertje voor uitsluitend dit venstertje weegt niet op
 ; tegen het effect.
-AddDegradedBanner(pageKey, y, message) {
+AddDegradedBanner(pageKey, y, message, gate := "show-only-while-degraded") {
     global MainGui
 
     surface := MainGui.AddText("x236 y" y " w736 h38 BackgroundFDF0DE", "")
-    ShowOnlyWhileDegraded(surface)
+    ShowOnlyWhileDegraded(surface, gate)
     AddPageControl(pageKey, surface)
 
     accent := MainGui.AddText("x236 y" y " w4 h38 BackgroundF08200", "")
-    ShowOnlyWhileDegraded(accent)
+    ShowOnlyWhileDegraded(accent, gate)
     AddPageControl(pageKey, accent)
 
     body := MainGui.AddText("x252 y" (y + 11) " w704 h20 BackgroundFDF0DE", message)
     body.SetFont("s10 c5C3600", "Segoe UI")
-    ShowOnlyWhileDegraded(body)
+    ShowOnlyWhileDegraded(body, gate)
     AddPageControl(pageKey, body)
 }
 
@@ -2613,11 +2651,7 @@ ShowPage(pageKey, *) {
         pageVisible := key = pageKey
         for _, ctrl in controls {
             gate := HasProp(ctrl, "_degradedGate") ? ctrl._degradedGate : ""
-            show := pageVisible
-            if gate = "hide-while-degraded" && !StorageAllReady
-                show := false
-            else if gate = "show-only-while-degraded" && StorageAllReady
-                show := false
+            show := pageVisible && IsDegradedGateOpen(gate)
             ctrl.Opt(show ? "-Hidden" : "+Hidden")
         }
     }
@@ -10089,8 +10123,29 @@ SaveCallActionSettings(showError := true) {
         return false
     }
 
-    CallActionSettingsKnown := true
+    MarkCallActionSettingsKnown()
     return true
+}
+
+; Zet CallActionSettingsKnown. Wordt de Belactie hiermee tijdens degraded
+; mode voor het eerst bekend (bijv. de eenmalige migratie lukte, maar een
+; andere lader nog niet) en bestaat het hoofdvenster al, dan direct de
+; Belactie-kaart, sidebar en tray bijwerken in plaats van te wachten tot
+; alle opslag geladen is.
+MarkCallActionSettingsKnown() {
+    global CallActionSettingsKnown, MainGui, CallActionSelector, CurrentPage, State
+
+    wasKnown := CallActionSettingsKnown
+    CallActionSettingsKnown := true
+    if wasKnown || !IsObject(MainGui)
+        return
+
+    if IsObject(CallActionSelector)
+        CallActionSelector.Value := State["CallAction"]
+    if CurrentPage != ""
+        ShowPage(CurrentPage)
+    RefreshSidebarStatuses()
+    BuildTrayMenu()
 }
 
 ; Eenmalige migratie: alleen aangeroepen door LoadAppSettings() wanneer het
@@ -10420,7 +10475,7 @@ LoadAppSettings() {
                 registryCallAction["CallAction"],
                 registryCallAction["SmsCallActionTitle"]
             )
-            CallActionSettingsKnown := true
+            MarkCallActionSettingsKnown()
         } else {
             storedCallAction := Trim(
                 IniReadOrThrow(ConfigFile, "Features", "CallAction", "")

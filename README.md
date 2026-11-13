@@ -514,8 +514,9 @@ Changelog
 - Bij een OneDrive-storing kon je tijdens het laden van de instellingen
   niet bellen vanaf het klembord: DocBot meldde alleen dat de instellingen
   nog laadden. De Belactie staat nu in het Windows-register en werkt
-  daardoor ook tijdens zo'n storing, inclusief bellen of sms kiezen. Je
-  instelling wordt eenmalig automatisch overgezet. Is die nog niet bekend,
+  daardoor ook tijdens zo'n storing, inclusief bellen of sms kiezen, en
+  blijft op Overzicht en in het tray-menu aanpasbaar. Je instelling wordt
+  eenmalig automatisch overgezet. Is die nog niet bekend,
   dan verschijnt "Nummer bellen?". De sidebar toont Telefonie dan als
   "Beperkt".
 - Het installatie-ID waarmee support jouw DocBot-installatie in de
