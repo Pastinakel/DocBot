@@ -90,7 +90,11 @@ exceeds `HotstringSchemaVersion`.
 
 ---
 
-## Speed dial — `speeddial.json`
+## Speed dial — registry `SpeedDial` (formerly `speeddial.json`)
+
+Since D-078 the document below is stored as one JSON string in the registry
+value `SpeedDial` (`HKCU\Software\DocBot`, `-test`, `-dev`). The format and
+the version table are unchanged.
 
 `SpeedDialSchemaVersion` (currently **3**). Functional key: `naam`
 (case-insensitive) **or** `nummer` (exact) — either match counts as
@@ -102,18 +106,30 @@ exceeds `HotstringSchemaVersion`.
 | 1 → 2 | `actief` defaults to `true` when the field is missing (older entries had no active/inactive concept). | `!rawEntry.Has("actief")` per entry |
 | 3 | Locally configured default speed-dial numbers (`LocalConfig["DefaultSpeedDials"]`) are added once via `AddMissingDefaultSpeedDials()`. A match on name *or* number blocks the add. | `schemaVersion < 3` |
 
-**Legacy filenames:** `InitializeSpeedDialStorage()` checks, in order, for
-`speeddial.json` in the user-data profile; if absent, it copies the first
-match found among `UserDataDir\snelkiesnummers.json`,
-`A_ScriptDir\snelkiesnummers.json`, `A_ScriptDir\speeddial.json` into the
-profile once, then runs the normal load/migration path on the copy.
+**Restore from backup (D-079):** when the registry has no `SpeedDial`
+value, `InitializeSpeedDialStorage()` waits for the "Gebruikersmap" loader
+and first restores `SpeedDial` from `telefonie-backup.json` if present
+(`"unreadable"` → retry later; corrupt → ignored). Only without a backup
+does the file migration below run.
 
-**Ceiling:** `LoadSpeedDialFromJson()` rejects a file whose `schemaVersion`
-exceeds `SpeedDialSchemaVersion`.
+**File → registry (D-078):** otherwise it takes the first existing file among `speeddial.json` in the user-data
+profile, `UserDataDir\snelkiesnummers.json`,
+`A_ScriptDir\snelkiesnummers.json`, `A_ScriptDir\speeddial.json`, runs the
+normal load/migration path on it, writes the result to the registry
+(verified by reading back) and only then deletes the profile's
+`speeddial.json` (+ `.bak`/`.tmp`). Legacy files outside the profile are
+left alone. No file → first run: the default list is written to the
+registry. An existing registry value is never overwritten by this.
+
+**Ceiling:** `LoadSpeedDialFromJsonText()` rejects a document whose
+`schemaVersion` exceeds `SpeedDialSchemaVersion`.
 
 ---
 
-## SMS default texts — `sms-default-texts.json`
+## SMS default texts — registry `SmsDefaultTexts` (formerly `sms-default-texts.json`)
+
+Since D-078 stored as one JSON string in the registry value
+`SmsDefaultTexts`; format unchanged.
 
 `SmsDefaultTextSchemaVersion` (currently **1**). No version-gated migration
 exists yet — the schema has never moved past 1. Functional key: `Title`
@@ -128,11 +144,15 @@ removed from `DocBot.local.ahk` is kept on disk and simply not shown in the
 Instellingen GUI until a matching `Title` exists again — consistent with the
 shared rule of never losing a user-edited value.
 
-`InitializeSmsDefaultTextStorage()` creates an empty document on first run,
-same as `InitializeSpeedDialStorage()`. There is no legacy filename fallback
-— this storage format did not exist before schema version 1.
+`InitializeSmsDefaultTextStorage()` follows the same rules as speed dial
+(D-078/D-079): registry value present → load it; otherwise, once the
+user-data folder is reachable, restore from `telefonie-backup.json`, else
+migrate `sms-default-texts.json` (then delete
+it + `.bak`/`.tmp`), or write an empty document on a first run. There is no
+legacy filename fallback — this storage format did not exist before schema
+version 1.
 
-**Ceiling:** `LoadSmsDefaultTextsFromJson()` rejects a file whose
+**Ceiling:** `LoadSmsDefaultTextsFromJsonText()` rejects a document whose
 `schemaVersion` exceeds `SmsDefaultTextSchemaVersion`.
 
 ---
@@ -193,6 +213,18 @@ display names).
 
 ---
 
+## Telephony backup — `telefonie-backup.json` (D-079)
+
+`TelephonyBackupSchemaVersion` (currently **1**): `{schemaVersion,
+CallAction, SmsCallActionTitle, SpeedDial, SmsDefaultTexts}`, where
+`SpeedDial`/`SmsDefaultTexts` use exactly the registry document formats
+above, so their own schema migrations also apply on restore. Written only
+when all four values are loaded; read only when a registry value is
+missing. A backup with a newer `schemaVersion` is ignored (logged), not
+used.
+
+---
+
 ## Call action — `settings.ini` → registry
 
 Not a versioned JSON schema: a one-time move of `[Features] CallAction` and
@@ -200,7 +232,8 @@ Not a versioned JSON schema: a one-time move of `[Features] CallAction` and
 `-test`/`-dev`), added in `2.5-klembord-degraded.3` (D-075).
 
 - Trigger: the registry has no `CallAction` value when `LoadAppSettings()`
-  successfully reads `settings.ini`.
+  successfully reads `settings.ini`, and `telefonie-backup.json` has no
+  `CallAction` (since D-079 a backup is restored first).
 - Value: derived exactly as before, including the legacy `AutoCall`/
   `DirectCall` keys (`AutoCall=0` → 0; `DirectCall=1` → 2; otherwise 1).
 - Order: write registry → read back and compare → only then delete

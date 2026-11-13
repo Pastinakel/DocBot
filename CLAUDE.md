@@ -139,12 +139,17 @@ Deze bestanden staan niet in de repository:
 
 - Hotstrings: `%MyDocuments%\DocBot\hotstrings.json`
 - Instellingen: `%MyDocuments%\DocBot\settings.ini`
-- Belactie en gekozen sms-pagina (`CallAction`, `SmsCallActionTitle`) en de
-  telefonie-sessiecookie: register, `HKCU\Software\DocBot` (of
-  `DocBot-test`/`DocBot-dev`); zie `docs/DECISIONS.md` D-068/D-075
+- Telefonie-instellingen in het register, `HKCU\Software\DocBot` (of
+  `DocBot-test`/`DocBot-dev`): Belactie en gekozen sms-pagina (`CallAction`,
+  `SmsCallActionTitle`), snelkiesnummers (`SpeedDial`),
+  sms-standaardteksten (`SmsDefaultTexts`) en de sessiecookie; zie
+  `docs/DECISIONS.md` D-068/D-075/D-078
+- Reservekopie van die telefonie-instellingen (zonder sessiecookie):
+  `%MyDocuments%\DocBot\telefonie-backup.json`; zie D-079
 - Pakketstatussen: `%MyDocuments%\DocBot\package-settings.json`
-- Snelkiesnummers: `%MyDocuments%\DocBot\speeddial.json`
-- SMS-standaardtekst per pagina: `%MyDocuments%\DocBot\sms-default-texts.json`
+- Snelkiesnummers en SMS-standaardtekst: vroeger `speeddial.json` en
+  `sms-default-texts.json` in `%MyDocuments%\DocBot`; worden eenmalig naar
+  het register overgezet en daarna verwijderd
 - Debug-log: `%LocalAppData%\DocBot\debug.log`
 
 ## Gebruikersprofielen per releasekanaal

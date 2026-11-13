@@ -203,6 +203,27 @@ the rest of this proposal before implementation.
 > page with `TextFieldId`: the number is filled and a warning toast says the
 > default text is not available yet; after storage has loaded the default
 > text is filled again without a toast.
+>
+> **Update (D-078):** speed dials and SMS default texts now live in the
+> registry. Validate on Windows: one-time migration of `speeddial.json`
+> (incl. a legacy `snelkiesnummers.json`) and `sms-default-texts.json`, and
+> that the files are deleted only after a verified registry write; during
+> degraded mode with migrated data the Telefonie page, tray speed dials and
+> the Instellingen SMS card are available and editable, the Hotstringbestand
+> card stays hidden, Opslaan on Instellingen does not touch `settings.ini`,
+> and the sidebar shows "Actief"; on the first start after the update during
+> an outage the old behavior (hidden, "Beperkt", D-074/D-077) applies and
+> switches over without restart once the loaders succeed; new profiles copy
+> the registry values; the values roam via Ivanti.
+>
+> **Update (D-079):** a reset of the Ivanti personalization wipes the
+> registry values, so DocBot now keeps `telefonie-backup.json` on OneDrive.
+> Validate on Windows: the backup appears shortly after startup and after
+> each change (not rewritten when unchanged); after deleting
+> `HKCU\Software\DocBot-test` (simulated reset) all four values come back
+> from the backup on the next start; with the registry wiped *and* OneDrive
+> unavailable, nothing overwrites the backup and the values return once
+> OneDrive is back; a corrupt backup is ignored with a log line.
 
 Project owner requirement (2026-08-28): silently running on defaults, as
 today, is not acceptable even once the retry mechanism above exists —

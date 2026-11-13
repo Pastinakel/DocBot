@@ -4097,3 +4097,158 @@ default text was ever configured.
   Instellingen field during degraded mode; revisit if SMS with default texts
   turns out to be common during outages.
 
+---
+
+## D-078 — Move speed dials and SMS default texts into the registry
+
+**Status:** Decided by the project owner on `claude/telefonie-register`
+(`AppVersion 2.5-telefonie-register.1`), after weighing three options:
+(1) revert to "no calling while degraded", (2) a fixed
+Annuleren/Bellen/SMS dialog during degraded mode, (3) all call and SMS
+settings in the registry. Option 3 was chosen, explicitly including speed
+dials. Not yet functionally validated on Windows (D-037).
+
+**Background**
+
+D-075 moved the call action into `HKCU`, which is available at startup and
+roams via Ivanti. Speed dials (`speeddial.json`) and the per-page SMS
+default texts (`sms-default-texts.json`) still lived on OneDrive, so during
+an outage the Telefonie page and the tray speed dials stayed hidden and an
+SMS action filled no default text (D-077).
+
+**Decision**
+
+- Both stores move into the existing per-profile registry key as one JSON
+  document each: value `SpeedDial` (`{schemaVersion, entries}`) and value
+  `SmsDefaultTexts` (`{schemaVersion, items}`), `REG_SZ`. The document
+  format, schema versions and in-document migrations are unchanged; only the
+  storage backend changes. `WriteRegistryDocument()` writes and reads back
+  for verification (replacing the `.tmp`/`.bak` file routine).
+- Loaders (`InitializeSpeedDialStorage()`/`InitializeSmsDefaultTextStorage()`):
+  registry value present → load from it. Otherwise one-time migration: wait
+  until the "Gebruikersmap" loader has succeeded (so a not-yet-visible file
+  is never mistaken for a first run), load the existing file (speed dials:
+  including the legacy filenames as before), save to the registry, and only
+  then delete the profile file plus its `.bak`/`.tmp`. Legacy files outside
+  the profile are left alone, as before. No file at all → first run: write
+  the default document to the registry.
+- New profiles copy all four telephony values (`CallAction`,
+  `SmsCallActionTitle`, `SpeedDial`, `SmsDefaultTexts`) from the seed
+  profile per value, never overwriting (`SeedTelephonyRegistrySettings()`).
+- Degraded-mode gating becomes per loader for these parts
+  (`hide-until-loader:<name>`/`show-until-loader:<name>` in
+  `IsDegradedGateOpen()`):
+  - Telefonie page and its banner follow the "Snelkiesnummers" loader;
+  - the tray speed-dial section follows the "Snelkiesnummers" loader;
+  - on Instellingen, the Hotstringbestand card still waits for all storage,
+    the SMS card plus the Opslaan button follow the "SMS-standaardteksten"
+    loader. `SaveSettings()` during degraded mode saves only the registry
+    parts (SMS page, default texts) and leaves `settings.ini`/hotstrings
+    untouched;
+  - when either loader succeeds mid-episode, `ShowPage()`, the sidebar and
+    the tray menu are refreshed at once (`RefreshAfterTelephonyLoaderReady()`).
+- Sidebar "Telefonie:" during degraded mode shows the normal status
+  (Actief/Inactief/Niet gekoppeld) once call action, speed dials and SMS
+  texts are all loaded (`IsTelephonyStorageReady()`), and "Beperkt" only
+  until then.
+- D-074's confirmation-dialog fallback and D-077's SMS toast stay, but now
+  only apply on the first start after the update during an outage (before
+  migration).
+
+**Reasoning**
+
+- One rule that is easy to explain: telephony works independently of
+  OneDrive; only text replacement waits for it.
+- Storing the whole JSON document keeps every existing parse/migration path
+  and the self-tests' coverage of `AddMissingDefaultSpeedDials()` intact.
+- Privacy: speed dials and default texts can contain personal data (staff
+  numbers, a name in a sign-off). They move from OneDrive to the roaming
+  registry profile; access still rests on the Windows profile.
+  `docs/DATA_PROTECTION.md` §2.2, §2.2b, §3.3 and §3.5 are updated.
+
+**Environment facts (project owner, after a roaming test on 2026-11-13)**
+
+- The workstation profile is non-persistent: a file in `%AppData%` and a
+  registry key written by `cmd`/`reg.exe` were both gone after logging off
+  and on again on the same workstation, while `HKCU\Software\DocBot-test`
+  written by DocBot itself (`SessionCookie`, `CallAction`,
+  `SmsCallActionTitle`) was restored. `%AppData%` was therefore not an
+  alternative to the registry for a test outside DocBot.
+- Ivanti personalization for DocBot (confirmed with the Ivanti
+  administrator): everything DocBot writes is kept; it does not depend on
+  the executable name (stable and test builds alike); changes are saved
+  immediately, not only at logoff.
+- A reset of the Ivanti personalization **does** wipe these values. Files
+  on OneDrive survive such a reset; the registry does not.
+
+**Consequences**
+
+- A reset of the Ivanti personalization (a common helpdesk fix) erases the
+  call action, speed dials and SMS default texts from the registry. D-079
+  adds a OneDrive backup copy that restores them.
+- The files are deleted after migration, so there is no hand-editable copy
+  and no OneDrive version history for these lists any more. DocBot has no
+  import/export for either file, so nothing functional is lost.
+- Rolling back to a build without this change shows an empty/default
+  speed-dial list and no SMS default texts (the files are gone); the
+  registry values remain and come back on re-upgrade.
+
+---
+
+## D-079 — OneDrive backup copy of the telephony settings
+
+**Status:** Decided by the project owner on `claude/telefonie-register`
+(`AppVersion 2.5-telefonie-register.2`). Not yet functionally validated on
+Windows (D-037).
+
+**Background**
+
+D-078 moved all telephony settings into `HKCU`, which Ivanti keeps
+immediately and for every DocBot build — but a reset of the Ivanti
+personalization wipes it, and the old files on OneDrive are deleted after
+migration. Without a copy, a helpdesk reset would silently erase a user's
+speed dials, SMS default texts and call action.
+
+**Decision**
+
+- The registry stays the single source DocBot reads from. In addition,
+  DocBot keeps one backup file, `telefonie-backup.json`, in the user-data
+  folder on OneDrive (per profile: `DocBot`, `DocBot-test`, `DocBot-dev`):
+  `{schemaVersion: 1, CallAction, SmsCallActionTitle, SpeedDial: {...},
+  SmsDefaultTexts: {...}}`, the latter two in exactly the registry document
+  format.
+- Writing (`WriteTelephonyBackupIfDirty()`): scheduled after every
+  successful registry save of any of the four values, after startup and
+  after each storage-retry tick while still pending. It only writes when all
+  four values are actually loaded (`IsTelephonyStorageReady()`) and the
+  user-data folder is reachable, so an empty or default state — e.g. right
+  after a reset during an outage — can never overwrite a good backup. An
+  unchanged backup is not rewritten. Written via `.tmp` + verification +
+  `.bak`; a failed write is logged and retried after a minute; it never
+  blocks calling.
+- Restoring: whenever a registry value is missing, its loader first reads
+  the backup (`ReadTelephonyBackup()`), before the old-file migration or the
+  first-run default. `"unreadable"` (file exists but cannot be read yet)
+  makes the loader fail and retry rather than continue with defaults; a
+  corrupt backup is logged and ignored so it cannot block startup. Speed
+  dials and SMS texts are restored by their loaders; the call action by
+  `LoadAppSettings()`. A call action chosen by the user during degraded mode
+  before the backup could be read (D-076) is already in the registry and
+  therefore wins.
+
+**Reasoning**
+
+- Combines the availability of the registry (works during OneDrive outages)
+  with the durability of OneDrive (survives an Ivanti reset).
+- One file with all four values keeps restore and privacy documentation
+  simple.
+
+**Consequences**
+
+- Speed dials and SMS default texts are on OneDrive again, as a backup.
+  `docs/DATA_PROTECTION.md` §2.2/§2.2b/§3.5 and the retention text are
+  updated accordingly.
+- If the backup is older than the registry (a write failed and a reset
+  happened before the retry), the most recent changes are lost; the retry
+  interval of one minute keeps that window small.
+
