@@ -46,15 +46,24 @@ Windows.
 
 ## 3. Branch and release status at handover
 
-Repository state checked on 2026-09-04, but `release/2.4-rc`
-is released aslready:
+Repository state checked on 2026-11-13: the 2.5 release candidate is in
+progress.
 
-- `main` is the production line and represents stable **DocBot 2.4**, merged
-  from `release/2.4-rc` via PR #70 and tagged `v2.4` on the stable release
-  commit. No further work is expected on `main` outside an explicitly
-  requested hotfix. Verify the exact merge commit and tag against `git log`/
-  `git tag` before citing it elsewhere — this section does not repeat that
-  hash so it cannot go stale if it is ever re-derived (e.g. after a hotfix).
+- `release/2.5-rc` was branched from `develop` on 2026-11-13 and starts at
+  `AppVersion = 2.5-rc.1`. Only bugfixes, documentation and release
+  preparation go onto this branch; new features wait for 2.6. Each commit
+  that changes `DocBot.ahk` raises `rc.N` by one. It also contains the
+  `main`-only `packages/anest.json` spelling fix (PR #90), so the eventual
+  merge into `main` does not drop it.
+- Before the stable 2.5 release: collapse the 2.4.1/2.4.2 changelog entries
+  (`docs/TODO.md` P3), rename the README `### 2.5` heading to
+  `Huidige stabiele release`, and test a compiled build on Windows
+  (`--selftest` plus a functional telephony/registry check).
+- `main` is the production line and represents stable **DocBot 2.4.2**
+  (2.4 plus the "mvg" hotfixes, tagged `v2.4`; 2.4.1/2.4.2 carry no tag).
+  No further work is expected on `main` outside an explicitly requested
+  hotfix. Verify merge commits and tags against `git log`/`git tag`.
+
 - `release/2.4-rc` is the historical release branch for 2.4; expect it to be
   deleted after merging, no further work on it. The full 2.4 feature/fix set
   is recorded in the README `### 2.4 — Huidige stabiele release` changelog
