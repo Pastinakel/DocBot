@@ -478,6 +478,9 @@ De standaardlog:
 - schermt lokale en netwerkpaden af;
 - schermt URL's en herkenbare telefoon-/interne nummers af;
 - neemt bepaalde gestructureerde inhoud en serverresponses niet op;
+- legt van telefonie-events alleen de eventnaam, de berichtlengte, de
+  lengtes van cijferreeksen en of een toestel- of koppelnummer werd herkend
+  vast, nooit de berichttekst of de nummers zelf;
 - kapt individuele geschoonde teksten boven 2.000 tekens af;
 - roteert `debug.log` boven circa 2 MB naar `debug.log.oud`;
 - verwijdert regels ouder dan zeven dagen automatisch uit zowel `debug.log`

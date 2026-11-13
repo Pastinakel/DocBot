@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-rc.1"
+global AppVersion := "2.5-telefonie-event-log.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -3612,16 +3612,29 @@ IPT_PollResponse() {
                                 ; niets te doen, keep-alive
                             case "StopEventLoop":
                                 State["IPT"]["NeedUpdate"] := -1
+                                LogIPTEvent(eventName)
                             case "SetUpperText":
                                 msgNode := root.selectSingleNode("Message")
-                                if IsObject(msgNode)
+                                if IsObject(msgNode) {
                                     ParsePhoneNumbersFromMessage(msgNode.text)
+                                    LogIPTEvent(eventName, DescribeIPTEventMessage(msgNode.text))
+                                } else {
+                                    LogIPTEvent(eventName, "Geen Message-element in het event.")
+                                }
                             case "ShowAlert":
+                                LogIPTEvent(eventName)
                                 msgNode := root.selectSingleNode("Text")
                                 if IsObject(msgNode)
                                     ShowNotification(msgNode.text, 4000, "info")
+                            default:
+                                LogIPTEvent(eventName = "" ? "(zonder naam)" : eventName)
                         }
+                    } else {
+                        LogIPTEvent("(geen leesbaar event)", "Respons bevat geen XML-hoofdelement; "
+                            . StrLen(IPTPollRequest.ResponseText) . " tekens.")
                     }
+                } else {
+                    LogIPTEvent("(geen leesbaar event)", "Respons is niet als XML gelezen.")
                 }
             } catch as err {
                 DebugLog("←", IPTConfig["EventPage"] . " PARSE-FOUT: " . err.Message, IPTPollRequest.ResponseText)
@@ -3640,6 +3653,44 @@ IPT_PollResponse() {
     ; dan één het event-endpoint-aanvraag tegelijk onderweg is.
     if State["IPT"]["NeedUpdate"] > -1
         SetTimer IPT_poller, -10
+}
+
+; Diagnostiek voor de standaardlog: welk telefonie-event binnenkwam en wat
+; DocBot daaruit heeft overgenomen, zonder de berichttekst of nummers zelf.
+; Keep-alives (NULL) worden niet gelogd; de poll-regels tonen die al. Het
+; label bevat bewust geen "status"/"response"/"headers", anders schermt
+; SanitizeStandardLogText() de hele regel af.
+LogIPTEvent(eventName, detail := "") {
+    global State
+
+    tekst := "Event: " . eventName . "."
+    if detail != ""
+        tekst .= "`r`n" . detail
+    tekst .= "`r`nNa verwerking: toestelnummer "
+        . (Trim(State["IPT"]["UserTel"]) != "" ? "bekend" : "leeg")
+        . ", koppelnummer "
+        . (Trim(State["IPT"]["UpdateTel"]) != "" ? "bekend" : "leeg") . "."
+
+    DebugLog("i", "Telefonie-event", tekst)
+}
+
+; Beschrijft de vorm van een SetUpperText-bericht zonder inhoud: lengte, de
+; lengtes van de cijferreeksen en of de toestel- (4 cijfers) en
+; koppelnummerpatronen (7 cijfers) uit ParsePhoneNumbersFromMessage()
+; overeenkomen. Daarmee is te zien waarom een nummer wel of niet herkend is.
+DescribeIPTEventMessage(messageText) {
+    runLengths := ""
+    pos := 1
+    while pos := RegExMatch(messageText, "\d+", &run, pos) {
+        runLengths .= (runLengths = "" ? "" : ", ") . run.Len
+        pos += run.Len
+    }
+
+    return "Bericht: " . StrLen(messageText) . " tekens; cijferreeksen: "
+        . (runLengths = "" ? "geen" : runLengths)
+        . "; toestelpatroon " . (RegExMatch(messageText, "[^0-9]([0-9]{4})[^0-9]") ? "herkend" : "niet herkend")
+        . ", koppelnummerpatroon " . (RegExMatch(messageText, "[^0-9]([0-9]{7})[^0-9]") ? "herkend" : "niet herkend")
+        . "."
 }
 
 ; Bevat de bestaande regex-logica, nu toegepast op de geëxtraheerde
