@@ -517,7 +517,8 @@ Changelog
   daardoor ook tijdens zo'n storing, inclusief bellen of sms kiezen, en
   blijft op Overzicht en in het tray-menu altijd aanpasbaar. Je instelling
   wordt eenmalig automatisch overgezet; tot dat lukt geldt "Bellen na
-  bevestiging". De sidebar toont Telefonie dan als "Beperkt".
+  bevestiging". De sidebar toont Telefonie dan als "Beperkt". Bij sms
+  meldt DocBot dat je standaardtekst pas na het laden weer wordt ingevuld.
 - Het installatie-ID waarmee support jouw DocBot-installatie in de
   telemetrie terugvindt, staat nu onderaan de Over-pagina, met een knop om
   het te kopiëren voor een probleemmelding. Staat telemetrie uit of is het

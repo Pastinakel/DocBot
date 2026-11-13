@@ -4066,3 +4066,34 @@ long as the outage lasted.
   `settings.ini` (never migrated) is discarded. Accepted: the new choice is
   newer and explicit.
 
+---
+
+## D-077 — Tell the user when the SMS default text is skipped during degraded mode
+
+**Status:** Decided by the project owner on
+`claude/belactie-instelbaar-degraded` (`AppVersion 2.5-belactie-degraded.2`).
+Not yet functionally validated on Windows (D-037).
+
+**Background**
+
+Since D-075/D-076 the SMS route works during degraded mode: the SMS pages
+are compiled in and the chosen page comes from the registry. The per-page
+default text lives in `sms-default-texts.json` under `%MyDocuments%`, which
+is not loaded yet during an outage. `FillSmsDefaultTextField()` then found
+an empty text and silently skipped the message field, which looks as if no
+default text was ever configured.
+
+**Decision**
+
+- When the selected SMS page has a `TextFieldId` and the
+  "SMS-standaardteksten" loader has not succeeded yet
+  (`IsStorageLoaderReady()`), DocBot still fills the phone number, skips
+  the text, logs it, and shows a warning toast: "Telefoonnummer ingevuld.
+  De standaardtekst is nog niet beschikbaar omdat de instellingen nog
+  laden."
+- Considered and not chosen (project owner): moving the default texts into
+  the registry like the call action. That would make them available during
+  an outage, but needs another migration, profile seeding and an editable
+  Instellingen field during degraded mode; revisit if SMS with default texts
+  turns out to be common during outages.
+

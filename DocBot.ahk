@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-belactie-degraded.1"
+global AppVersion := "2.5-belactie-degraded.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -6294,6 +6294,20 @@ FillSmsDefaultTextField(edge, smsConfig) {
     if !smsConfig.Has("TextFieldId") || Trim(smsConfig["TextFieldId"]) = ""
         return
 
+    ; Tijdens degraded mode is sms-default-texts.json mogelijk nog niet
+    ; geladen (D-077). Dan niet stilzwijgend een leeg tekstveld laten staan,
+    ; alsof er geen standaardtekst is ingesteld, maar het laten weten. Het
+    ; telefoonnummer is op dit punt al ingevuld.
+    if !IsStorageLoaderReady("SMS-standaardteksten") {
+        DebugLog("i", "SMS standaardtekst", "Overgeslagen: SMS-standaardteksten zijn nog niet geladen.")
+        ShowNotification(
+            "Telefoonnummer ingevuld. De standaardtekst is nog niet beschikbaar omdat de instellingen nog laden.",
+            6000,
+            "warning"
+        )
+        return
+    }
+
     defaultText := GetSmsDefaultText(smsConfig["Title"])
     if Trim(defaultText) = ""
         return
@@ -9166,6 +9180,17 @@ RefreshSpeedDialListIfReady() {
 ; (idempotent: veilig om StorageRetry_RunInitialAttempt() twee keer aan te
 ; roepen). Geeft de staat vóór deze poging terug, zodat de aanroeper kan
 ; zien of dit een verse overgang naar "klaar" is.
+; True zodra de lader met deze naam (zie StorageRetryLoaders) geslaagd is.
+IsStorageLoaderReady(name) {
+    global StorageRetryLoaders
+
+    for _, loader in StorageRetryLoaders {
+        if loader["Name"] = name
+            return loader["Ready"]
+    }
+    return false
+}
+
 StorageRetry_AttemptLoader(loader) {
     global StorageRetryCurrentLoaderName
 
