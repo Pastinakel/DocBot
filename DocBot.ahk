@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-dev.6"
+global AppVersion := "2.5-dev.7"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -706,18 +706,10 @@ BuildMainGui() {
     ; telefonie-koppeling hangt niet af van settings.ini/hotstrings/
     ; pakketkeuzes/snelkiesnummers/sms-standaardteksten.
     ;
-    ; Is de Belactie al bekend uit het register (D-075), dan blijft de
-    ; Belactie-kaart ook tijdens degraded mode zichtbaar en staat er een
-    ; tweede banner op de plek van Tekstvervanging/Gebruik eronder. Precies
-    ; één van beide banners is tegelijk zichtbaar (zie ShowPage()).
-    AddDegradedBanner(
-        "overzicht",
-        246,
-        "Instellingen worden geladen. Functionaliteit hieronder is tijdelijk beperkt. Telefonie-koppeling werkt gewoon door.",
-        "show-only-while-degraded-callaction-unknown"
-    )
-    MarkDegradedGateStart("overzicht")
-
+    ; De Belactie-kaart blijft altijd zichtbaar en aanpasbaar, ook tijdens
+    ; degraded mode (D-076): de Belactie staat in het register (D-075), niet
+    ; in de opslag die nog laadt. De banner staat daarom op de plek van
+    ; Tekstvervanging/Gebruik eronder.
     AddCard("overzicht", 236, 246, 736, 142)
     AddCardLabel("overzicht", 260, 262, 180, 22, "Belactie", "s13 bold c" C["Text"])
     CallActionSelector := AddCallActionSelector(
@@ -736,13 +728,11 @@ BuildMainGui() {
             : "Configureer eerst een SMS-pagina om de keuze tussen bellen en sms beschikbaar te maken.",
         "s8 c" C["Muted"]
     )
-    MarkDegradedGateEnd("overzicht", "hide-while-degraded-unless-callaction-known")
 
     AddDegradedBanner(
         "overzicht",
         400,
-        "Instellingen worden geladen. Tekstvervanging en gebruik zijn tijdelijk niet beschikbaar. Telefonie werkt gewoon door.",
-        "show-only-while-degraded-callaction-known"
+        "Instellingen worden geladen. Tekstvervanging en gebruik zijn tijdelijk niet beschikbaar. Telefonie werkt gewoon door."
     )
     MarkDegradedGateStart("overzicht")
 
@@ -2370,9 +2360,6 @@ MarkDegradedGateStart(pageKey) {
 ; MarkDegradedGateStart(pageKey) aan Pages[pageKey] zijn toegevoegd als
 ; "verberg zolang niet alle opslag geladen is" (StorageAllReady=false).
 ; ShowPage() respecteert dit, onafhankelijk van paginawissels.
-; Met gate "hide-while-degraded-unless-callaction-known" blijft het bereik
-; tijdens degraded mode zichtbaar zodra de Belactie uit het register bekend
-; is (CallActionSettingsKnown, D-075) — alleen voor de Belactie-kaart.
 MarkDegradedGateEnd(pageKey, gate := "hide-while-degraded") {
     global Pages, DegradedGateRangeStart
 
@@ -2394,19 +2381,13 @@ ShowOnlyWhileDegraded(ctrl, gate := "show-only-while-degraded") {
 ; Zichtbaarheid volgens ctrl._degradedGate (zie MarkDegradedGateEnd(),
 ; ShowOnlyWhileDegraded()) bovenop de gewone paginazichtbaarheid.
 IsDegradedGateOpen(gate) {
-    global StorageAllReady, CallActionSettingsKnown
+    global StorageAllReady
 
     switch gate {
         case "hide-while-degraded":
             return StorageAllReady
-        case "hide-while-degraded-unless-callaction-known":
-            return StorageAllReady || CallActionSettingsKnown
         case "show-only-while-degraded":
             return !StorageAllReady
-        case "show-only-while-degraded-callaction-unknown":
-            return !StorageAllReady && !CallActionSettingsKnown
-        case "show-only-while-degraded-callaction-known":
-            return !StorageAllReady && CallActionSettingsKnown
     }
     return true
 }
@@ -6313,6 +6294,20 @@ FillSmsDefaultTextField(edge, smsConfig) {
     if !smsConfig.Has("TextFieldId") || Trim(smsConfig["TextFieldId"]) = ""
         return
 
+    ; Tijdens degraded mode is sms-default-texts.json mogelijk nog niet
+    ; geladen (D-077). Dan niet stilzwijgend een leeg tekstveld laten staan,
+    ; alsof er geen standaardtekst is ingesteld, maar het laten weten. Het
+    ; telefoonnummer is op dit punt al ingevuld.
+    if !IsStorageLoaderReady("SMS-standaardteksten") {
+        DebugLog("i", "SMS standaardtekst", "Overgeslagen: SMS-standaardteksten zijn nog niet geladen.")
+        ShowNotification(
+            "Telefoonnummer ingevuld. De standaardtekst is nog niet beschikbaar omdat de instellingen nog laden.",
+            6000,
+            "warning"
+        )
+        return
+    }
+
     defaultText := GetSmsDefaultText(smsConfig["Title"])
     if Trim(defaultText) = ""
         return
@@ -9185,6 +9180,17 @@ RefreshSpeedDialListIfReady() {
 ; (idempotent: veilig om StorageRetry_RunInitialAttempt() twee keer aan te
 ; roepen). Geeft de staat vóór deze poging terug, zodat de aanroeper kan
 ; zien of dit een verse overgang naar "klaar" is.
+; True zodra de lader met deze naam (zie StorageRetryLoaders) geslaagd is.
+IsStorageLoaderReady(name) {
+    global StorageRetryLoaders
+
+    for _, loader in StorageRetryLoaders {
+        if loader["Name"] = name
+            return loader["Ready"]
+    }
+    return false
+}
+
 StorageRetry_AttemptLoader(loader) {
     global StorageRetryCurrentLoaderName
 
@@ -10133,7 +10139,7 @@ SaveCallActionSettings(showError := true) {
 ; Belactie-kaart, sidebar en tray bijwerken in plaats van te wachten tot
 ; alle opslag geladen is.
 MarkCallActionSettingsKnown() {
-    global CallActionSettingsKnown, MainGui, CallActionSelector, CurrentPage, State
+    global CallActionSettingsKnown, MainGui, CallActionSelector, State
 
     wasKnown := CallActionSettingsKnown
     CallActionSettingsKnown := true
@@ -10142,8 +10148,6 @@ MarkCallActionSettingsKnown() {
 
     if IsObject(CallActionSelector)
         CallActionSelector.Value := State["CallAction"]
-    if CurrentPage != ""
-        ShowPage(CurrentPage)
     RefreshSidebarStatuses()
     BuildTrayMenu()
 }
@@ -10164,11 +10168,25 @@ MigrateCallActionSettingsToRegistry() {
     if !IsObject(stored) || stored["CallAction"] != String(State["CallAction"])
         return false
 
-    for _, iniKey in ["CallAction", "SmsCallActionTitle", "AutoCall", "DirectCall"]
-        try IniDelete(ConfigFile, "Features", iniKey)
+    RemoveLegacyCallActionIniKeys()
 
     try DebugLog("i", "Belactie", "Eenmalig van settings.ini naar het register gemigreerd.")
     return true
+}
+
+; Verwijdert de oude Belactie-sleutels uit [Features] in settings.ini, maar
+; alleen de sleutels die er echt nog staan, zodat settings.ini niet bij
+; iedere start opnieuw wordt beschreven.
+RemoveLegacyCallActionIniKeys() {
+    global ConfigFile
+
+    static missing := "<<DocBot-geen-waarde>>"
+    for _, iniKey in ["CallAction", "SmsCallActionTitle", "AutoCall", "DirectCall"] {
+        try {
+            if IniRead(ConfigFile, "Features", iniKey, missing) != missing
+                IniDelete(ConfigFile, "Features", iniKey)
+        }
+    }
 }
 
 ; Een net vanuit een ander profiel gekopieerde profielmap (zie
@@ -10476,6 +10494,11 @@ LoadAppSettings() {
                 registryCallAction["SmsCallActionTitle"]
             )
             MarkCallActionSettingsKnown()
+            ; Heeft de gebruiker tijdens degraded mode zelf een Belactie
+            ; gekozen vóórdat de migratie kon draaien (D-076), dan staan de
+            ; oude sleutels nog in settings.ini. Het register gaat voor;
+            ; ruim de verouderde kopie op zodat er één bron blijft.
+            RemoveLegacyCallActionIniKeys()
         } else {
             storedCallAction := Trim(
                 IniReadOrThrow(ConfigFile, "Features", "CallAction", "")
@@ -10659,7 +10682,7 @@ HandleAppExit(*) {
 
 BuildTrayMenu() {
     global State, IsDevMode, SpeedDialEntries, TraySpeedDialMaxEntries
-    global ProblemReportSession, StorageAllReady, CallActionSettingsKnown
+    global ProblemReportSession, StorageAllReady
 
     A_TrayMenu.Delete()
 
@@ -10706,9 +10729,9 @@ BuildTrayMenu() {
         ; zou een wijziging hier de dan pas net echt geladen waarde meteen
         ; weer overschrijven met een keuze gebaseerd op een nog niet
         ; bevestigde standaardwaarde. De Belactie staat in het register
-        ; (D-075) en blijft daarom bruikbaar zodra die waarde bekend is.
-        if !CallActionSettingsKnown
-            A_TrayMenu.Disable("Belactie")
+        ; (D-075) en blijft daarom altijd bruikbaar (D-076): een keuze hier
+        ; gaat direct naar het register en gaat daarna vóór op de waarde
+        ; die nog in settings.ini zou staan.
         A_TrayMenu.Disable("Tekstvervanging")
     }
 

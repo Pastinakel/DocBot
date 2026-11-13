@@ -189,6 +189,20 @@ the rest of this proposal before implementation.
 > `DocBot-dev` copies the registry values; that closing DocBot while
 > degraded no longer writes `settings.ini`/`hotstrings.json`; and that the
 > values really roam to another workstation via Ivanti.
+>
+> **Update (D-076):** the compiled `2.5-dev.6` test showed the call action
+> could not be changed during an outage on the first start after the update.
+> Validate on Windows: with an empty registry and an unreadable
+> `settings.ini`, the Overzicht Belactie card shows "Bellen na bevestiging"
+> and the tray Belactie submenu is enabled; choosing another call action
+> applies immediately (clipboard and sidebar), survives a restart during the
+> outage, and once `settings.ini` loads the registry value wins and the old
+> `[Features]` keys are removed.
+>
+> **Update (D-077):** also validate an SMS action during degraded mode on a
+> page with `TextFieldId`: the number is filled and a warning toast says the
+> default text is not available yet; after storage has loaded the default
+> text is filled again without a toast.
 
 Project owner requirement (2026-08-28): silently running on defaults, as
 today, is not acceptable even once the retry mechanism above exists —
