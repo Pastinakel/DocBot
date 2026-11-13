@@ -3935,8 +3935,9 @@ reliable.
 ## D-075 — Store the call action in the registry instead of `settings.ini`
 
 **Status:** Decided by the project owner on `claude/klembord-degraded`
-(`AppVersion 2.5-klembord-degraded.3`). Not yet functionally validated on
-Windows (D-037).
+(`AppVersion 2.5-klembord-degraded.3`), merged into `develop` via PR #94.
+The degraded-mode gating of the tray "Belactie" submenu and the Overzicht
+"Belactie" card is superseded by D-076: both are now always available.
 
 **Background**
 
@@ -4011,4 +4012,57 @@ SMS route works without user storage; only the per-page default text
 - The overall degraded-mode gating (D-064's all-or-nothing `StorageAllReady`)
   is otherwise unchanged: speed dials, hotstrings, Tekstvervanging and
   Gebruik stay hidden until all storage has loaded.
+
+---
+
+## D-076 — The call action can always be changed during degraded mode
+
+**Status:** Decided by the project owner on
+`claude/belactie-instelbaar-degraded` (`AppVersion 2.5-belactie-degraded.1`),
+after a compiled test of `2.5-dev.6`. Supersedes D-075's rule that the tray
+"Belactie" submenu and the Overzicht "Belactie" card are only available
+during degraded mode once the call action is known. Not yet functionally
+validated on Windows (D-037).
+
+**Background**
+
+The project owner tested the compiled `2.5-dev.6` during a real OneDrive
+outage. The registry had no call action yet (first start after the update)
+and `settings.ini` stayed unreadable, so the one-time migration (D-075) never
+ran. DocBot fell back to the confirmation dialog (D-074) — but the
+Overzicht card and the tray submenu were both hidden while the call action
+was unknown, so the user had no way to choose a different call action for as
+long as the outage lasted.
+
+**Decision**
+
+- The Overzicht "Belactie" card and the tray "Belactie" submenu are always
+  visible and usable, in degraded mode too, whether or not the call action
+  is known. The Overzicht degraded banner always sits below the card (at the
+  Tekstvervanging/Gebruik position, which stay hidden). The two-banner
+  variant and the `*-callaction-known/unknown` gates from D-075 are removed.
+- While the call action is unknown, `State["CallAction"]` holds the code
+  default 1 ("Bellen na bevestiging"), which is exactly what the D-074
+  fallback does — so the card shows the real current behavior, not a guess.
+- A choice made there is written straight to the registry
+  (`SaveCallActionSettings()`), makes the call action known, and from then on
+  takes precedence over any value still in `settings.ini`: it is the user's
+  most recent explicit choice. When `settings.ini` later loads,
+  `LoadAppSettings()` uses the registry value and removes the stale
+  `[Features]` keys (`RemoveLegacyCallActionIniKeys()`, which only deletes
+  keys that still exist so `settings.ini` is not rewritten every start).
+
+**Reasoning**
+
+- No partially-loaded state is written: the call action no longer lives in
+  `settings.ini`, so changing it during degraded mode cannot overwrite a
+  not-yet-loaded value (the concern behind D-064's tray gating).
+- Hiding the only control for the one setting that does work during an
+  outage left the user stuck on the fallback for the whole outage.
+
+**Consequences**
+
+- If the user picks a call action during the outage, their older choice in
+  `settings.ini` (never migrated) is discarded. Accepted: the new choice is
+  newer and explicit.
 
