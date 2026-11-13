@@ -4184,13 +4184,71 @@ SMS action filled no default text (D-077).
 **Consequences**
 
 - A reset of the Ivanti personalization (a common helpdesk fix) erases the
-  call action, speed dials and SMS default texts; they come back neither
-  from OneDrive (the files were deleted after migration) nor from anywhere
-  else. See the open TODO on a OneDrive backup copy.
+  call action, speed dials and SMS default texts from the registry. D-079
+  adds a OneDrive backup copy that restores them.
 - The files are deleted after migration, so there is no hand-editable copy
   and no OneDrive version history for these lists any more. DocBot has no
   import/export for either file, so nothing functional is lost.
 - Rolling back to a build without this change shows an empty/default
   speed-dial list and no SMS default texts (the files are gone); the
   registry values remain and come back on re-upgrade.
+
+---
+
+## D-079 — OneDrive backup copy of the telephony settings
+
+**Status:** Decided by the project owner on `claude/telefonie-register`
+(`AppVersion 2.5-telefonie-register.2`). Not yet functionally validated on
+Windows (D-037).
+
+**Background**
+
+D-078 moved all telephony settings into `HKCU`, which Ivanti keeps
+immediately and for every DocBot build — but a reset of the Ivanti
+personalization wipes it, and the old files on OneDrive are deleted after
+migration. Without a copy, a helpdesk reset would silently erase a user's
+speed dials, SMS default texts and call action.
+
+**Decision**
+
+- The registry stays the single source DocBot reads from. In addition,
+  DocBot keeps one backup file, `telefonie-backup.json`, in the user-data
+  folder on OneDrive (per profile: `DocBot`, `DocBot-test`, `DocBot-dev`):
+  `{schemaVersion: 1, CallAction, SmsCallActionTitle, SpeedDial: {...},
+  SmsDefaultTexts: {...}}`, the latter two in exactly the registry document
+  format.
+- Writing (`WriteTelephonyBackupIfDirty()`): scheduled after every
+  successful registry save of any of the four values, after startup and
+  after each storage-retry tick while still pending. It only writes when all
+  four values are actually loaded (`IsTelephonyStorageReady()`) and the
+  user-data folder is reachable, so an empty or default state — e.g. right
+  after a reset during an outage — can never overwrite a good backup. An
+  unchanged backup is not rewritten. Written via `.tmp` + verification +
+  `.bak`; a failed write is logged and retried after a minute; it never
+  blocks calling.
+- Restoring: whenever a registry value is missing, its loader first reads
+  the backup (`ReadTelephonyBackup()`), before the old-file migration or the
+  first-run default. `"unreadable"` (file exists but cannot be read yet)
+  makes the loader fail and retry rather than continue with defaults; a
+  corrupt backup is logged and ignored so it cannot block startup. Speed
+  dials and SMS texts are restored by their loaders; the call action by
+  `LoadAppSettings()`. A call action chosen by the user during degraded mode
+  before the backup could be read (D-076) is already in the registry and
+  therefore wins.
+
+**Reasoning**
+
+- Combines the availability of the registry (works during OneDrive outages)
+  with the durability of OneDrive (survives an Ivanti reset).
+- One file with all four values keeps restore and privacy documentation
+  simple.
+
+**Consequences**
+
+- Speed dials and SMS default texts are on OneDrive again, as a backup.
+  `docs/DATA_PROTECTION.md` §2.2/§2.2b/§3.5 and the retention text are
+  updated accordingly.
+- If the backup is older than the registry (a write failed and a reset
+  happened before the retry), the most recent changes are lost; the retry
+  interval of one minute keeps that window small.
 

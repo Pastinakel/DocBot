@@ -216,10 +216,14 @@ the rest of this proposal before implementation.
 > switches over without restart once the loaders succeed; new profiles copy
 > the registry values; the values roam via Ivanti.
 >
-> **Open decision (D-078):** a reset of the Ivanti personalization wipes the
-> registry values (confirmed by the Ivanti administrator). Decide whether
-> DocBot should keep a background backup copy on OneDrive that restores an
-> empty registry after such a reset.
+> **Update (D-079):** a reset of the Ivanti personalization wipes the
+> registry values, so DocBot now keeps `telefonie-backup.json` on OneDrive.
+> Validate on Windows: the backup appears shortly after startup and after
+> each change (not rewritten when unchanged); after deleting
+> `HKCU\Software\DocBot-test` (simulated reset) all four values come back
+> from the backup on the next start; with the registry wiped *and* OneDrive
+> unavailable, nothing overwrites the backup and the values return once
+> OneDrive is back; a corrupt backup is ignored with a log line.
 
 Project owner requirement (2026-08-28): silently running on defaults, as
 today, is not acceptable even once the retry mechanism above exists —

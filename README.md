@@ -109,7 +109,9 @@ Functionaliteit — Hotstrings
   De Belactie, de gekozen sms-pagina, de snelkiesnummers en de
   sms-standaardteksten staan in het Windows-register onder
   `HKCU\Software\DocBot` (reist via Ivanti mee), zodat telefonie ook bij
-  een OneDrive-storing volledig beschikbaar is.
+  een OneDrive-storing volledig beschikbaar is. Een reservekopie staat in
+  `%MyDocuments%\DocBot\telefonie-backup.json` en wordt automatisch
+  teruggezet na een reset van het werkplekprofiel.
   Keuzes voor meegeleverde pakketten staan afzonderlijk in
   `%MyDocuments%\DocBot\package-settings.json`.
 - Gebruikersgegevens zijn per releasekanaal gescheiden: stabiele numerieke
@@ -518,7 +520,8 @@ Changelog
   OneDrive-storing werken bellen, snelkiesnummers en sms met
   standaardtekst daardoor gewoon; alleen tekstvervanging wacht tot de
   instellingen geladen zijn. Je bestaande lijsten worden eenmalig
-  automatisch overgezet.
+  automatisch overgezet. Een reservekopie op OneDrive zet ze terug als je
+  werkplekprofiel wordt gereset.
 - Bij een OneDrive-storing kon je tijdens het laden van de instellingen
   niet bellen vanaf het klembord: DocBot meldde alleen dat de instellingen
   nog laadden. De Belactie staat nu in het Windows-register en werkt

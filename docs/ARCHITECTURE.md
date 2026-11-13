@@ -216,6 +216,7 @@ hotstrings.json          personal hotstrings
 package-settings.json    package enabled/disabled/conflict choices
 speeddial.json           (until migrated) speed-dial entries -> registry
 sms-default-texts.json   (until migrated) SMS default texts -> registry
+telefonie-backup.json    backup of the four telephony registry values (D-079)
 ```
 
 Storage routines use defensive patterns such as `.bak`, temporary files, validation, and replacement where implemented.
@@ -236,7 +237,10 @@ from the registry, so they are normally available during degraded mode too;
 the Telefonie page, the tray speed dials and the Instellingen SMS card are
 gated per loader (`hide-until-loader:<name>`), not on `StorageAllReady`.
 Each is migrated once from its old file (then deleted) and seeded into new
-profiles (`SeedTelephonyRegistrySettings()`).
+profiles (`SeedTelephonyRegistrySettings()`). A OneDrive backup,
+`telefonie-backup.json`, is written after every change once all four values
+are loaded and restores any missing registry value first, e.g. after a reset
+of the Ivanti personalization (D-079).
 
 `CallAction`/`SmsCallActionTitle` are read at global initialization, before
 the storage loaders, so the user's own call action applies during degraded

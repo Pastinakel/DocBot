@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-telefonie-register.1"
+global AppVersion := "2.5-telefonie-register.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -65,6 +65,10 @@ global DefaultHotstringFile := UserDataDir "\hotstrings.json"
 global DefaultPackageSettingsFile := UserDataDir "\package-settings.json"
 global DefaultSpeedDialFile := UserDataDir "\speeddial.json"
 global DefaultSmsDefaultTextFile := UserDataDir "\sms-default-texts.json"
+; Reservekopie op OneDrive van de telefonie-instellingen uit het register,
+; voor herstel na een reset van de Ivanti-personalisatie (D-079).
+global TelephonyBackupFile := UserDataDir "\telefonie-backup.json"
+global TelephonyBackupSchemaVersion := 1
 
 ; =============================================================================
 ; DocBot
@@ -265,6 +269,10 @@ global State := Map(
 ; klembordnummer tijdens degraded mode terug op het bevestigingsvenster
 ; (D-074).
 global CallActionSettingsKnown := LoadCallActionSettingsFromRegistry()
+; True zolang de reservekopie op OneDrive (D-079) nog niet overeenkomt met
+; het register. Begint op true, zodat de reservekopie na het opstarten één
+; keer wordt gecontroleerd en zo nodig bijgewerkt.
+global TelephonyBackupDirty := true
 
 global HotstringSchemaVersion := 7
 global BundledPackageSchemaVersion := 1
@@ -540,6 +548,7 @@ global DegradedGateRangeStart := Map()
 StorageRetry_RunInitialAttemptForUserDataDir()
 InitializeBundledPackages()
 StorageRetry_RunInitialAttempt()
+SetTimer(WriteTelephonyBackupIfDirty, -5000)
 ReloadRuntimeHotstrings()
 Telemetry_Initialize(ConfigFile, AppVersion, GetTelemetryStatus)
 InitializeDiagnosticLogging()
@@ -9257,13 +9266,18 @@ StorageRetry_RunInitialAttempt() {
 }
 
 StorageRetry_Tick(*) {
-    global StorageRetryLoaders
+    global StorageRetryLoaders, TelephonyBackupDirty
 
     for loader in StorageRetryLoaders {
         wasReady := StorageRetry_AttemptLoader(loader)
         if loader["Ready"] && !wasReady
             StorageRetry_OnLoaderReady(loader["Name"])
     }
+
+    ; Een laders die nu pas slaagde, kan de reservekopie (D-079) eindelijk
+    ; schrijfbaar maken.
+    if TelephonyBackupDirty
+        SetTimer(WriteTelephonyBackupIfDirty, -2000)
 
     StorageRetry_ScheduleIfNeeded()
 }
@@ -9520,6 +9534,22 @@ InitializeSpeedDialStorage() {
     if !IsStorageLoaderReady("Gebruikersmap")
         return false
 
+    ; Leeg register maar wel een reservekopie op OneDrive: herstel na een
+    ; reset van de Ivanti-personalisatie (D-079). Gaat vóór de migratie uit
+    ; het oude bestand, want de reservekopie is altijd recenter.
+    backup := ReadTelephonyBackup()
+    if !IsObject(backup) && backup = "unreadable"
+        return false
+    if IsObject(backup) && backup.Has("SpeedDial") && backup["SpeedDial"] is Map {
+        if !LoadSpeedDialFromJsonText(Jxon_Dump(backup["SpeedDial"]), "de reservekopie op OneDrive")
+            return false
+        if !SaveSpeedDialEntries(false)
+            return false
+        RemoveMigratedStorageFile(DefaultSpeedDialFile)
+        try DebugLog("i", "Snelkiesnummers", "Hersteld uit de reservekopie op OneDrive.")
+        return true
+    }
+
     ; Oudere versies gebruikten verschillende bestandsnamen en soms de
     ; programmamap. Neem de eerste gevonden versie over; het laden
     ; migreert vervolgens ook de inhoud naar het actuele schema.
@@ -9671,6 +9701,7 @@ LoadSpeedDialFromJsonText(jsonText, sourceLabel, showMessage := false) {
 SaveSpeedDialEntries(showError := true) {
     try {
         WriteRegistryDocument("SpeedDial", BuildSpeedDialDocument(), "entries")
+        ScheduleTelephonyBackup()
         return true
     } catch as error {
         try DebugLog("✕", "Opslagfout", "Snelkiesnummers niet in het register opgeslagen: " error.Message)
@@ -9743,6 +9774,20 @@ InitializeSmsDefaultTextStorage() {
     ; voor waarom de gebruikersmap eerst bereikbaar moet zijn.
     if !IsStorageLoaderReady("Gebruikersmap")
         return false
+
+    ; Herstel uit de reservekopie gaat vóór de migratie (D-079).
+    backup := ReadTelephonyBackup()
+    if !IsObject(backup) && backup = "unreadable"
+        return false
+    if IsObject(backup) && backup.Has("SmsDefaultTexts") && backup["SmsDefaultTexts"] is Map {
+        if !LoadSmsDefaultTextsFromJsonText(Jxon_Dump(backup["SmsDefaultTexts"]), "de reservekopie op OneDrive")
+            return false
+        if !SaveSmsDefaultTexts(false)
+            return false
+        RemoveMigratedStorageFile(DefaultSmsDefaultTextFile)
+        try DebugLog("i", "SMS-standaardteksten", "Hersteld uit de reservekopie op OneDrive.")
+        return true
+    }
 
     if FileExist(DefaultSmsDefaultTextFile) {
         if !LoadSmsDefaultTextsFromJson(DefaultSmsDefaultTextFile, false)
@@ -9859,6 +9904,7 @@ LoadSmsDefaultTextsFromJsonText(jsonText, sourceLabel, showMessage := false) {
 SaveSmsDefaultTexts(showError := true) {
     try {
         WriteRegistryDocument("SmsDefaultTexts", BuildSmsDefaultTextDocument(), "items")
+        ScheduleTelephonyBackup()
         return true
     } catch as error {
         try DebugLog("✕", "Opslagfout", "SMS-standaardteksten niet in het register opgeslagen: " error.Message)
@@ -10197,6 +10243,7 @@ SaveCallActionSettings(showError := true) {
     }
 
     MarkCallActionSettingsKnown()
+    ScheduleTelephonyBackup()
     return true
 }
 
@@ -10210,6 +10257,8 @@ MarkCallActionSettingsKnown() {
 
     wasKnown := CallActionSettingsKnown
     CallActionSettingsKnown := true
+    if !wasKnown
+        SetTimer(WriteTelephonyBackupIfDirty, -2000)
     if wasKnown || !IsObject(MainGui)
         return
 
@@ -10319,6 +10368,112 @@ RemoveMigratedStorageFile(path) {
     for _, candidate in [path, path ".bak", path ".tmp"] {
         if FileExist(candidate)
             try FileDelete(candidate)
+    }
+}
+
+; ---------------------------------------------------------------------------
+; Reservekopie van de telefonie-instellingen op OneDrive (D-079)
+; ---------------------------------------------------------------------------
+; Het register blijft de enige bron waaruit DocBot leest. Na elke wijziging
+; schrijft DocBot daarnaast telefonie-backup.json in de gebruikersmap, zodat
+; een reset van de Ivanti-personalisatie (die het register wist) hersteld
+; kan worden. De laders herstellen uit deze kopie zodra hun registerwaarde
+; ontbreekt.
+
+ScheduleTelephonyBackup(delayMs := 2000) {
+    global TelephonyBackupDirty
+
+    TelephonyBackupDirty := true
+    SetTimer(WriteTelephonyBackupIfDirty, -delayMs)
+}
+
+; Schrijft de reservekopie alleen als alle vier de waarden echt geladen zijn
+; (IsTelephonyStorageReady()) en de gebruikersmap bereikbaar is. Zo kan een
+; lege of standaardtoestand, bijv. vlak na een reset tijdens een
+; OneDrive-storing, nooit een goede reservekopie overschrijven. Is dat nog
+; niet zo, dan blijft TelephonyBackupDirty staan en probeert een latere
+; lader-tick (StorageRetry_Tick()) of MarkCallActionSettingsKnown() het
+; opnieuw.
+WriteTelephonyBackupIfDirty(*) {
+    global TelephonyBackupDirty, TelephonyBackupFile, TelephonyBackupSchemaVersion, State
+
+    if !TelephonyBackupDirty
+        return
+    if !IsTelephonyStorageReady() || !IsStorageLoaderReady("Gebruikersmap")
+        return
+
+    document := Map(
+        "schemaVersion", TelephonyBackupSchemaVersion,
+        "CallAction", String(State["CallAction"]),
+        "SmsCallActionTitle", State["SmsCallActionTitle"],
+        "SpeedDial", BuildSpeedDialDocument(),
+        "SmsDefaultTexts", BuildSmsDefaultTextDocument()
+    )
+    jsonText := Jxon_Dump(document, 2)
+
+    tempPath := TelephonyBackupFile ".tmp"
+    backupPath := TelephonyBackupFile ".bak"
+    try {
+        ; Ongewijzigd: niet opnieuw schrijven, zodat OneDrive niet bij elke
+        ; start een nieuwe versie hoeft te synchroniseren.
+        if FileExist(TelephonyBackupFile)
+            && LTrim(FileRead(TelephonyBackupFile, "UTF-8"), Chr(0xFEFF)) == jsonText {
+            TelephonyBackupDirty := false
+            return
+        }
+
+        if FileExist(tempPath)
+            FileDelete(tempPath)
+        FileAppend(jsonText, tempPath, "UTF-8-RAW")
+
+        verifyText := FileRead(tempPath, "UTF-8")
+        verifyDocument := Jxon_Load(&verifyText)
+        if !(verifyDocument is Map) || !verifyDocument.Has("SpeedDial")
+            throw Error("Controle van het tijdelijke bestand is mislukt.")
+
+        if FileExist(TelephonyBackupFile)
+            FileCopy(TelephonyBackupFile, backupPath, true)
+        FileMove(tempPath, TelephonyBackupFile, true)
+
+        TelephonyBackupDirty := false
+        try DebugLog("✓", "Reservekopie telefonie", "Bijgewerkt op OneDrive.")
+    } catch as error {
+        if FileExist(tempPath)
+            try FileDelete(tempPath)
+        ; Bellen hindert dit niet: alleen loggen en later opnieuw proberen.
+        try DebugLog("✕", "Reservekopie telefonie", "Niet geschreven, nieuwe poging over een minuut: " error.Message)
+        SetTimer(WriteTelephonyBackupIfDirty, -60000)
+    }
+}
+
+; Leest de reservekopie. Geeft een Map terug, "none" als er geen (bruikbare)
+; reservekopie is, of "unreadable" als het bestand bestaat maar nu niet
+; gelezen kan worden (bijv. OneDrive nog niet klaar): de aanroeper probeert
+; het dan later opnieuw in plaats van door te gaan met standaardwaarden.
+ReadTelephonyBackup() {
+    global TelephonyBackupFile, TelephonyBackupSchemaVersion
+
+    if !FileExist(TelephonyBackupFile)
+        return "none"
+
+    try {
+        jsonText := FileRead(TelephonyBackupFile, "UTF-8")
+    } catch {
+        return "unreadable"
+    }
+
+    try {
+        jsonText := LTrim(jsonText, Chr(0xFEFF))
+        document := Jxon_Load(&jsonText)
+        if !(document is Map)
+            throw Error("De JSON-hoofdstructuur moet een object zijn.")
+        RejectNewerSchemaVersion(ReadSchemaVersion(document), TelephonyBackupSchemaVersion, "De reservekopie")
+        return document
+    } catch as error {
+        ; Een beschadigde reservekopie mag het opstarten niet blijvend
+        ; blokkeren: negeren en verder met de gewone migratie of eerste start.
+        try DebugLog("✕", "Reservekopie telefonie", "Onbruikbaar, genegeerd: " error.Message)
+        return "none"
     }
 }
 
@@ -10596,6 +10751,7 @@ LoadAppSettings() {
         ; de oude AutoCall/DirectCall-sleutels) overgenomen en na deze try
         ; naar het register gemigreerd.
         migrateCallAction := false
+        restoreCallAction := false
         registryCallAction := ReadCallActionSettingsFromRegistry()
         if IsObject(registryCallAction) {
             ApplyCallActionSettings(
@@ -10609,35 +10765,49 @@ LoadAppSettings() {
             ; ruim de verouderde kopie op zodat er één bron blijft.
             RemoveLegacyCallActionIniKeys()
         } else {
-            storedCallAction := Trim(
-                IniReadOrThrow(ConfigFile, "Features", "CallAction", "")
-            )
-            if storedCallAction != "" {
-                State["CallAction"] := ParseCallActionSetting(
-                    storedCallAction,
-                    State["CallAction"]
+            ; Leeg register: eerst herstellen uit de reservekopie op
+            ; OneDrive (na een reset van de Ivanti-personalisatie, D-079),
+            ; anders de eenmalige migratie uit settings.ini (D-075).
+            backup := ReadTelephonyBackup()
+            if !IsObject(backup) && backup = "unreadable"
+                throw Error("De reservekopie van de telefonie-instellingen is nog niet leesbaar.")
+            if IsObject(backup) && backup.Has("CallAction") {
+                ApplyCallActionSettings(
+                    backup["CallAction"],
+                    backup.Has("SmsCallActionTitle") ? backup["SmsCallActionTitle"] : ""
                 )
+                restoreCallAction := true
             } else {
-                legacyAutoCall := ParseBooleanSetting(
-                    IniReadOrThrow(ConfigFile, "Features", "AutoCall", 1)
+                storedCallAction := Trim(
+                    IniReadOrThrow(ConfigFile, "Features", "CallAction", "")
                 )
-                legacyDirectCall := ParseBooleanSetting(
-                    IniReadOrThrow(ConfigFile, "Features", "DirectCall", 0)
+                if storedCallAction != "" {
+                    State["CallAction"] := ParseCallActionSetting(
+                        storedCallAction,
+                        State["CallAction"]
+                    )
+                } else {
+                    legacyAutoCall := ParseBooleanSetting(
+                        IniReadOrThrow(ConfigFile, "Features", "AutoCall", 1)
+                    )
+                    legacyDirectCall := ParseBooleanSetting(
+                        IniReadOrThrow(ConfigFile, "Features", "DirectCall", 0)
+                    )
+                    State["CallAction"] := !legacyAutoCall
+                        ? 0
+                        : (legacyDirectCall ? 2 : 1)
+                }
+                State["SmsCallActionTitle"] := ResolveSmsCallActionTitle(
+                    IniReadOrThrow(
+                        ConfigFile,
+                        "Features",
+                        "SmsCallActionTitle",
+                        State["SmsCallActionTitle"]
+                    )
                 )
-                State["CallAction"] := !legacyAutoCall
-                    ? 0
-                    : (legacyDirectCall ? 2 : 1)
+                State["CallAction"] := NormalizeCallAction(State["CallAction"])
+                migrateCallAction := true
             }
-            State["SmsCallActionTitle"] := ResolveSmsCallActionTitle(
-                IniReadOrThrow(
-                    ConfigFile,
-                    "Features",
-                    "SmsCallActionTitle",
-                    State["SmsCallActionTitle"]
-                )
-            )
-            State["CallAction"] := NormalizeCallAction(State["CallAction"])
-            migrateCallAction := true
         }
         State["TextReplacement"] := ParseBooleanSetting(
             IniReadOrThrow(
@@ -10649,6 +10819,10 @@ LoadAppSettings() {
         )
         if migrateCallAction
             MigrateCallActionSettingsToRegistry()
+        if restoreCallAction && SaveCallActionSettings(false) {
+            RemoveLegacyCallActionIniKeys()
+            try DebugLog("i", "Belactie", "Hersteld uit de reservekopie op OneDrive.")
+        }
         return true
     } catch as error {
         ReportStorageError(

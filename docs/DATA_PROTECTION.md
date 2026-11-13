@@ -71,6 +71,7 @@ Afhankelijk van het releasekanaal staan deze bestanden onder
 | `hotstrings.json` | Persoonlijke afkortingen en vervangteksten | Mogelijke persoonsgegevens van de medewerker, zoals naam, telefoonnummer of e-mailadres; klinische tekst is generiek en niet patiëntgebonden |
 | `package-settings.json` | Pakketstatussen en conflictkeuzes | Normaal geen directe persoonsgegevens |
 | `speeddial.json` (alleen tot de eenmalige overzetting naar het register, §2.2b) | Namen, nummers en actiefstatus | Persoons-, medewerker- of organisatienummers |
+| `telefonie-backup.json` | Reservekopie van de telefonie-instellingen uit het register (§2.2b): Belactie, gekozen SMS-pagina, snelkiesnummers en standaardteksten per SMS-pagina | Zelfde als bij snelkiesnummers en SMS-standaardteksten hieronder |
 | `sms-default-texts.json` (alleen tot de eenmalige overzetting naar het register, §2.2b) | Door de medewerker ingestelde standaardtekst per SMS-pagina | Vrije tekst; kan persoonsgegevens van de medewerker bevatten (zoals naam of contactgegevens in een vaste afsluiting), niet bedoeld voor patiëntidentificerende inhoud (zie §3.3) |
 
 Schrijfroutines gebruiken waar geïmplementeerd tijdelijke bestanden,
@@ -89,6 +90,10 @@ OneDrive en organisatorisch werkplekbeheer.
 
 Toegang berust, net als bij §2.2, uitsluitend op Windows en het
 gebruikersprofiel; DocBot voegt geen aanvullende registerbeveiliging toe.
+DocBot leest deze waarden alleen uit het register, maar houdt er een
+reservekopie van bij in `telefonie-backup.json` in de gebruikersmap op
+OneDrive (§2.2), zodat ze na een reset van de Ivanti-personalisatie
+automatisch terugkomen (`docs/DECISIONS.md` D-079).
 In deze omgeving reist `HKCU` via Ivanti met de gebruiker mee naar een
 andere werkplek, net als de bestanden in §2.2 via OneDrive.
 
@@ -435,7 +440,8 @@ blijft verantwoordelijk voor gebruik binnen de organisatorische afspraken.
 **Ontvangers en autorisatie:** primair de medewerker die met het Windows-account
 werkt. In de huidige beheerde werkomgeving staat `settings.ini` in de
 organisatorische OneDrive-omgeving en reizen de snelkiesnummers in het
-register (`HKCU`) via Ivanti met het gebruikersprofiel mee. Toegang door
+register (`HKCU`) via Ivanti met het gebruikersprofiel mee; een reservekopie
+staat in `telefonie-backup.json` op OneDrive. Toegang door
 beheerders en andere bevoegde medewerkers wordt bepaald door het werkplek-,
 account- en OneDrive-beleid van de organisatie; DocBot kent zelf geen
 beheerderstoegang toe.
@@ -452,8 +458,10 @@ Voor de telefonie-instellingen in het register (§2.2b) geldt aanvullend:
 de werkplek gebruikt een niet-persistent profiel en Ivanti bewaart alles wat
 DocBot in het register schrijft direct, ongeacht de buildvorm. Een reset van
 de Ivanti-personalisatie wist deze waarden (snelkiesnummers,
-sms-standaardteksten en Belactie); daarvan bestaat dan geen kopie op OneDrive
-meer (zie `docs/DECISIONS.md` D-078).
+sms-standaardteksten en Belactie); DocBot zet ze daarna terug uit de
+reservekopie `telefonie-backup.json` op OneDrive. Die reservekopie valt
+onder hetzelfde OneDrive-bewaar- en verwijderbeleid als de overige bestanden
+in §2.2 (zie `docs/DECISIONS.md` D-078/D-079).
 
 **OPENSTAAND:** leg de concrete organisatorische termijnen voor bewaring,
 back-ups en definitieve verwijdering vast en verwijs naar het toepasselijke

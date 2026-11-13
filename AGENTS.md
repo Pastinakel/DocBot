@@ -144,6 +144,8 @@ Deze bestanden staan niet in de repository:
   `SmsCallActionTitle`), snelkiesnummers (`SpeedDial`),
   sms-standaardteksten (`SmsDefaultTexts`) en de sessiecookie; zie
   `docs/DECISIONS.md` D-068/D-075/D-078
+- Reservekopie van die telefonie-instellingen (zonder sessiecookie):
+  `%MyDocuments%\DocBot\telefonie-backup.json`; zie D-079
 - Pakketstatussen: `%MyDocuments%\DocBot\package-settings.json`
 - Snelkiesnummers en SMS-standaardtekst: vroeger `speeddial.json` en
   `sms-default-texts.json` in `%MyDocuments%\DocBot`; worden eenmalig naar
