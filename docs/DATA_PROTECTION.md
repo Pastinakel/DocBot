@@ -83,9 +83,12 @@ OneDrive en organisatorisch werkplekbeheer.
 | Locatie | Inhoud | Reden voor deze locatie |
 | --- | --- | --- |
 | `HKCU\Software\DocBot` (of `DocBot-test`/`DocBot-dev`), waarde `SessionCookie` | De sessiecookie van de telefonieserver (§3.2) | Wordt, anders dan de bestanden in §2.2, synchroon met het Windows-profiel geladen — beschikbaar vóór OneDrive zelf start, dus zonder de "nog niet gehydrateerde cloud-placeholder"-vertraging die `%MyDocuments%` in deze omgeving kan hebben (zie `docs/DECISIONS.md` D-067) |
+| Dezelfde sleutel, waarden `CallAction` en `SmsCallActionTitle` | De gekozen Belactie (cijfer 0–3) en de titel van de gekozen sms-pagina; voorkeursinstellingen, geen persoonsgegevens | Zelfde reden: de eigen Belactie blijft zo ook bij een OneDrive-storing beschikbaar (zie `docs/DECISIONS.md` D-075). Stond voorheen in `settings.ini` en wordt daaruit eenmalig overgezet |
 
 Toegang berust, net als bij §2.2, uitsluitend op Windows en het
 gebruikersprofiel; DocBot voegt geen aanvullende registerbeveiliging toe.
+In deze omgeving reist `HKCU` via Ivanti met de gebruiker mee naar een
+andere werkplek, net als de bestanden in §2.2 via OneDrive.
 
 ### 2.3 LocalAppData en tijdelijke bestanden
 

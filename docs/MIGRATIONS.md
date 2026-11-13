@@ -193,6 +193,28 @@ display names).
 
 ---
 
+## Call action — `settings.ini` → registry
+
+Not a versioned JSON schema: a one-time move of `[Features] CallAction` and
+`SmsCallActionTitle` from `settings.ini` into `HKCU\Software\DocBot` (or
+`-test`/`-dev`), added in `2.5-klembord-degraded.3` (D-075).
+
+- Trigger: the registry has no `CallAction` value when `LoadAppSettings()`
+  successfully reads `settings.ini`.
+- Value: derived exactly as before, including the legacy `AutoCall`/
+  `DirectCall` keys (`AutoCall=0` → 0; `DirectCall=1` → 2; otherwise 1).
+- Order: write registry → read back and compare → only then delete
+  `CallAction`, `SmsCallActionTitle`, `AutoCall`, `DirectCall` from
+  `[Features]`. On any failure `settings.ini` is left untouched and the
+  migration retries on the next start.
+- Never overwrites: an existing registry value always wins and the
+  `settings.ini` keys are then ignored.
+- New profiles: `SeedCallActionRegistrySettings()` copies the seed profile's
+  registry values (if any, and only if the new profile has none) when the
+  profile folder is bootstrapped.
+
+---
+
 ## Adding a new migration
 
 When a change needs a new default or a new required field:

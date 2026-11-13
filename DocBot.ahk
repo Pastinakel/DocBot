@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-klembord-degraded.2"
+global AppVersion := "2.5-klembord-degraded.3"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -195,9 +195,11 @@ global IPTLegacyClientHeaders := Map(
 ; beschikbaar"-faalmodus: een gewone RegRead() volstaat, zonder degraded-
 ; mode-afhandeling of blokkering van koppelen/pollen/verversen/bellen bij
 ; opstarten. Per releasekanaal gescheiden, net als UserDataDir. Zie
-; docs/DECISIONS.md D-067.
-global IPTSessionCookieRegistryKey := "HKCU\Software\" . AppDataFolderName
-    . (UserDataProfile = "main" ? "" : "-" . UserDataProfile)
+; docs/DECISIONS.md D-067/D-068. Dezelfde sleutel bewaart sinds D-075 ook de
+; Belactie (CallAction/SmsCallActionTitle); HKCU roamt via Ivanti met de
+; gebruiker mee.
+global UserRegistryKey := GetUserRegistryKey(AppDataFolderName, UserDataProfile)
+global IPTSessionCookieRegistryKey := UserRegistryKey
 
 LoadPersistedIPTSessionCookie() {
     global IPTSessionCookieRegistryKey
@@ -252,6 +254,17 @@ global State := Map(
         "LastRegisterTick", 0  ; A_TickCount van de laatste IPT_register()-aanvraag
     )
 )
+
+; De Belactie (CallAction en SmsCallActionTitle) staat sinds D-075 in het
+; register (UserRegistryKey), niet meer in settings.ini. HKCU is direct bij
+; het opstarten beschikbaar, ook als OneDrive nog niet klaar is, dus de
+; eigen Belactie geldt ook tijdens degraded mode. Hier al lezen, vóór de
+; opslagladers en BuildMainGui()/BuildTrayMenu(). False zolang het register
+; nog geen waarde heeft (eerste start na de update, vóór de eenmalige
+; migratie uit settings.ini in LoadAppSettings()): dan valt een herkend
+; klembordnummer tijdens degraded mode terug op het bevestigingsvenster
+; (D-074).
+global CallActionSettingsKnown := LoadCallActionSettingsFromRegistry()
 
 global HotstringSchemaVersion := 7
 global BundledPackageSchemaVersion := 1
@@ -2836,16 +2849,20 @@ RefreshRegistrationTexts() {
 
 RefreshSidebarStatuses() {
     global State, SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText, C, StorageAllReady
+    global CallActionSettingsKnown
 
     if !StorageAllReady {
         ; CallAction en TextReplacement zijn pas betrouwbaar zodra alle
         ; opslag is geladen. De telefoonkoppeling (State["IPT"]["UserTel"])
-        ; hangt daar niet van af en blijft gewoon werken, maar een herkend
-        ; nummer opent dan alleen het bevestigingsvenster en snelkiesnummers
-        ; en SMS ontbreken (D-074): toon dat als "Beperkt" in plaats van als
-        ; volledig actief. Zonder koppeling is "Niet gekoppeld" ook nu al
-        ; betrouwbaar.
-        if Trim(State["IPT"]["UserTel"]) = "" {
+        ; hangt daar niet van af en blijft gewoon werken, maar snelkiesnummers
+        ; ontbreken en zonder bekende Belactie opent een herkend nummer alleen
+        ; het bevestigingsvenster (D-074): toon dat als "Beperkt" in plaats
+        ; van als volledig actief. "Niet gekoppeld" is ook nu al betrouwbaar,
+        ; en "Inactief" zodra de Belactie uit het register bekend is (D-075).
+        if CallActionSettingsKnown && State["CallAction"] = 0 {
+            SidebarPhoneDot.SetFont("s8 c" C["Danger"], "Segoe UI")
+            SidebarPhoneText.Value := "Inactief"
+        } else if Trim(State["IPT"]["UserTel"]) = "" {
             SidebarPhoneDot.SetFont("s8 c" C["Danger"], "Segoe UI")
             SidebarPhoneText.Value := "Niet gekoppeld"
         } else {
@@ -2923,7 +2940,7 @@ CallActionChanged(value, *) {
     global State
 
     State["CallAction"] := NormalizeCallAction(value)
-    SaveAppSettings()
+    SaveCallActionSettings()
     RefreshSidebarStatuses()
     BuildTrayMenu()
 }
@@ -5329,7 +5346,7 @@ MatchIgnoredClipboardSource(sources, processName, windowTitle) {
 }
 
 ClipBoardPoller() {
-    global State, StorageAllReady, PhoneActionDialogState, ClipboardIgnoredSources
+    global State, StorageAllReady, PhoneActionDialogState, ClipboardIgnoredSources, CallActionSettingsKnown
     static lastSeq := DllCall("GetClipboardSequenceNumber")  ; voorkomt dat de klembordinhoud bij opstarten al wordt opgepakt
 
     seq := DllCall("GetClipboardSequenceNumber")
@@ -5391,13 +5408,14 @@ ClipBoardPoller() {
     if IsObject(PhoneActionDialogState) && State["IPT"]["ClipBoardNumber"] = telNummer
         return
 
-    if !StorageAllReady {
-        ; Degraded mode (D-074, vervangt dit onderdeel van D-064): de
-        ; Belactie-instelling (State["CallAction"]) is nog niet betrouwbaar
-        ; geladen, dus niet handelen op een mogelijk onjuiste
-        ; standaardwaarde. Val terug op het bevestigingsvenster: dat belt
-        ; nooit zonder klik, biedt geen SMS en heeft niets nodig uit de
-        ; opslag die nog laadt. Geldt voor externe én interne nummers.
+    if !StorageAllReady && !CallActionSettingsKnown {
+        ; Degraded mode zonder bekende Belactie (D-074): het register heeft
+        ; nog geen waarde (eerste start na de update, vóór de migratie uit
+        ; settings.ini). Niet handelen op een mogelijk onjuiste
+        ; standaardwaarde, maar terugvallen op het bevestigingsvenster: dat
+        ; belt nooit zonder klik, biedt geen SMS en heeft niets nodig uit de
+        ; opslag die nog laadt. Geldt voor externe én interne nummers. Is de
+        ; Belactie wel bekend (D-075), dan volgt hieronder de gewone flow.
         CloseExistingPhoneActionDialog()
         SetClipBoardNumber(telNummer)
         LogActivityCheckpoint("Belactie bepaald", "Degraded mode: bevestigingsvenster als terugvaloptie.")
@@ -10002,6 +10020,126 @@ GetUserDataProfile(appVersion, isCompiled) {
     return isCompiled ? "test" : "dev"
 }
 
+; ---------------------------------------------------------------------------
+; Belactie in het register (D-075)
+; ---------------------------------------------------------------------------
+; CallAction en SmsCallActionTitle staan als REG_SZ onder UserRegistryKey
+; (HKCU\Software\DocBot, -test of -dev), naast de sessiecookie. Het register
+; is de enige bron; settings.ini wordt alleen nog eenmalig gelezen voor de
+; migratie (LoadAppSettings()/MigrateCallActionSettingsToRegistry()).
+
+GetUserRegistryKey(appDataFolderName, profile) {
+    return "HKCU\Software\" appDataFolderName (profile = "main" ? "" : "-" profile)
+}
+
+; Geeft een Map met de ruwe registerwaarden terug, of "" als er (nog) geen
+; CallAction in de sleutel staat of het register niet leesbaar is.
+ReadCallActionSettingsFromRegistry(key := "") {
+    global UserRegistryKey
+
+    if key = ""
+        key := UserRegistryKey
+
+    try
+        callAction := Trim(RegRead(key, "CallAction", "") "")
+    catch
+        return ""
+
+    if callAction = ""
+        return ""
+
+    smsTitle := ""
+    try smsTitle := RegRead(key, "SmsCallActionTitle", "")
+
+    return Map("CallAction", callAction, "SmsCallActionTitle", smsTitle)
+}
+
+ApplyCallActionSettings(callAction, smsTitle) {
+    global State
+
+    State["SmsCallActionTitle"] := ResolveSmsCallActionTitle(smsTitle)
+    State["CallAction"] := NormalizeCallAction(
+        ParseCallActionSetting(callAction, State["CallAction"])
+    )
+}
+
+LoadCallActionSettingsFromRegistry() {
+    values := ReadCallActionSettingsFromRegistry()
+    if !IsObject(values)
+        return false
+
+    ApplyCallActionSettings(values["CallAction"], values["SmsCallActionTitle"])
+    return true
+}
+
+SaveCallActionSettings(showError := true) {
+    global State, UserRegistryKey, CallActionSettingsKnown
+
+    try {
+        RegWrite(String(State["CallAction"]), "REG_SZ", UserRegistryKey, "CallAction")
+        RegWrite(State["SmsCallActionTitle"], "REG_SZ", UserRegistryKey, "SmsCallActionTitle")
+    } catch as error {
+        try DebugLog("✕", "Belactie opslaan", "Register niet beschrijfbaar: " error.Message)
+        if showError
+            ShowNotification(
+                "De belactie kon niet worden opgeslagen.`n" error.Message,
+                5000,
+                "error"
+            )
+        return false
+    }
+
+    CallActionSettingsKnown := true
+    return true
+}
+
+; Eenmalige migratie: alleen aangeroepen door LoadAppSettings() wanneer het
+; register nog geen CallAction had en State zojuist uit settings.ini is
+; gevuld. Pas na een geslaagde schrijf- én leescontrole in het register
+; verdwijnen de oude sleutels uit settings.ini, zodat er nooit een moment
+; is waarop de waarde nergens staat. Mislukt het, dan blijft settings.ini
+; ongewijzigd en wordt het bij de volgende start opnieuw geprobeerd.
+MigrateCallActionSettingsToRegistry() {
+    global ConfigFile, State
+
+    if !SaveCallActionSettings(false)
+        return false
+
+    stored := ReadCallActionSettingsFromRegistry()
+    if !IsObject(stored) || stored["CallAction"] != String(State["CallAction"])
+        return false
+
+    for _, iniKey in ["CallAction", "SmsCallActionTitle", "AutoCall", "DirectCall"]
+        try IniDelete(ConfigFile, "Features", iniKey)
+
+    try DebugLog("i", "Belactie", "Eenmalig van settings.ini naar het register gemigreerd.")
+    return true
+}
+
+; Een net vanuit een ander profiel gekopieerde profielmap (zie
+; InitializeUserStorage()) neemt ook de Belactie uit het register van dat
+; profiel over, zoals bij de bestanden. Overschrijft nooit een waarde die
+; dit profiel al in het register heeft. Heeft het bronprofiel nog geen
+; registerwaarde (bijv. een oudere stabiele versie), dan neemt
+; LoadAppSettings() de waarde gewoon over uit de gekopieerde settings.ini.
+SeedCallActionRegistrySettings(seedProfile) {
+    global AppDataFolderName, UserRegistryKey
+
+    if IsObject(ReadCallActionSettingsFromRegistry())
+        return
+
+    source := ReadCallActionSettingsFromRegistry(
+        GetUserRegistryKey(AppDataFolderName, seedProfile)
+    )
+    if !IsObject(source)
+        return
+
+    try {
+        RegWrite(source["CallAction"], "REG_SZ", UserRegistryKey, "CallAction")
+        RegWrite(source["SmsCallActionTitle"], "REG_SZ", UserRegistryKey, "SmsCallActionTitle")
+    }
+}
+
 GetUserDataSeedDirectory() {
     global UserDataProfile, ProductionUserDataDir, TestUserDataDir
 
@@ -10111,7 +10249,7 @@ UserStorageProbe_TryBootstrap() {
 
 ; De probe-map is aantoonbaar schrijfbaar. Nu pas de echte beslissing nemen.
 UserStorageProbe_ResolveAfterCreate(probeDir) {
-    global UserDataDir, UserDataDirIsPreexisting
+    global UserDataDir, UserDataDirIsPreexisting, ProductionUserDataDir
 
     ; Zelfde soort race als bij het telemetrie-installatie-ID
     ; (Telemetry_TryEnsureInstallationId): een tweede DocBot-instantie
@@ -10160,8 +10298,12 @@ UserStorageProbe_ResolveAfterCreate(probeDir) {
 
     UserDataDirIsPreexisting := false
 
-    if copiedFromDir != ""
+    if copiedFromDir != "" {
         RebaseCopiedHotstringPath(copiedFromDir)
+        SeedCallActionRegistrySettings(
+            copiedFromDir = ProductionUserDataDir ? "main" : "test"
+        )
+    }
 
     MigrateLegacyUserData()
     return true
@@ -10237,7 +10379,7 @@ IniReadOrThrow(path, section, key, default) {
 }
 
 LoadAppSettings() {
-    global State, ConfigFile, UserDataDirIsPreexisting
+    global State, ConfigFile, UserDataDirIsPreexisting, CallActionSettingsKnown
 
     if !FileExist(ConfigFile) {
         ; Op een net gebootstrapte, nieuwe profielmap is een ontbrekend
@@ -10267,34 +10409,49 @@ LoadAppSettings() {
             "File",
             State["HotstringFile"]
         )
-        storedCallAction := Trim(
-            IniReadOrThrow(ConfigFile, "Features", "CallAction", "")
-        )
-        if storedCallAction != "" {
-            State["CallAction"] := ParseCallActionSetting(
-                storedCallAction,
-                State["CallAction"]
+        ; De Belactie komt uit het register (D-075). Alleen als daar nog
+        ; niets staat, wordt de waarde eenmalig uit settings.ini (inclusief
+        ; de oude AutoCall/DirectCall-sleutels) overgenomen en na deze try
+        ; naar het register gemigreerd.
+        migrateCallAction := false
+        registryCallAction := ReadCallActionSettingsFromRegistry()
+        if IsObject(registryCallAction) {
+            ApplyCallActionSettings(
+                registryCallAction["CallAction"],
+                registryCallAction["SmsCallActionTitle"]
             )
+            CallActionSettingsKnown := true
         } else {
-            legacyAutoCall := ParseBooleanSetting(
-                IniReadOrThrow(ConfigFile, "Features", "AutoCall", 1)
+            storedCallAction := Trim(
+                IniReadOrThrow(ConfigFile, "Features", "CallAction", "")
             )
-            legacyDirectCall := ParseBooleanSetting(
-                IniReadOrThrow(ConfigFile, "Features", "DirectCall", 0)
+            if storedCallAction != "" {
+                State["CallAction"] := ParseCallActionSetting(
+                    storedCallAction,
+                    State["CallAction"]
+                )
+            } else {
+                legacyAutoCall := ParseBooleanSetting(
+                    IniReadOrThrow(ConfigFile, "Features", "AutoCall", 1)
+                )
+                legacyDirectCall := ParseBooleanSetting(
+                    IniReadOrThrow(ConfigFile, "Features", "DirectCall", 0)
+                )
+                State["CallAction"] := !legacyAutoCall
+                    ? 0
+                    : (legacyDirectCall ? 2 : 1)
+            }
+            State["SmsCallActionTitle"] := ResolveSmsCallActionTitle(
+                IniReadOrThrow(
+                    ConfigFile,
+                    "Features",
+                    "SmsCallActionTitle",
+                    State["SmsCallActionTitle"]
+                )
             )
-            State["CallAction"] := !legacyAutoCall
-                ? 0
-                : (legacyDirectCall ? 2 : 1)
+            State["CallAction"] := NormalizeCallAction(State["CallAction"])
+            migrateCallAction := true
         }
-        State["SmsCallActionTitle"] := ResolveSmsCallActionTitle(
-            IniReadOrThrow(
-                ConfigFile,
-                "Features",
-                "SmsCallActionTitle",
-                State["SmsCallActionTitle"]
-            )
-        )
-        State["CallAction"] := NormalizeCallAction(State["CallAction"])
         State["TextReplacement"] := ParseBooleanSetting(
             IniReadOrThrow(
                 ConfigFile,
@@ -10303,6 +10460,8 @@ LoadAppSettings() {
                 State["TextReplacement"]
             )
         )
+        if migrateCallAction
+            MigrateCallActionSettingsToRegistry()
         return true
     } catch as error {
         ReportStorageError(
@@ -10320,17 +10479,14 @@ SaveAppSettings() {
     try {
         IniWrite(State["AutoSave"] ? 1 : 0, ConfigFile, "Hotstrings", "AutoSave")
         IniWrite(State["HotstringFile"], ConfigFile, "Hotstrings", "File")
-        IniWrite(State["CallAction"], ConfigFile, "Features", "CallAction")
-        IniWrite(State["SmsCallActionTitle"], ConfigFile, "Features", "SmsCallActionTitle")
-        try IniDelete(ConfigFile, "Features", "AutoCall")
-        try IniDelete(ConfigFile, "Features", "DirectCall")
+        ; CallAction/SmsCallActionTitle staan in het register (D-075) en
+        ; worden hieronder via SaveCallActionSettings() bewaard.
         IniWrite(
             State["TextReplacement"] ? 1 : 0,
             ConfigFile,
             "Features",
             "TextReplacement"
         )
-        return true
     } catch as error {
         ShowNotification(
             "De instellingen konden niet worden opgeslagen.`n" error.Message,
@@ -10339,6 +10495,8 @@ SaveAppSettings() {
         )
         return false
     }
+
+    return SaveCallActionSettings()
 }
 
 ParseBooleanSetting(value) {
@@ -10400,7 +10558,7 @@ SaveSettings(autoSaveCheck, filePathEdit, smsActionDropDown, smsDefaultTextEdit,
 }
 
 HandleAppExit(*) {
-    global IPTPollRequest, UiBitmaps
+    global IPTPollRequest, UiBitmaps, StorageAllReady
 
     Telemetry_Shutdown()
     SetTimer ClipBoardPoller, 0
@@ -10415,8 +10573,19 @@ HandleAppExit(*) {
     }
 
     UnregisterRuntimeHotstrings()
-    SaveAppSettings()
-    AutoSaveHotstrings()
+    ; Alleen opslaan als alle opslag echt geladen is. Tijdens degraded mode
+    ; staan in State/Hotstrings nog (deels) code-standaardwaarden; die bij
+    ; afsluiten wegschrijven zou de echte settings.ini en hotstrings.json
+    ; overschrijven zodra OneDrive weer schrijfbaar is, en een
+    ; standaard-Belactie in het register zetten die de eenmalige migratie
+    ; uit settings.ini blokkeert (D-075). Wijzigingen tijdens degraded
+    ; mode zijn er niet: alle schrijvende besturingselementen zijn dan
+    ; verborgen of uitgeschakeld (D-064), en de Belactie wordt direct bij
+    ; een wijziging in het register bewaard.
+    if StorageAllReady {
+        SaveAppSettings()
+        AutoSaveHotstrings()
+    }
 
     DebugLog("i", "DocBot afgesloten", "Normale afsluiting.")
     ShutdownProblemReportLogging()
@@ -10435,7 +10604,7 @@ HandleAppExit(*) {
 
 BuildTrayMenu() {
     global State, IsDevMode, SpeedDialEntries, TraySpeedDialMaxEntries
-    global ProblemReportSession, StorageAllReady
+    global ProblemReportSession, StorageAllReady, CallActionSettingsKnown
 
     A_TrayMenu.Delete()
 
@@ -10477,12 +10646,14 @@ BuildTrayMenu() {
         A_TrayMenu.Check("Tekstvervanging")
 
     if !StorageAllReady {
-        ; Beide items schrijven rechtstreeks naar State/settings.ini
-        ; (SetTrayCallAction()/ToggleTraySetting()), buiten het hoofdvenster
-        ; om. Zolang niet alle opslag geladen is, zou een wijziging hier de
-        ; dan pas net echt geladen waarde meteen weer overschrijven met een
-        ; keuze gebaseerd op een nog niet bevestigde standaardwaarde.
-        A_TrayMenu.Disable("Belactie")
+        ; ToggleTraySetting() schrijft rechtstreeks naar State/settings.ini,
+        ; buiten het hoofdvenster om. Zolang niet alle opslag geladen is,
+        ; zou een wijziging hier de dan pas net echt geladen waarde meteen
+        ; weer overschrijven met een keuze gebaseerd op een nog niet
+        ; bevestigde standaardwaarde. De Belactie staat in het register
+        ; (D-075) en blijft daarom bruikbaar zodra die waarde bekend is.
+        if !CallActionSettingsKnown
+            A_TrayMenu.Disable("Belactie")
         A_TrayMenu.Disable("Tekstvervanging")
     }
 
@@ -10549,7 +10720,10 @@ SetTrayCallAction(value, *) {
     if IsObject(CallActionSelector)
         CallActionSelector.Value := value
 
-    SaveAppSettings()
+    ; Alleen de Belactie in het register; niet SaveAppSettings(), dat ook
+    ; settings.ini-waarden wegschrijft die tijdens degraded mode nog niet
+    ; geladen zijn.
+    SaveCallActionSettings()
     RefreshSidebarStatuses()
     BuildTrayMenu()
 }

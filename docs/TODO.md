@@ -177,6 +177,16 @@ the rest of this proposal before implementation.
 > internal 4-digit number, a TeleQ-copied number (must stay ignored),
 > copying the same number twice, and the degraded-to-ready transition with
 > the dialog still open.
+>
+> **Update (D-075):** the call action now lives in the registry. Also
+> validate: the one-time migration from `settings.ini` (including a legacy
+> `AutoCall`/`DirectCall` file) and removal of the old keys; degraded mode
+> with a known call action (own action applies, tray Belactie enabled,
+> sidebar "Inactief"/"Beperkt"); degraded mode on the first start after
+> the update (confirmation-dialog fallback); bootstrapping `DocBot-test`/
+> `DocBot-dev` copies the registry values; that closing DocBot while
+> degraded no longer writes `settings.ini`/`hotstrings.json`; and that the
+> values really roam to another workstation via Ivanti.
 
 Project owner requirement (2026-08-28): silently running on defaults, as
 today, is not acceptable even once the retry mechanism above exists —

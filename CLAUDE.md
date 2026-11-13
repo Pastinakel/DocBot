@@ -139,6 +139,9 @@ Deze bestanden staan niet in de repository:
 
 - Hotstrings: `%MyDocuments%\DocBot\hotstrings.json`
 - Instellingen: `%MyDocuments%\DocBot\settings.ini`
+- Belactie en gekozen sms-pagina (`CallAction`, `SmsCallActionTitle`) en de
+  telefonie-sessiecookie: register, `HKCU\Software\DocBot` (of
+  `DocBot-test`/`DocBot-dev`); zie `docs/DECISIONS.md` D-068/D-075
 - Pakketstatussen: `%MyDocuments%\DocBot\package-settings.json`
 - Snelkiesnummers: `%MyDocuments%\DocBot\speeddial.json`
 - SMS-standaardtekst per pagina: `%MyDocuments%\DocBot\sms-default-texts.json`

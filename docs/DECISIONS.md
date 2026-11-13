@@ -3524,6 +3524,12 @@ DocBot persists (hotstrings, settings, speed dials) stays in
 `%MyDocuments%` as before — this is a deliberate, scoped exception, not a
 switch to registry-based storage generally.
 
+**Correction (D-075):** the premise above is wrong for this environment.
+The project owner confirmed that Ivanti roams `HKCU` with the user, so a
+registry value under `HKCU\Software\DocBot` does follow the user to another
+workstation; there is no roaming loss. D-075 builds on that to move the
+call action (`CallAction`/`SmsCallActionTitle`) into the same key.
+
 **No degraded-mode gating needed**
 
 The project owner's original ask was that
@@ -3865,7 +3871,9 @@ match a report to its telemetry records without asking.
 
 **Status:** Decided by the project owner on `claude/klembord-degraded`
 (`AppVersion 2.5-klembord-degraded.1`). Supersedes only the clipboard-number
-bullet of D-064; the rest of D-064 stands. Not yet functionally validated on
+bullet of D-064; the rest of D-064 stands. Narrowed by D-075: the
+confirmation dialog is now only the fallback when the call action is not
+yet known from the registry. Not yet functionally validated on
 Windows (D-037).
 
 **Background**
@@ -3921,3 +3929,77 @@ reliable.
   during an outage was judged more important.
 - A user whose setting is "choose call or SMS" cannot send an SMS from the
   clipboard until storage has loaded.
+
+---
+
+## D-075 — Store the call action in the registry instead of `settings.ini`
+
+**Status:** Decided by the project owner on `claude/klembord-degraded`
+(`AppVersion 2.5-klembord-degraded.3`). Not yet functionally validated on
+Windows (D-037).
+
+**Background**
+
+During a OneDrive outage `settings.ini` cannot be read, so under D-064/D-074
+DocBot does not know the user's call action (Belactie) and falls back to the
+confirmation dialog. `HKCU` is available at startup before OneDrive, and the
+project owner confirmed that Ivanti roams `HKCU` with the user — which also
+corrects the "no roaming" premise in D-068. The SMS pages themselves
+(`SmsCallActions`) come from `DocBot.local.ahk` and are compiled in, so the
+SMS route works without user storage; only the per-page default text
+(`sms-default-texts.json`) is still missing during an outage.
+
+**Decision**
+
+- `CallAction` and `SmsCallActionTitle` move to the registry as `REG_SZ`
+  values in the existing per-profile key (`HKCU\Software\DocBot`,
+  `DocBot-test`, `DocBot-dev`; `GetUserRegistryKey()`), next to
+  `SessionCookie`. The registry is the **single source**; `settings.ini` no
+  longer stores them.
+- Read once at global initialization (`LoadCallActionSettingsFromRegistry()`,
+  sets `CallActionSettingsKnown`), and again in `LoadAppSettings()`.
+- One-time migration: if the registry has no `CallAction`, `LoadAppSettings()`
+  derives the value from `settings.ini` exactly as before (including the
+  legacy `AutoCall`/`DirectCall` keys), writes it to the registry, reads it
+  back, and only then removes `CallAction`, `SmsCallActionTitle`, `AutoCall`
+  and `DirectCall` from `[Features]`. If writing fails, `settings.ini` stays
+  untouched and the migration is retried next start. An existing registry
+  value is never overwritten by the migration.
+- A newly created profile (test from main, dev from test/main) also copies
+  these registry values from its seed profile
+  (`SeedCallActionRegistrySettings()`), never overwriting existing values.
+  If the seed profile has no registry value yet (e.g. an older stable
+  build), the copied `settings.ini` is migrated as above.
+- Changing the call action (Overzicht selector, tray menu, Instellingen
+  save) writes the registry directly via `SaveCallActionSettings()`.
+- During degraded mode, when `CallActionSettingsKnown` is true:
+  - a recognized clipboard number follows the user's own call action,
+    including "choose call or SMS" (SMS opens the configured page and fills
+    the number; the user's default text is skipped until
+    `sms-default-texts.json` has loaded);
+  - the tray "Belactie" submenu stays enabled (it now writes only the
+    registry, not `settings.ini`);
+  - the sidebar "Telefonie:" dot shows "Inactief" for call action "none",
+    otherwise "Beperkt"/"Niet gekoppeld" as in D-074.
+  When it is false (first start after this update during an outage), D-074's
+  confirmation-dialog fallback still applies.
+- Related fix found while implementing this: `HandleAppExit()` called
+  `SaveAppSettings()` and `AutoSaveHotstrings()` unconditionally, so closing
+  DocBot during degraded mode could write code defaults over the real
+  `settings.ini`/`hotstrings.json` once OneDrive was writable — and would
+  now also have written a default call action to the registry, blocking the
+  migration for good. Both are now skipped unless `StorageAllReady`. Nothing
+  is lost: every writable control is hidden or disabled while degraded
+  (D-064), and the call action is saved immediately on change.
+
+**Consequences**
+
+- Rolling back to a build older than this change resets the call action to
+  the code default ("Bellen na bevestiging") once, because the
+  `settings.ini` keys have been removed. Accepted: it is the safe default.
+- `docs/DATA_PROTECTION.md` §2.2b lists the new registry values; they are
+  user preferences, not personal data.
+- The overall degraded-mode gating (D-064's all-or-nothing `StorageAllReady`)
+  is otherwise unchanged: speed dials, hotstrings and the Overzicht Belactie
+  card stay hidden until all storage has loaded.
+
