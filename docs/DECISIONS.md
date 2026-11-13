@@ -2705,11 +2705,13 @@ itself.
   outside the main window (`SetTrayCallAction()`, `ToggleTraySetting()`),
   and a toggle made there on a not-yet-loaded default would otherwise be
   silently overwritten the moment the real value loads.
-- A recognized clipboard phone number during degraded mode shows a
+- ~~A recognized clipboard phone number during degraded mode shows a
   one-off `ShowNotification()` toast instead of silently falling through
   to the call/SMS-action handlers (both switch on the not-yet-reliable
   `State["CallAction"]`): an unexplained no-op would look like DocBot
-  missed the number.
+  missed the number.~~ **Superseded by D-074:** a recognized clipboard
+  number during degraded mode now always opens the call-confirmation
+  dialog instead of only showing a toast.
 - `StorageRetry_OnAllReady()` fires once, the first time `StorageAllReady`
   becomes true; if `MainGui` already exists (a real degraded-to-ready
   transition, as opposed to the common startup path where every loader
@@ -3855,3 +3857,59 @@ match a report to its telemetry records without asking.
 - Revisit only together with the P2 "Reassess the telemetry username after
   the startup phase" item in `docs/TODO.md`, and update README and
   `docs/DATA_PROTECTION.md` in the same change if this is ever reversed.
+
+---
+
+## D-074 — Degraded mode: a recognized clipboard number opens the call-confirmation dialog
+
+**Status:** Decided by the project owner on `claude/klembord-degraded`
+(`AppVersion 2.5-klembord-degraded.1`). Supersedes only the clipboard-number
+bullet of D-064; the rest of D-064 stands. Not yet functionally validated on
+Windows (D-037).
+
+**Background**
+
+During a OneDrive outage DocBot can stay in degraded mode for a long time.
+Under D-064 a phone number copied in that window only produced the toast
+"Telefoonnummer herkend, maar instellingen laden nog", so the user could not
+call from the clipboard at all — even though the telephony link itself
+(registration, event polling, dialing) never depends on the storage loaders
+and keeps working throughout. D-064 suspended the flow because the
+configured call action (`State["CallAction"]`: none / confirm / dial
+directly / choose call or SMS) lives in `settings.ini` and is not yet
+reliable.
+
+**Decision**
+
+- While `StorageAllReady` is false, a recognized clipboard number — external
+  or internal — always opens the existing call-confirmation dialog
+  (`ShowCallConfirmationDialog()`, "Nummer bellen?"), regardless of the
+  stored or default `CallAction`. The toast is dropped.
+- The TeleQ ignore rule (D-072) and the duplicate-number check still run
+  first, exactly as in normal mode.
+- Once storage is ready, the configured `CallAction` applies again as
+  before. Speed dials, the tray Belactie submenu and every other D-064 gate
+  are unchanged.
+
+**Reasoning**
+
+- The confirmation dialog is the one call action that is harmless on an
+  unknown setting: it never dials without an explicit click and offers no
+  SMS route (which would need `SmsCallActionTitle` and the SMS default
+  texts, both still loading).
+- It needs nothing from the five loaders: only `MainGui` (built before
+  clipboard polling starts), the colour table, `State["IPT"]` and
+  `IPTConfig`. Dialing via `IPT_callNumber()` likewise only uses telephony
+  state; the telemetry phone-action counter already refuses to write until
+  its stored value is confirmed.
+- This does not add autonomous behaviour: compared with a stored "dial
+  directly" setting it is more conservative, so it is not a reassessment
+  trigger under `docs/REGULATORY_ASSESSMENT.md`.
+
+**Consequences**
+
+- A user whose `CallAction` is "none" sees the confirmation dialog during an
+  outage. Accepted: it is one Annuleren/Escape away, and being able to call
+  during an outage was judged more important.
+- A user whose setting is "choose call or SMS" cannot send an SMS from the
+  clipboard until storage has loaded.

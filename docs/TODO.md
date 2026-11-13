@@ -170,6 +170,14 @@ the rest of this proposal before implementation.
 
 ### Degraded mode: block functionality visibly, not startup
 
+> **Update (D-074):** the clipboard-number toast described below has been
+> replaced: during degraded mode a recognized number now always opens the
+> call-confirmation dialog. Open: validate on Windows with the
+> locked-profile test from the D-064 validation notes — external number,
+> internal 4-digit number, a TeleQ-copied number (must stay ignored),
+> copying the same number twice, and the degraded-to-ready transition with
+> the dialog still open.
+
 Project owner requirement (2026-08-28): silently running on defaults, as
 today, is not acceptable even once the retry mechanism above exists —
 retries can still take minutes. The user must be able to see that settings

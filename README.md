@@ -508,6 +508,12 @@ Changelog
 ---------
 
 ### 2.5 — In ontwikkeling
+- Bij een OneDrive-storing kon je tijdens het laden van de instellingen
+  niet bellen vanaf het klembord: DocBot meldde alleen dat de instellingen
+  nog laadden. Nu opent een herkend nummer in die situatie altijd het
+  venster "Nummer bellen?", zodat je toch kunt bellen. Er wordt nooit
+  gebeld zonder jouw klik; sms is pas weer beschikbaar als de instellingen
+  zijn geladen.
 - Het installatie-ID waarmee support jouw DocBot-installatie in de
   telemetrie terugvindt, staat nu onderaan de Over-pagina, met een knop om
   het te kopiëren voor een probleemmelding. Staat telemetrie uit of is het

@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-dev.5"
+global AppVersion := "2.5-klembord-degraded.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -5371,21 +5371,6 @@ ClipBoardPoller() {
         return
     }
 
-    if !StorageAllReady {
-        ; CallAction en de andere instellingen die de belactie-flow
-        ; hieronder gebruikt zijn nog niet betrouwbaar geladen. Niet
-        ; stilzwijgend niets doen (dat lijkt alsof DocBot het nummer niet
-        ; heeft gezien) en niet handelen op een mogelijk onjuiste
-        ; standaardwaarde: laat het via een korte melding weten. Zie ook de
-        ; banner op de Overzicht-pagina.
-        ShowNotification(
-            "Telefoonnummer herkend, maar instellingen laden nog. Probeer het over een moment opnieuw.",
-            5000,
-            "warning"
-        )
-        return
-    }
-
     telNummer := externalTel != "" ? externalTel : internalTel
 
     ; Sommige klembordbronnen (Windows Klembordgeschiedenis/Cloud Klembord,
@@ -5398,6 +5383,20 @@ ClipBoardPoller() {
     ; gesloten"-melding tot gevolg).
     if IsObject(PhoneActionDialogState) && State["IPT"]["ClipBoardNumber"] = telNummer
         return
+
+    if !StorageAllReady {
+        ; Degraded mode (D-074, vervangt dit onderdeel van D-064): de
+        ; Belactie-instelling (State["CallAction"]) is nog niet betrouwbaar
+        ; geladen, dus niet handelen op een mogelijk onjuiste
+        ; standaardwaarde. Val terug op het bevestigingsvenster: dat belt
+        ; nooit zonder klik, biedt geen SMS en heeft niets nodig uit de
+        ; opslag die nog laadt. Geldt voor externe én interne nummers.
+        CloseExistingPhoneActionDialog()
+        SetClipBoardNumber(telNummer)
+        LogActivityCheckpoint("Belactie bepaald", "Degraded mode: bevestigingsvenster als terugvaloptie.")
+        ShowCallConfirmationDialog()
+        return
+    }
 
     if externalTel != "" {
         SetClipBoardNumber(externalTel)

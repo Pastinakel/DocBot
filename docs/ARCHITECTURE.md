@@ -118,7 +118,8 @@ The current startup flow in `DocBot.ahk` is approximately:
     once storage finishes loading can still appear that session;
 12. register Windows messages and exit handler;
 13. show GUI and apply custom visual rendering;
-14. start clipboard polling (suppressed while degraded — §7.4/D-064);
+14. start clipboard polling (while degraded, a recognized number always opens
+    the call-confirmation dialog — §7.4/D-074);
 15. start registration-button countdown timer;
 16. request telephony registration and start chained event polling —
     unaffected by user-data availability throughout;
@@ -265,8 +266,9 @@ startup. This is handled uniformly, not per-loader:
   save buttons included — hidden rather than disabled; the sidebar's
   "Telefonie:"/"Tekst vervangen:" dots show a neutral "Laden…" state; the
   tray menu's "Belactie"/"Tekstvervanging" items are disabled; a
-  recognized clipboard number shows a one-off toast instead of acting on
-  not-yet-reliable settings. See D-064 for the full reasoning, including
+  recognized clipboard number always opens the call-confirmation dialog
+  instead of following the not-yet-reliable `CallAction` (D-074, which
+  replaced D-064's toast). See D-064 for the full reasoning, including
   why this is hide-not-dim and all-or-nothing rather than per-feature.
 - `ShowPage()` gained a per-control `_degradedGate` property so gated
   controls stay hidden across page navigation — its pre-existing
