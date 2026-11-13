@@ -448,6 +448,13 @@ verwijdert de bestanden op dat moment niet zelfstandig. Definitieve
 verwijdering van het actieve profiel en kopieën in back-ups volgt het beleid
 van de organisatie.
 
+Voor de telefonie-instellingen in het register (§2.2b) geldt aanvullend:
+de werkplek gebruikt een niet-persistent profiel en Ivanti bewaart alles wat
+DocBot in het register schrijft direct, ongeacht de buildvorm. Een reset van
+de Ivanti-personalisatie wist deze waarden (snelkiesnummers,
+sms-standaardteksten en Belactie); daarvan bestaat dan geen kopie op OneDrive
+meer (zie `docs/DECISIONS.md` D-078).
+
 **OPENSTAAND:** leg de concrete organisatorische termijnen voor bewaring,
 back-ups en definitieve verwijdering vast en verwijs naar het toepasselijke
 werkplek-/OneDrive-beleid en de regeling voor beheerderstoegang.

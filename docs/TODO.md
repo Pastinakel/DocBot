@@ -215,6 +215,11 @@ the rest of this proposal before implementation.
 > an outage the old behavior (hidden, "Beperkt", D-074/D-077) applies and
 > switches over without restart once the loaders succeed; new profiles copy
 > the registry values; the values roam via Ivanti.
+>
+> **Open decision (D-078):** a reset of the Ivanti personalization wipes the
+> registry values (confirmed by the Ivanti administrator). Decide whether
+> DocBot should keep a background backup copy on OneDrive that restores an
+> empty registry after such a reset.
 
 Project owner requirement (2026-08-28): silently running on defaults, as
 today, is not acceptable even once the retry mechanism above exists —

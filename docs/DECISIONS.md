@@ -4166,8 +4166,27 @@ SMS action filled no default text (D-077).
   registry profile; access still rests on the Windows profile.
   `docs/DATA_PROTECTION.md` §2.2, §2.2b, §3.3 and §3.5 are updated.
 
+**Environment facts (project owner, after a roaming test on 2026-11-13)**
+
+- The workstation profile is non-persistent: a file in `%AppData%` and a
+  registry key written by `cmd`/`reg.exe` were both gone after logging off
+  and on again on the same workstation, while `HKCU\Software\DocBot-test`
+  written by DocBot itself (`SessionCookie`, `CallAction`,
+  `SmsCallActionTitle`) was restored. `%AppData%` was therefore not an
+  alternative to the registry for a test outside DocBot.
+- Ivanti personalization for DocBot (confirmed with the Ivanti
+  administrator): everything DocBot writes is kept; it does not depend on
+  the executable name (stable and test builds alike); changes are saved
+  immediately, not only at logoff.
+- A reset of the Ivanti personalization **does** wipe these values. Files
+  on OneDrive survive such a reset; the registry does not.
+
 **Consequences**
 
+- A reset of the Ivanti personalization (a common helpdesk fix) erases the
+  call action, speed dials and SMS default texts; they come back neither
+  from OneDrive (the files were deleted after migration) nor from anywhere
+  else. See the open TODO on a OneDrive backup copy.
 - The files are deleted after migration, so there is no hand-editable copy
   and no OneDrive version history for these lists any more. DocBot has no
   import/export for either file, so nothing functional is lost.
