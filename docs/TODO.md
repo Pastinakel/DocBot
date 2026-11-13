@@ -13,7 +13,7 @@ _Last updated: 2026-10-01 (ninth update, closed the explicit-unlink investigatio
 
 ---
 
-## P1 — Telephony shows "Geen / Geen" after startup until a manual refresh (2.5 RC, open)
+## P1 — Telephony shows "Geen / Geen" after startup until a manual refresh (2.5 RC, fixed on `claude/telefonie-event-log`)
 
 Reported 2026-11-13 while testing the 2.5 release candidate (log taken from a
 `2.5-dev-7` build with identical telephony code). With a persisted session
@@ -50,8 +50,8 @@ Findings from the standard log:
   parsing `ResponseText` with `Msxml2.DOMDocument.6.0`, and retries without
   the XML declaration; the standard log records `Content-Type`,
   `Content-Encoding` and the MSXML parse error when that is needed.
-- [ ] Windows validation: number visible right after startup, without
-  Verversen; check the `Telefonie-event` lines for which fallback worked.
+- [x] Windows validation (2026-11-13, production telephony server): the
+  number is visible right after startup, without Verversen.
 
 ---
 
