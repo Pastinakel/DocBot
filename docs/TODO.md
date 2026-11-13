@@ -13,6 +13,48 @@ _Last updated: 2026-10-01 (ninth update, closed the explicit-unlink investigatio
 
 ---
 
+## P1 — Telephony shows "Geen / Geen" after startup until a manual refresh (2.5 RC, fixed on `claude/telefonie-event-log`)
+
+Reported 2026-11-13 while testing the 2.5 release candidate (log taken from a
+`2.5-dev-7` build with identical telephony code). With a persisted session
+cookie (D-068) the link itself survives a restart, but after startup the
+Overzicht card shows no extension and no koppelnummer, and the sidebar says
+"Niet gekoppeld", until the user clicks Verversen.
+
+Findings from the standard log:
+
+- The poll chain does not stop (no `StopEventLoop`): `GetEvent.xml` keeps
+  returning roughly every 5 seconds, so the "chain stopped at startup"
+  hypothesis is ruled out.
+- The first `GetEvent.xml` is sent and answered before the `AllocNumber.xml`
+  response arrives; the second poll returns after ~1.2 s, likely a real
+  event, yet the display stays empty.
+- The `AllocNumber.xml` response is processed three times (duplicate
+  `onreadystatechange` firing, which the poller already guards against via
+  `IPTPollInFlight`, but `IPT_RegisterResponse()` does not). Harmless noise.
+
+### Next step
+
+- [x] Standard-log diagnostics on `claude/telefonie-event-log`: every
+  non-keep-alive event is logged as `Telefonie-event` with its name, message
+  length, digit-run lengths, whether the extension (4 digits) and koppelnummer
+  (7 digits) patterns matched, and the resulting state, without message text.
+- [x] Re-tested with `2.5-telefonie-event-log.1`: the two real events right
+  after startup (227 and 91 characters) arrive with status 200, but
+  `responseXML` has no document element, so they are silently dropped;
+  later keep-alives parse fine. Not an ordering problem and not the number
+  pattern: the events never reach `ParsePhoneNumbersFromMessage()`.
+  Likely related to the `Msxml2.ServerXMLHTTP.6.0` switch (D-067), whose
+  `responseXML` depends on the response `Content-Type` and encoding.
+- [x] Fix in `2.5-telefonie-event-log.2`: `GetIPTEventRoot()` falls back to
+  parsing `ResponseText` with `Msxml2.DOMDocument.6.0`, and retries without
+  the XML declaration; the standard log records `Content-Type`,
+  `Content-Encoding` and the MSXML parse error when that is needed.
+- [x] Windows validation (2026-11-13, production telephony server): the
+  number is visible right after startup, without Verversen.
+
+---
+
 ## P0 — Autostart race: user-data storage not yet available at DocBot startup (shipped in stable DocBot 2.4)
 
 Filed 2026-08-28 from a user-supplied standard log

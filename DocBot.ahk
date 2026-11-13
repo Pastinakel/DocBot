@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-rc.1"
+global AppVersion := "2.5-telefonie-event-log.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -3601,27 +3601,35 @@ IPT_PollResponse() {
             ; Onbekende/afwijkende XML-structuur mag de poller nooit laten
             ; crashen — bij een fout loggen we de ruwe respons en gaan we door.
             try {
-                xml := IPTPollRequest.responseXML
-                if IsObject(xml) {
-                    root := xml.documentElement
-                    if IsObject(root) {
-                        eventName := root.getAttribute("Name")
+                diagnose := ""
+                root := GetIPTEventRoot(IPTPollRequest, &diagnose)
+                if IsObject(root) {
+                    eventName := root.getAttribute("Name")
 
-                        switch eventName {
-                            case "NULL":
-                                ; niets te doen, keep-alive
-                            case "StopEventLoop":
-                                State["IPT"]["NeedUpdate"] := -1
-                            case "SetUpperText":
-                                msgNode := root.selectSingleNode("Message")
-                                if IsObject(msgNode)
-                                    ParsePhoneNumbersFromMessage(msgNode.text)
-                            case "ShowAlert":
-                                msgNode := root.selectSingleNode("Text")
-                                if IsObject(msgNode)
-                                    ShowNotification(msgNode.text, 4000, "info")
-                        }
+                    switch eventName {
+                        case "NULL":
+                            ; niets te doen, keep-alive
+                        case "StopEventLoop":
+                            State["IPT"]["NeedUpdate"] := -1
+                            LogIPTEvent(eventName, diagnose)
+                        case "SetUpperText":
+                            msgNode := root.selectSingleNode("Message")
+                            if IsObject(msgNode) {
+                                ParsePhoneNumbersFromMessage(msgNode.text)
+                                LogIPTEvent(eventName, JoinIPTEventDetails(diagnose, DescribeIPTEventMessage(msgNode.text)))
+                            } else {
+                                LogIPTEvent(eventName, JoinIPTEventDetails(diagnose, "Geen Message-element in het event."))
+                            }
+                        case "ShowAlert":
+                            LogIPTEvent(eventName, diagnose)
+                            msgNode := root.selectSingleNode("Text")
+                            if IsObject(msgNode)
+                                ShowNotification(msgNode.text, 4000, "info")
+                        default:
+                            LogIPTEvent(eventName = "" ? "(zonder naam)" : eventName, diagnose)
                     }
+                } else {
+                    LogIPTEvent("(geen leesbaar event)", diagnose)
                 }
             } catch as err {
                 DebugLog("←", IPTConfig["EventPage"] . " PARSE-FOUT: " . err.Message, IPTPollRequest.ResponseText)
@@ -3640,6 +3648,124 @@ IPT_PollResponse() {
     ; dan één het event-endpoint-aanvraag tegelijk onderweg is.
     if State["IPT"]["NeedUpdate"] > -1
         SetTimer IPT_poller, -10
+}
+
+; Geeft het hoofdelement van een GetEvent.xml-respons terug. Eerst via
+; responseXML; Msxml2.ServerXMLHTTP.6.0 vult dat alleen als de server een
+; XML-Content-Type meestuurt en het document in één keer kan parsen. Bij de
+; 2.5-RC bleken juist de events direct na het opstarten (o.a. de
+; koppelbevestiging) daar leeg te blijven, terwijl keep-alives wel slaagden;
+; het resultaat was "Geen / Geen" tot een handmatige verversing. Daarom
+; valt DocBot terug op het zelf parsen van ResponseText, en daarna nog eens
+; zonder XML-declaratie (een afwijkende encoding-declaratie laat loadXML()
+; op een al gedecodeerde tekst falen). diagnose beschrijft alleen
+; technische kenmerken, nooit de inhoud; leeg als responseXML gewoon werkte.
+GetIPTEventRoot(request, &diagnose) {
+    diagnose := ""
+
+    try {
+        xml := request.responseXML
+        if IsObject(xml) && IsObject(xml.documentElement)
+            return xml.documentElement
+    }
+
+    text := ""
+    try text := request.ResponseText
+    contentType := ""
+    try contentType := request.getResponseHeader("Content-Type")
+    contentEncoding := ""
+    try contentEncoding := request.getResponseHeader("Content-Encoding")
+
+    trimmed := LTrim(text, " `t`r`n" . Chr(0xFEFF))
+    diagnose := "responseXML leeg; " . StrLen(text) . " tekens; Content-Type: "
+        . (contentType = "" ? "(geen)" : contentType)
+        . "; Content-Encoding: " . (contentEncoding = "" ? "(geen)" : contentEncoding)
+        . "; begint met '<': " . (SubStr(trimmed, 1, 1) = "<" ? "ja" : "nee")
+        . "; XML-declaratie: " . (SubStr(trimmed, 1, 5) = "<?xml" ? "ja" : "nee") . "."
+
+    if trimmed = ""
+        return ""
+
+    reason := ""
+    root := LoadIPTEventXml(trimmed, &reason)
+    if IsObject(root) {
+        diagnose .= "`r`nZelf geparsed uit de responstekst."
+        return root
+    }
+
+    if SubStr(trimmed, 1, 5) = "<?xml" && (declEnd := InStr(trimmed, "?>")) {
+        reason2 := ""
+        root := LoadIPTEventXml(LTrim(SubStr(trimmed, declEnd + 2), " `t`r`n"), &reason2)
+        if IsObject(root) {
+            diagnose .= "`r`nZelf geparsed na het weglaten van de XML-declaratie (eerste poging: " . reason . ")."
+            return root
+        }
+        reason .= " / zonder declaratie: " . reason2
+    }
+
+    diagnose .= "`r`nOok zelf parsen mislukt: " . reason
+    return ""
+}
+
+LoadIPTEventXml(text, &reason) {
+    reason := ""
+    try {
+        doc := ComObject("Msxml2.DOMDocument.6.0")
+        doc.async := false
+        if doc.loadXML(text) && IsObject(doc.documentElement)
+            return doc.documentElement
+        reason := Trim(doc.parseError.reason, " `t`r`n")
+            . " (code " . Format("0x{:08X}", doc.parseError.errorCode & 0xFFFFFFFF) . ")"
+    } catch as err {
+        reason := err.Message
+    }
+    return ""
+}
+
+JoinIPTEventDetails(first, second) {
+    if first = ""
+        return second
+    if second = ""
+        return first
+    return first . "`r`n" . second
+}
+
+; Diagnostiek voor de standaardlog: welk telefonie-event binnenkwam en wat
+; DocBot daaruit heeft overgenomen, zonder de berichttekst of nummers zelf.
+; Keep-alives (NULL) worden niet gelogd; de poll-regels tonen die al. Het
+; label bevat bewust geen "status"/"response"/"headers", anders schermt
+; SanitizeStandardLogText() de hele regel af.
+LogIPTEvent(eventName, detail := "") {
+    global State
+
+    tekst := "Event: " . eventName . "."
+    if detail != ""
+        tekst .= "`r`n" . detail
+    tekst .= "`r`nNa verwerking: toestelnummer "
+        . (Trim(State["IPT"]["UserTel"]) != "" ? "bekend" : "leeg")
+        . ", koppelnummer "
+        . (Trim(State["IPT"]["UpdateTel"]) != "" ? "bekend" : "leeg") . "."
+
+    DebugLog("i", "Telefonie-event", tekst)
+}
+
+; Beschrijft de vorm van een SetUpperText-bericht zonder inhoud: lengte, de
+; lengtes van de cijferreeksen en of de toestel- (4 cijfers) en
+; koppelnummerpatronen (7 cijfers) uit ParsePhoneNumbersFromMessage()
+; overeenkomen. Daarmee is te zien waarom een nummer wel of niet herkend is.
+DescribeIPTEventMessage(messageText) {
+    runLengths := ""
+    pos := 1
+    while pos := RegExMatch(messageText, "\d+", &run, pos) {
+        runLengths .= (runLengths = "" ? "" : ", ") . run.Len
+        pos += run.Len
+    }
+
+    return "Bericht: " . StrLen(messageText) . " tekens; cijferreeksen: "
+        . (runLengths = "" ? "geen" : runLengths)
+        . "; toestelpatroon " . (RegExMatch(messageText, "[^0-9]([0-9]{4})[^0-9]") ? "herkend" : "niet herkend")
+        . ", koppelnummerpatroon " . (RegExMatch(messageText, "[^0-9]([0-9]{7})[^0-9]") ? "herkend" : "niet herkend")
+        . "."
 }
 
 ; Bevat de bestaande regex-logica, nu toegepast op de geëxtraheerde
