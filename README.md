@@ -513,7 +513,7 @@ Changelog
   nog laadden. Nu opent een herkend nummer in die situatie altijd het
   venster "Nummer bellen?", zodat je toch kunt bellen. Er wordt nooit
   gebeld zonder jouw klik; sms is pas weer beschikbaar als de instellingen
-  zijn geladen.
+  zijn geladen. De sidebar toont Telefonie in die tijd als "Beperkt".
 - Het installatie-ID waarmee support jouw DocBot-installatie in de
   telemetrie terugvindt, staat nu onderaan de Over-pagina, met een knop om
   het te kopiëren voor een probleemmelding. Staat telemetrie uit of is het

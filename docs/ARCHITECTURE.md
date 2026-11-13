@@ -264,7 +264,8 @@ startup. This is handled uniformly, not per-loader:
   itself does not depend on any of these loaders); Telefonie/Hotstrings/
   Instellingen show only the banner, with their entire normal content —
   save buttons included — hidden rather than disabled; the sidebar's
-  "Telefonie:"/"Tekst vervangen:" dots show a neutral "Laden…" state; the
+  "Tekst vervangen:" dot shows a neutral "Laden…" state and the
+  "Telefonie:" dot shows "Beperkt" when linked or "Niet gekoppeld" (D-074); the
   tray menu's "Belactie"/"Tekstvervanging" items are disabled; a
   recognized clipboard number always opens the call-confirmation dialog
   instead of following the not-yet-reliable `CallAction` (D-074, which

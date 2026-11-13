@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-klembord-degraded.1"
+global AppVersion := "2.5-klembord-degraded.2"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -2838,13 +2838,20 @@ RefreshSidebarStatuses() {
     global State, SidebarPhoneDot, SidebarPhoneText, SidebarTextDot, SidebarTextText, C, StorageAllReady
 
     if !StorageAllReady {
-        ; Beide indicatoren lezen State-velden (CallAction/TextReplacement)
-        ; die pas betrouwbaar zijn zodra alle opslag is geladen. Telefonie-
-        ; koppeling zelf werkt intussen gewoon door (zie de registratiekaart
-        ; op de Overzicht-pagina); dit stipje gaat specifiek over of DocBot
-        ; al weet wát er met een herkend nummer moet gebeuren.
-        SidebarPhoneDot.SetFont("s8 cF08200", "Segoe UI")
-        SidebarPhoneText.Value := "Laden…"
+        ; CallAction en TextReplacement zijn pas betrouwbaar zodra alle
+        ; opslag is geladen. De telefoonkoppeling (State["IPT"]["UserTel"])
+        ; hangt daar niet van af en blijft gewoon werken, maar een herkend
+        ; nummer opent dan alleen het bevestigingsvenster en snelkiesnummers
+        ; en SMS ontbreken (D-074): toon dat als "Beperkt" in plaats van als
+        ; volledig actief. Zonder koppeling is "Niet gekoppeld" ook nu al
+        ; betrouwbaar.
+        if Trim(State["IPT"]["UserTel"]) = "" {
+            SidebarPhoneDot.SetFont("s8 c" C["Danger"], "Segoe UI")
+            SidebarPhoneText.Value := "Niet gekoppeld"
+        } else {
+            SidebarPhoneDot.SetFont("s8 cF08200", "Segoe UI")
+            SidebarPhoneText.Value := "Beperkt"
+        }
         SidebarTextDot.SetFont("s8 cF08200", "Segoe UI")
         SidebarTextText.Value := "Laden…"
         return

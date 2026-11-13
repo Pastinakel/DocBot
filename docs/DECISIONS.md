@@ -2693,7 +2693,8 @@ itself.
   controls in `Pages[pageKey]` at once, rather than wrapping each
   individual `AddCard`/`AddCardLabel`/`AddFlatButton` call site.
 - The sidebar's "Telefonie:" and "Tekst vervangen:" status dots show a
-  neutral "Laden…" state while degraded, not the normal green/red
+  neutral "Laden…" state while degraded (**"Telefonie:" superseded by
+  D-074:** "Beperkt" when linked, otherwise "Niet gekoppeld"), not the normal green/red
   Actief/Inactief — both are driven by `State` fields
   (`CallAction`/`TextReplacement`) that are not yet reliable, and
   `RefreshSidebarStatuses()` was computing a possibly-wrong default-value-
@@ -3887,6 +3888,13 @@ reliable.
   stored or default `CallAction`. The toast is dropped.
 - The TeleQ ignore rule (D-072) and the duplicate-number check still run
   first, exactly as in normal mode.
+- The sidebar "Telefonie:" dot no longer shows "Laden…" while degraded: it
+  shows an orange "Beperkt" when a phone is linked (calling works, but only
+  via the confirmation dialog, without speed dials or SMS) and the normal
+  red "Niet gekoppeld" otherwise — `State["IPT"]["UserTel"]` does not come
+  from the storage loaders, so that part is reliable. "Tekst vervangen:"
+  keeps "Laden…". This supersedes the matching part of D-064's sidebar
+  bullet.
 - Once storage is ready, the configured `CallAction` applies again as
   before. Speed dials, the tray Belactie submenu and every other D-064 gate
   are unchanged.
