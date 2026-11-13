@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-dev.7"
+global AppVersion := "2.5-telefonie-register.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -778,7 +778,14 @@ BuildMainGui() {
 
     AddPageHeader("telefonie", "Telefonie", "Bel en beheer je snelkiesnummers.")
 
-    AddDegradedBanner("telefonie", 92, "Instellingen worden geladen. Snelkiesnummers zijn nog niet beschikbaar.")
+    ; Snelkiesnummers staan in het register (D-078): deze pagina hangt
+    ; alleen af van die ene lader, niet van OneDrive.
+    AddDegradedBanner(
+        "telefonie",
+        92,
+        "Instellingen worden geladen. Snelkiesnummers zijn nog niet beschikbaar.",
+        "show-until-loader:Snelkiesnummers"
+    )
     MarkDegradedGateStart("telefonie")
 
     AddCard("telefonie", 236, 92, 736, 394)
@@ -814,7 +821,7 @@ BuildMainGui() {
     SpeedDialNumberEdit := AddRoundedEdit("telefonie", 700, 552, 120, 36, "")
     AddFlatButton("telefonie", 832, 552, 124, 36, Chr(0xE74E) "  Opslaan", SaveSpeedDialFromForm, true)
 
-    MarkDegradedGateEnd("telefonie")
+    MarkDegradedGateEnd("telefonie", "hide-until-loader:Snelkiesnummers")
 
     ; -------------------------------------------------------------------------
     ; PAGINA: TEKSTVERVANGING
@@ -937,7 +944,10 @@ BuildMainGui() {
 
     AddPageHeader("instellingen", "Instellingen", "Beheer de opslag, import en SMS-integratie.")
 
-    AddDegradedBanner("instellingen", 92, "Instellingen worden geladen. Deze pagina is nog niet beschikbaar.")
+    ; Het hotstringbestand (settings.ini) wacht op alle opslag; het
+    ; SMS-blok staat in het register (D-075/D-078) en wacht alleen op de
+    ; SMS-standaardteksten.
+    AddDegradedBanner("instellingen", 92, "Instellingen worden geladen. Een deel van deze pagina is nog niet beschikbaar.")
     MarkDegradedGateStart("instellingen")
 
     AddCard("instellingen", 236, 92, 736, 194)
@@ -954,7 +964,9 @@ BuildMainGui() {
     AddFlatButton("instellingen", 260, 230, 220, 36, "↥  Oud .txt importeren", ImportLegacyHotstrings, false)
     AddFlatButton("instellingen", 692, 230, 132, 36, "📂  Laden", ManualLoadHotstrings.Bind(filePathEdit), false)
     AddFlatButton("instellingen", 832, 230, 132, 36, "💾  Opslaan", ManualSaveHotstrings.Bind(filePathEdit), true)
+    MarkDegradedGateEnd("instellingen")
 
+    MarkDegradedGateStart("instellingen")
     AddCard("instellingen", 236, 304, 736, 314)
     AddCardLabel("instellingen", 260, 326, 250, 24, "SMS actie", "s14 bold c" C["Text"])
     AddCardLabel("instellingen", 260, 366, 200, 20, "SMS-pagina", "s10 c" C["Muted"])
@@ -1006,7 +1018,7 @@ BuildMainGui() {
     ; Niet-opgeslagen tekst blijft per SMS-pagina in het geheugen staan
     ; zolang de Instellingen-pagina open is, ook als tussendoor van
     ; SMS-pagina wordt gewisseld. Pas op Opslaan wordt alles weggeschreven
-    ; naar sms-default-texts.json, net als de rest van deze pagina.
+    ; naar het register (D-078), net als de rest van deze pagina.
     pendingSmsDefaultTexts := Map()
     InstellingenPendingSmsDefaultTexts := pendingSmsDefaultTexts
     smsDefaultTextUiState := Map(
@@ -1033,7 +1045,7 @@ BuildMainGui() {
         C["Window"]
     )
 
-    MarkDegradedGateEnd("instellingen")
+    MarkDegradedGateEnd("instellingen", "hide-until-loader:SMS-standaardteksten")
 
     ; -------------------------------------------------------------------------
     ; PAGINA: HELP
@@ -2380,6 +2392,10 @@ ShowOnlyWhileDegraded(ctrl, gate := "show-only-while-degraded") {
 
 ; Zichtbaarheid volgens ctrl._degradedGate (zie MarkDegradedGateEnd(),
 ; ShowOnlyWhileDegraded()) bovenop de gewone paginazichtbaarheid.
+; "hide-until-loader:<naam>" / "show-until-loader:<naam>" koppelen
+; zichtbaarheid aan één lader uit StorageRetryLoaders in plaats van aan
+; alle opslag samen, voor de telefonie-onderdelen die uit het register
+; komen (D-078).
 IsDegradedGateOpen(gate) {
     global StorageAllReady
 
@@ -2389,6 +2405,10 @@ IsDegradedGateOpen(gate) {
         case "show-only-while-degraded":
             return !StorageAllReady
     }
+    if SubStr(gate, 1, 18) = "hide-until-loader:"
+        return IsStorageLoaderReady(SubStr(gate, 19))
+    if SubStr(gate, 1, 18) = "show-until-loader:"
+        return !IsStorageLoaderReady(SubStr(gate, 19))
     return true
 }
 
@@ -2867,14 +2887,15 @@ RefreshSidebarStatuses() {
     global CallActionSettingsKnown
 
     if !StorageAllReady {
-        ; CallAction en TextReplacement zijn pas betrouwbaar zodra alle
-        ; opslag is geladen. De telefoonkoppeling (State["IPT"]["UserTel"])
-        ; hangt daar niet van af en blijft gewoon werken, maar snelkiesnummers
-        ; ontbreken en zonder bekende Belactie opent een herkend nummer alleen
-        ; het bevestigingsvenster (D-074): toon dat als "Beperkt" in plaats
-        ; van als volledig actief. "Niet gekoppeld" is ook nu al betrouwbaar,
-        ; en "Inactief" zodra de Belactie uit het register bekend is (D-075).
-        if CallActionSettingsKnown && State["CallAction"] = 0 {
+        ; Alle telefonie-instellingen (Belactie, snelkiesnummers,
+        ; sms-standaardteksten) staan in het register (D-075/D-078) en zijn
+        ; meestal ook tijdens degraded mode al geladen: dan is Telefonie
+        ; gewoon volledig beschikbaar. Alleen zolang een van die drie nog
+        ; ontbreekt (eerste start na de update tijdens een storing) is
+        ; telefonie "Beperkt". "Niet gekoppeld" is altijd betrouwbaar.
+        if IsTelephonyStorageReady() {
+            RefreshSidebarPhoneStatus()
+        } else if CallActionSettingsKnown && State["CallAction"] = 0 {
             SidebarPhoneDot.SetFont("s8 c" C["Danger"], "Segoe UI")
             SidebarPhoneText.Value := "Inactief"
         } else if Trim(State["IPT"]["UserTel"]) = "" {
@@ -2889,6 +2910,20 @@ RefreshSidebarStatuses() {
         return
     }
 
+    RefreshSidebarPhoneStatus()
+
+    if State["TextReplacement"] {
+        SidebarTextDot.SetFont("s8 c" C["Success"], "Segoe UI")
+        SidebarTextText.Value := "Actief"
+    } else {
+        SidebarTextDot.SetFont("s8 c" C["Danger"], "Segoe UI")
+        SidebarTextText.Value := "Inactief"
+    }
+}
+
+RefreshSidebarPhoneStatus() {
+    global State, SidebarPhoneDot, SidebarPhoneText, C
+
     if State["CallAction"] = 0 {
         SidebarPhoneDot.SetFont("s8 c" C["Danger"], "Segoe UI")
         SidebarPhoneText.Value := "Inactief"
@@ -2898,14 +2933,6 @@ RefreshSidebarStatuses() {
     } else {
         SidebarPhoneDot.SetFont("s8 c" C["Success"], "Segoe UI")
         SidebarPhoneText.Value := "Actief"
-    }
-
-    if State["TextReplacement"] {
-        SidebarTextDot.SetFont("s8 c" C["Success"], "Segoe UI")
-        SidebarTextText.Value := "Actief"
-    } else {
-        SidebarTextDot.SetFont("s8 c" C["Danger"], "Segoe UI")
-        SidebarTextText.Value := "Inactief"
     }
 }
 
@@ -3116,7 +3143,7 @@ SaveSpeedDialFromForm(*) {
     RefreshSpeedDialList()
     SpeedDialLV.Modify(savedRow, "Select Focus Vis")
     FillSpeedDialFormFromSelection()
-    SaveSpeedDialToJson(DefaultSpeedDialFile, false)
+    SaveSpeedDialEntries()
     BuildTrayMenu()
 }
 
@@ -3132,7 +3159,7 @@ DeleteSelectedSpeedDial(*) {
         SpeedDialEntries.RemoveAt(row)
         RefreshSpeedDialList()
         NewSpeedDial()
-        SaveSpeedDialToJson(DefaultSpeedDialFile, false)
+        SaveSpeedDialEntries()
         BuildTrayMenu()
     }
 }
@@ -3152,7 +3179,7 @@ MoveSpeedDialUp(*) {
     RefreshSpeedDialList()
     SpeedDialLV.Modify(row - 1, "Select Focus Vis")
     FillSpeedDialFormFromSelection()
-    SaveSpeedDialToJson(DefaultSpeedDialFile, false)
+    SaveSpeedDialEntries()
     BuildTrayMenu()
 }
 
@@ -3171,7 +3198,7 @@ MoveSpeedDialDown(*) {
     RefreshSpeedDialList()
     SpeedDialLV.Modify(row + 1, "Select Focus Vis")
     FillSpeedDialFormFromSelection()
-    SaveSpeedDialToJson(DefaultSpeedDialFile, false)
+    SaveSpeedDialEntries()
     BuildTrayMenu()
 }
 
@@ -6294,8 +6321,9 @@ FillSmsDefaultTextField(edge, smsConfig) {
     if !smsConfig.Has("TextFieldId") || Trim(smsConfig["TextFieldId"]) = ""
         return
 
-    ; Tijdens degraded mode is sms-default-texts.json mogelijk nog niet
-    ; geladen (D-077). Dan niet stilzwijgend een leeg tekstveld laten staan,
+    ; Op de eerste start na de update tijdens een storing zijn de
+    ; SMS-standaardteksten mogelijk nog niet naar het register gemigreerd
+    ; en dus nog niet geladen (D-077/D-078). Dan niet stilzwijgend een leeg tekstveld laten staan,
     ; alsof er geen standaardtekst is ingesteld, maar het laten weten. Het
     ; telefoonnummer is op dit punt al ingevuld.
     if !IsStorageLoaderReady("SMS-standaardteksten") {
@@ -9371,10 +9399,52 @@ StorageRetry_OnLoaderReady(name) {
             RefreshHotstringListIfReady()
         case "Snelkiesnummers":
             RefreshSpeedDialListIfReady()
+            RefreshAfterTelephonyLoaderReady()
         case "SMS-standaardteksten":
-            ; Geen aparte lijstweergave: de Instellingen-pagina leest
-            ; SmsDefaultTexts pas op het moment dat die pagina wordt geopend.
+            RefreshInstellingenSmsFieldIfReady()
+            RefreshAfterTelephonyLoaderReady()
     }
+}
+
+; Snelkiesnummers en SMS-standaardteksten bepalen sinds D-078 zelf de
+; zichtbaarheid van hun pagina-onderdelen en van de snelkiesnummers in het
+; tray-menu. Ververs dat zodra zo'n lader tijdens degraded mode slaagt, in
+; plaats van te wachten tot alle opslag geladen is.
+RefreshAfterTelephonyLoaderReady() {
+    global MainGui, CurrentPage
+
+    if !IsObject(MainGui)
+        return
+
+    if CurrentPage != ""
+        ShowPage(CurrentPage)
+    RefreshSidebarStatuses()
+    BuildTrayMenu()
+}
+
+RefreshInstellingenSmsFieldIfReady() {
+    global InstellingenSmsActionDropDown, InstellingenSmsDefaultTextEdit
+    global InstellingenSmsDefaultTextHint, InstellingenPendingSmsDefaultTexts
+
+    if !IsObject(InstellingenSmsActionDropDown)
+        return
+
+    ApplySmsDefaultTextFieldState(
+        InstellingenSmsActionDropDown,
+        InstellingenSmsDefaultTextEdit,
+        InstellingenSmsDefaultTextHint,
+        InstellingenPendingSmsDefaultTexts
+    )
+}
+
+; True zolang de Belactie, de snelkiesnummers en de SMS-standaardteksten
+; geladen zijn — alles wat telefonie nodig heeft, onafhankelijk van OneDrive.
+IsTelephonyStorageReady() {
+    global CallActionSettingsKnown
+
+    return CallActionSettingsKnown
+        && IsStorageLoaderReady("Snelkiesnummers")
+        && IsStorageLoaderReady("SMS-standaardteksten")
 }
 
 ; =============================================================================
@@ -9433,30 +9503,55 @@ BuildSpeedDialDocument() {
     )
 }
 
+; Snelkiesnummers staan sinds D-078 als één JSON-document in het register
+; (UserRegistryKey, waarde "SpeedDial"), niet meer in speeddial.json op
+; OneDrive. Zo zijn ze ook tijdens een OneDrive-storing beschikbaar.
 InitializeSpeedDialStorage() {
     global DefaultSpeedDialFile, UserDataDir
 
-    if FileExist(DefaultSpeedDialFile)
-        return LoadSpeedDialFromJson(DefaultSpeedDialFile, false)
+    registryText := ReadRegistryDocumentText("SpeedDial")
+    if registryText != ""
+        return LoadSpeedDialFromJsonText(registryText, "het register (SpeedDial)")
+
+    ; Nog niets in het register: eenmalige migratie vanuit het bestand.
+    ; Daarvoor moet de gebruikersmap echt bereikbaar zijn; anders kan een
+    ; nog niet zichtbaar speeddial.json voor een eerste start worden
+    ; aangezien en zou de standaardlijst de echte lijst blokkeren.
+    if !IsStorageLoaderReady("Gebruikersmap")
+        return false
 
     ; Oudere versies gebruikten verschillende bestandsnamen en soms de
-    ; programmamap. Neem de eerste gevonden versie veilig over; het laden
-    ; hieronder migreert vervolgens ook de inhoud naar het actuele schema.
-    legacyCandidates := [
+    ; programmamap. Neem de eerste gevonden versie over; het laden
+    ; migreert vervolgens ook de inhoud naar het actuele schema.
+    sourcePath := ""
+    candidates := [
+        DefaultSpeedDialFile,
         UserDataDir "\snelkiesnummers.json",
         A_ScriptDir "\snelkiesnummers.json",
         A_ScriptDir "\speeddial.json"
     ]
-    for _, legacyPath in legacyCandidates {
-        if !FileExist(legacyPath)
-            continue
-        try FileCopy(legacyPath, DefaultSpeedDialFile, false)
-        if FileExist(DefaultSpeedDialFile)
-            return LoadSpeedDialFromJson(DefaultSpeedDialFile, false)
+    for _, candidate in candidates {
+        if FileExist(candidate) {
+            sourcePath := candidate
+            break
+        }
     }
 
-    ; Bij de eerste start wordt een lege lijst direct aangemaakt.
-    return SaveSpeedDialToJson(DefaultSpeedDialFile, false)
+    if sourcePath != "" {
+        if !LoadSpeedDialFromJson(sourcePath, false)
+            return false
+        if !SaveSpeedDialEntries(false)
+            return false
+        ; Alleen het eigen profielbestand opruimen; legacybestanden op
+        ; andere plekken blijven ongemoeid, zoals voorheen.
+        if sourcePath = DefaultSpeedDialFile
+            RemoveMigratedStorageFile(DefaultSpeedDialFile)
+        try DebugLog("i", "Snelkiesnummers", "Eenmalig van bestand naar het register gemigreerd.")
+        return true
+    }
+
+    ; Eerste start: de standaardlijst direct in het register zetten.
+    return SaveSpeedDialEntries(false)
 }
 
 LoadSpeedDialFromJson(path, showMessage := false) {
@@ -9475,6 +9570,28 @@ LoadSpeedDialFromJson(path, showMessage := false) {
 
     try {
         jsonText := FileRead(path, "UTF-8")
+    } catch as error {
+        ReportStorageError(
+            Format(
+                "Het JSON-bestand kon niet worden geladen.`n`n{1}`n`n{2}",
+                path,
+                error.Message
+            ),
+            showMessage
+        )
+        return false
+    }
+
+    return LoadSpeedDialFromJsonText(jsonText, path, showMessage)
+}
+
+; Parseert een snelkiesnummerdocument (uit het register of, bij de
+; migratie, uit een bestand). Een schema-upgrade wordt meteen in het
+; register opgeslagen (D-078).
+LoadSpeedDialFromJsonText(jsonText, sourceLabel, showMessage := false) {
+    global SpeedDialEntries, SpeedDialSchemaVersion
+
+    try {
         jsonText := LTrim(jsonText, Chr(0xFEFF))
         document := Jxon_Load(&jsonText)
 
@@ -9520,9 +9637,9 @@ LoadSpeedDialFromJson(path, showMessage := false) {
             AddMissingDefaultSpeedDials(SpeedDialEntries)
 
         ; Schema 1 en naamloze legacy-items krijgen standaard actief=true.
-        ; Sla meteen atomisch terug op, inclusief de bestaande .bak-strategie.
+        ; Sla meteen terug op in het register.
         if needsMigration
-            SaveSpeedDialToJson(path, false)
+            SaveSpeedDialEntries(false)
 
         if showMessage {
             MsgBox(
@@ -9530,7 +9647,7 @@ LoadSpeedDialFromJson(path, showMessage := false) {
                     "Snelkiesnummers geladen: {1}`nOvergeslagen: {2}`n`n{3}",
                     loadedEntries.Length,
                     skipped,
-                    path
+                    sourceLabel
                 ),
                 "DocBot - Snelkiesnummers laden",
                 "Iconi"
@@ -9541,8 +9658,8 @@ LoadSpeedDialFromJson(path, showMessage := false) {
     } catch as error {
         ReportStorageError(
             Format(
-                "Het JSON-bestand kon niet worden geladen.`n`n{1}`n`n{2}",
-                path,
+                "De snelkiesnummers konden niet worden geladen uit {1}.`n`n{2}",
+                sourceLabel,
                 error.Message
             ),
             showMessage
@@ -9551,72 +9668,28 @@ LoadSpeedDialFromJson(path, showMessage := false) {
     }
 }
 
-SaveSpeedDialToJson(path, showMessage := false) {
-    path := Trim(path)
-    if path = "" {
-        ReportStorageError("Er is geen JSON-bestand ingesteld.", showMessage)
-        return false
-    }
-
-    tempPath := path ".tmp"
-    backupPath := path ".bak"
-
+SaveSpeedDialEntries(showError := true) {
     try {
-        SplitPath(path, , &directory)
-        if directory != "" && !DirExist(directory)
-            DirCreate(directory)
-
-        document := BuildSpeedDialDocument()
-        jsonText := Jxon_Dump(document, 2)
-
-        if FileExist(tempPath)
-            FileDelete(tempPath)
-
-        FileAppend(jsonText, tempPath, "UTF-8-RAW")
-
-        ; Controleer het tijdelijke bestand vóór het bestaande bestand wordt
-        ; vervangen. Zo blijft de vorige versie intact bij corrupte uitvoer.
-        verifyText := FileRead(tempPath, "UTF-8")
-        verifyDocument := Jxon_Load(&verifyText)
-        if !(verifyDocument is Map) || !verifyDocument.Has("entries")
-            throw Error("Controle van het tijdelijke JSON-bestand is mislukt.")
-
-        if FileExist(path)
-            FileCopy(path, backupPath, true)
-
-        FileMove(tempPath, path, true)
-
-        if showMessage {
-            MsgBox(
-                "Snelkiesnummers opgeslagen.`n`n" path
-                (FileExist(backupPath) ? "`n`nBack-up: " backupPath : ""),
-                "DocBot - Snelkiesnummers opslaan",
-                "Iconi"
-            )
-        }
-
+        WriteRegistryDocument("SpeedDial", BuildSpeedDialDocument(), "entries")
         return true
     } catch as error {
-        if FileExist(tempPath)
-            try FileDelete(tempPath)
-
-        ReportStorageError(
-            Format(
-                "De snelkiesnummers konden niet worden opgeslagen.`n`n{1}`n`n{2}",
-                path,
-                error.Message
-            ),
-            showMessage
-        )
+        try DebugLog("✕", "Opslagfout", "Snelkiesnummers niet in het register opgeslagen: " error.Message)
+        if showError
+            ShowNotification(
+                "De snelkiesnummers konden niet worden opgeslagen.`n" error.Message,
+                5000,
+                "error"
+            )
         return false
     }
 }
 
 ; =============================================================================
-; SMS-STANDAARDTEKST — sms-default-texts.json
+; SMS-STANDAARDTEKST — register (SmsDefaultTexts), voorheen sms-default-texts.json
 ; =============================================================================
-; Zelfde opzet als speeddial.json hierboven: schemaVersion + atomair
-; wegschrijven via .tmp/.bak. Functionele sleutel is Title (lowercase,
+; Zelfde opzet als de snelkiesnummers hierboven: schemaVersion, één
+; JSON-document in het register met controle na het schrijven, en een
+; eenmalige migratie vanuit het oude bestand (D-078). Functionele sleutel is Title (lowercase,
 ; getrimd), net als FindSmsCallActionIndexByTitle() elders in dit bestand.
 ; Anders dan package-settings.json wordt hier bewust niets stilzwijgend
 ; verwijderd wanneer een Title niet (meer) voorkomt in de huidige
@@ -9657,14 +9730,32 @@ BuildSmsDefaultTextDocument() {
     return Map("schemaVersion", SmsDefaultTextSchemaVersion, "items", items)
 }
 
+; SMS-standaardteksten staan sinds D-078 als één JSON-document in het
+; register (waarde "SmsDefaultTexts"), niet meer in sms-default-texts.json.
 InitializeSmsDefaultTextStorage() {
     global DefaultSmsDefaultTextFile
 
-    if FileExist(DefaultSmsDefaultTextFile)
-        return LoadSmsDefaultTextsFromJson(DefaultSmsDefaultTextFile, false)
+    registryText := ReadRegistryDocumentText("SmsDefaultTexts")
+    if registryText != ""
+        return LoadSmsDefaultTextsFromJsonText(registryText, "het register (SmsDefaultTexts)")
 
-    ; Bij de eerste start wordt een lege lijst direct aangemaakt.
-    return SaveSmsDefaultTextsToJson(DefaultSmsDefaultTextFile, false)
+    ; Eenmalige migratie vanuit het bestand; zie InitializeSpeedDialStorage()
+    ; voor waarom de gebruikersmap eerst bereikbaar moet zijn.
+    if !IsStorageLoaderReady("Gebruikersmap")
+        return false
+
+    if FileExist(DefaultSmsDefaultTextFile) {
+        if !LoadSmsDefaultTextsFromJson(DefaultSmsDefaultTextFile, false)
+            return false
+        if !SaveSmsDefaultTexts(false)
+            return false
+        RemoveMigratedStorageFile(DefaultSmsDefaultTextFile)
+        try DebugLog("i", "SMS-standaardteksten", "Eenmalig van bestand naar het register gemigreerd.")
+        return true
+    }
+
+    ; Eerste start: een lege lijst direct in het register zetten.
+    return SaveSmsDefaultTexts(false)
 }
 
 LoadSmsDefaultTextsFromJson(path, showMessage := false) {
@@ -9683,6 +9774,27 @@ LoadSmsDefaultTextsFromJson(path, showMessage := false) {
 
     try {
         jsonText := FileRead(path, "UTF-8")
+    } catch as error {
+        ReportStorageError(
+            Format(
+                "Het JSON-bestand kon niet worden geladen.`n`n{1}`n`n{2}",
+                path,
+                error.Message
+            ),
+            showMessage
+        )
+        return false
+    }
+
+    return LoadSmsDefaultTextsFromJsonText(jsonText, path, showMessage)
+}
+
+; Parseert een SMS-standaardtekstdocument (uit het register of, bij de
+; migratie, uit een bestand); zie D-078.
+LoadSmsDefaultTextsFromJsonText(jsonText, sourceLabel, showMessage := false) {
+    global SmsDefaultTexts, SmsDefaultTextSchemaVersion
+
+    try {
         jsonText := LTrim(jsonText, Chr(0xFEFF))
         document := Jxon_Load(&jsonText)
 
@@ -9723,7 +9835,7 @@ LoadSmsDefaultTextsFromJson(path, showMessage := false) {
                     "SMS-standaardteksten geladen: {1}`nOvergeslagen: {2}`n`n{3}",
                     loaded.Count,
                     skipped,
-                    path
+                    sourceLabel
                 ),
                 "DocBot - SMS-standaardteksten laden",
                 "Iconi"
@@ -9734,8 +9846,8 @@ LoadSmsDefaultTextsFromJson(path, showMessage := false) {
     } catch as error {
         ReportStorageError(
             Format(
-                "Het JSON-bestand kon niet worden geladen.`n`n{1}`n`n{2}",
-                path,
+                "De SMS-standaardteksten konden niet worden geladen uit {1}.`n`n{2}",
+                sourceLabel,
                 error.Message
             ),
             showMessage
@@ -9744,63 +9856,18 @@ LoadSmsDefaultTextsFromJson(path, showMessage := false) {
     }
 }
 
-SaveSmsDefaultTextsToJson(path, showMessage := false) {
-    path := Trim(path)
-    if path = "" {
-        ReportStorageError("Er is geen JSON-bestand ingesteld.", showMessage)
-        return false
-    }
-
-    tempPath := path ".tmp"
-    backupPath := path ".bak"
-
+SaveSmsDefaultTexts(showError := true) {
     try {
-        SplitPath(path, , &directory)
-        if directory != "" && !DirExist(directory)
-            DirCreate(directory)
-
-        document := BuildSmsDefaultTextDocument()
-        jsonText := Jxon_Dump(document, 2)
-
-        if FileExist(tempPath)
-            FileDelete(tempPath)
-
-        FileAppend(jsonText, tempPath, "UTF-8-RAW")
-
-        ; Controleer het tijdelijke bestand vóór het bestaande bestand wordt
-        ; vervangen. Zo blijft de vorige versie intact bij corrupte uitvoer.
-        verifyText := FileRead(tempPath, "UTF-8")
-        verifyDocument := Jxon_Load(&verifyText)
-        if !(verifyDocument is Map) || !verifyDocument.Has("items")
-            throw Error("Controle van het tijdelijke JSON-bestand is mislukt.")
-
-        if FileExist(path)
-            FileCopy(path, backupPath, true)
-
-        FileMove(tempPath, path, true)
-
-        if showMessage {
-            MsgBox(
-                "SMS-standaardteksten opgeslagen.`n`n" path
-                (FileExist(backupPath) ? "`n`nBack-up: " backupPath : ""),
-                "DocBot - SMS-standaardteksten opslaan",
-                "Iconi"
-            )
-        }
-
+        WriteRegistryDocument("SmsDefaultTexts", BuildSmsDefaultTextDocument(), "items")
         return true
     } catch as error {
-        if FileExist(tempPath)
-            try FileDelete(tempPath)
-
-        ReportStorageError(
-            Format(
-                "De SMS-standaardteksten konden niet worden opgeslagen.`n`n{1}`n`n{2}",
-                path,
-                error.Message
-            ),
-            showMessage
-        )
+        try DebugLog("✕", "Opslagfout", "SMS-standaardteksten niet in het register opgeslagen: " error.Message)
+        if showError
+            ShowNotification(
+                "De SMS-standaardteksten konden niet worden opgeslagen.`n" error.Message,
+                5000,
+                "error"
+            )
         return false
     }
 }
@@ -10190,26 +10257,68 @@ RemoveLegacyCallActionIniKeys() {
 }
 
 ; Een net vanuit een ander profiel gekopieerde profielmap (zie
-; InitializeUserStorage()) neemt ook de Belactie uit het register van dat
-; profiel over, zoals bij de bestanden. Overschrijft nooit een waarde die
-; dit profiel al in het register heeft. Heeft het bronprofiel nog geen
-; registerwaarde (bijv. een oudere stabiele versie), dan neemt
-; LoadAppSettings() de waarde gewoon over uit de gekopieerde settings.ini.
-SeedCallActionRegistrySettings(seedProfile) {
+; InitializeUserStorage()) neemt ook de telefonie-instellingen uit het
+; register van dat profiel over (Belactie, snelkiesnummers,
+; SMS-standaardteksten), zoals bij de bestanden. Per waarde: overschrijft
+; nooit een waarde die dit profiel al in het register heeft. Heeft het
+; bronprofiel een waarde nog niet in het register (bijv. een oudere
+; stabiele versie), dan migreren de laders die gewoon uit de gekopieerde
+; bestanden (D-075/D-078).
+SeedTelephonyRegistrySettings(seedProfile) {
     global AppDataFolderName, UserRegistryKey
 
-    if IsObject(ReadCallActionSettingsFromRegistry())
-        return
+    sourceKey := GetUserRegistryKey(AppDataFolderName, seedProfile)
+    for _, valueName in TelephonyRegistryValueNames() {
+        try {
+            if RegRead(UserRegistryKey, valueName, "") != ""
+                continue
+            value := RegRead(sourceKey, valueName, "")
+            if value != ""
+                RegWrite(value, "REG_SZ", UserRegistryKey, valueName)
+        }
+    }
+}
 
-    source := ReadCallActionSettingsFromRegistry(
-        GetUserRegistryKey(AppDataFolderName, seedProfile)
-    )
-    if !IsObject(source)
-        return
+; Alle telefonie-instellingen in het register (D-075/D-078).
+TelephonyRegistryValueNames() {
+    return ["CallAction", "SmsCallActionTitle", "SpeedDial", "SmsDefaultTexts"]
+}
 
-    try {
-        RegWrite(source["CallAction"], "REG_SZ", UserRegistryKey, "CallAction")
-        RegWrite(source["SmsCallActionTitle"], "REG_SZ", UserRegistryKey, "SmsCallActionTitle")
+; Leest een als JSON-tekst opgeslagen document uit het register; "" als de
+; waarde ontbreekt of niet leesbaar is.
+ReadRegistryDocumentText(valueName, key := "") {
+    global UserRegistryKey
+
+    if key = ""
+        key := UserRegistryKey
+    try
+        return RegRead(key, valueName, "")
+    catch
+        return ""
+}
+
+; Schrijft document als JSON-tekst naar het register en leest het meteen
+; terug ter controle. Gooit een fout als schrijven of controleren mislukt.
+WriteRegistryDocument(valueName, document, requiredField) {
+    global UserRegistryKey
+
+    jsonText := Jxon_Dump(document)
+    RegWrite(jsonText, "REG_SZ", UserRegistryKey, valueName)
+
+    verifyText := RegRead(UserRegistryKey, valueName, "")
+    verifyDocument := Jxon_Load(&verifyText)
+    if !(verifyDocument is Map) || !verifyDocument.Has(requiredField)
+        throw Error("Controle van de registerwaarde " valueName " is mislukt.")
+}
+
+; Verwijdert een naar het register gemigreerd opslagbestand, met de
+; .bak/.tmp-bestanden van de vroegere atomaire schrijfroutine. Mislukt
+; dat, dan blijft het bestand staan; het wordt niet meer gelezen omdat het
+; register voortaan voorgaat.
+RemoveMigratedStorageFile(path) {
+    for _, candidate in [path, path ".bak", path ".tmp"] {
+        if FileExist(candidate)
+            try FileDelete(candidate)
     }
 }
 
@@ -10373,7 +10482,7 @@ UserStorageProbe_ResolveAfterCreate(probeDir) {
 
     if copiedFromDir != "" {
         RebaseCopiedHotstringPath(copiedFromDir)
-        SeedCallActionRegistrySettings(
+        SeedTelephonyRegistrySettings(
             copiedFromDir = ProductionUserDataDir ? "main" : "test"
         )
     }
@@ -10591,15 +10700,21 @@ ParseCallActionSetting(value, fallback := 1) {
 }
 
 SaveSettings(autoSaveCheck, filePathEdit, smsActionDropDown, smsDefaultTextEdit, pendingSmsDefaultTexts, smsDefaultTextUiState, *) {
-    global State, SmsCallActions, DefaultSmsDefaultTextFile
+    global State, SmsCallActions, StorageAllReady
 
-    State["AutoSave"] := autoSaveCheck.Value = 1
-    State["HotstringFile"] := Trim(filePathEdit.Value)
+    ; Tijdens degraded mode is alleen het SMS-blok zichtbaar (D-078): sla
+    ; dan uitsluitend de registerdelen op en laat het hotstringbestand en
+    ; settings.ini, die nog niet geladen zijn, ongemoeid.
+    settingsFileReady := StorageAllReady
+    if settingsFileReady {
+        State["AutoSave"] := autoSaveCheck.Value = 1
+        State["HotstringFile"] := Trim(filePathEdit.Value)
+    }
     State["SmsCallActionTitle"] := HasConfiguredSmsCallActions()
         ? ResolveSmsCallActionTitle(smsActionDropDown.Text)
         : ""
 
-    if State["HotstringFile"] = "" {
+    if settingsFileReady && State["HotstringFile"] = "" {
         MsgBox("Kies eerst een JSON-bestand.", "DocBot", "Icon!")
         return
     }
@@ -10619,9 +10734,14 @@ SaveSettings(autoSaveCheck, filePathEdit, smsActionDropDown, smsDefaultTextEdit,
             SetSmsDefaultText(action["Title"], pendingSmsDefaultTexts[key])
     }
 
-    settingsSaved := SaveAppSettings()
-    dataSaved := !State["AutoSave"] || AutoSaveHotstrings()
-    smsTextSaved := SaveSmsDefaultTextsToJson(DefaultSmsDefaultTextFile, false)
+    if settingsFileReady {
+        settingsSaved := SaveAppSettings()
+        dataSaved := !State["AutoSave"] || AutoSaveHotstrings()
+    } else {
+        settingsSaved := SaveCallActionSettings()
+        dataSaved := true
+    }
+    smsTextSaved := SaveSmsDefaultTexts()
 
     BuildTrayMenu()
 
@@ -10740,14 +10860,15 @@ BuildTrayMenu() {
     ; geregistreerd-nummer-label bovenaan). Streep + blok worden samen
     ; overgeslagen zonder entries.
     ;
-    ; Zolang StorageAllReady nog false is, staat SpeedDialEntries nog op de
-    ; code-standaardwaarden (DefaultSpeedDialEntries()) in plaats van de
-    ; echte speeddial.json — en CallSpeedDialEntry() belt meteen echt via
-    ; IPT_callNumber(). Dit blok blijft daarom net als "Belactie"/
-    ; "Tekstvervanging" hierboven volledig weg tijdens degraded mode, in
-    ; plaats van (mogelijk verouderde) nummers klikbaar te tonen — zie
-    ; docs/DECISIONS.md D-064.
-    if StorageAllReady {
+    ; Zolang de lader "Snelkiesnummers" nog niet geslaagd is, staat
+    ; SpeedDialEntries nog op de code-standaardwaarden
+    ; (DefaultSpeedDialEntries()) — en CallSpeedDialEntry() belt meteen echt
+    ; via IPT_callNumber(). Dit blok blijft daarom tot dat moment volledig
+    ; weg, in plaats van (mogelijk verouderde) nummers klikbaar te tonen —
+    ; zie docs/DECISIONS.md D-064. Sinds D-078 komen de snelkiesnummers uit
+    ; het register en zijn ze ook tijdens een OneDrive-storing meestal al
+    ; geladen.
+    if IsStorageLoaderReady("Snelkiesnummers") {
         activeSpeedDials := []
         for _, entry in SpeedDialEntries {
             if entry["actief"]

@@ -106,9 +106,10 @@ Functionaliteit — Hotstrings
 - Hotstrings worden opgeslagen als JSON. Standaardlocatie is
   `%MyDocuments%\DocBot\hotstrings.json`; instellingen (waaronder AutoSave en
   het gekozen hotstringbestand) staan in `%MyDocuments%\DocBot\settings.ini`.
-  De Belactie en de gekozen sms-pagina staan in het Windows-register onder
-  `HKCU\Software\DocBot` (reist via Ivanti mee), zodat ze ook bij een
-  OneDrive-storing beschikbaar zijn.
+  De Belactie, de gekozen sms-pagina, de snelkiesnummers en de
+  sms-standaardteksten staan in het Windows-register onder
+  `HKCU\Software\DocBot` (reist via Ivanti mee), zodat telefonie ook bij
+  een OneDrive-storing volledig beschikbaar is.
   Keuzes voor meegeleverde pakketten staan afzonderlijk in
   `%MyDocuments%\DocBot\package-settings.json`.
 - Gebruikersgegevens zijn per releasekanaal gescheiden: stabiele numerieke
@@ -293,7 +294,8 @@ Functionaliteit — Telefonie
   best-effort: lukt de tekstinvulling niet, dan blijft het al ingevulde
   telefoonnummer gewoon staan en meldt DocBot geen fout. Zonder
   `TextFieldId` blijft het standaardtekstveld uitgeschakeld voor die pagina.
-  De standaardtekst wordt per gebruiker bewaard in `sms-default-texts.json`.
+  De standaardtekst wordt per gebruiker bewaard in het Windows-register
+  (`HKCU\Software\DocBot`, reist via Ivanti mee).
 - Elke `SmsCallAction.Url` in `DocBot.local.ahk` moet met `https://`
   beginnen; `ValidateSmsCallActionItem()` weigert een `http://`-waarde al
   bij het opstarten.
@@ -511,6 +513,12 @@ Changelog
 ---------
 
 ### 2.5 — In ontwikkeling
+- Snelkiesnummers en sms-standaardteksten staan nu, net als de Belactie,
+  in het Windows-register in plaats van op OneDrive. Bij een
+  OneDrive-storing werken bellen, snelkiesnummers en sms met
+  standaardtekst daardoor gewoon; alleen tekstvervanging wacht tot de
+  instellingen geladen zijn. Je bestaande lijsten worden eenmalig
+  automatisch overgezet.
 - Bij een OneDrive-storing kon je tijdens het laden van de instellingen
   niet bellen vanaf het klembord: DocBot meldde alleen dat de instellingen
   nog laadden. De Belactie staat nu in het Windows-register en werkt

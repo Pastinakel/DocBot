@@ -214,8 +214,8 @@ settings.ini             application settings + telemetry ID/counters
                          (not the call action; see below)
 hotstrings.json          personal hotstrings
 package-settings.json    package enabled/disabled/conflict choices
-speeddial.json           speed-dial entries
-sms-default-texts.json   default SMS message text per configured SMS page
+speeddial.json           (until migrated) speed-dial entries -> registry
+sms-default-texts.json   (until migrated) SMS default texts -> registry
 ```
 
 Storage routines use defensive patterns such as `.bak`, temporary files, validation, and replacement where implemented.
@@ -227,7 +227,16 @@ Registry (`HKCU\Software\DocBot`, `DocBot-test`, `DocBot-dev` via
 SessionCookie            telephony session cookie (D-068)
 CallAction               call action 0-3 (D-075)
 SmsCallActionTitle       chosen SMS page title (D-075)
+SpeedDial                speed-dial document {schemaVersion, entries} (D-078)
+SmsDefaultTexts          SMS default-text document {schemaVersion, items} (D-078)
 ```
+
+`SpeedDial`/`SmsDefaultTexts` are loaded by their storage loaders straight
+from the registry, so they are normally available during degraded mode too;
+the Telefonie page, the tray speed dials and the Instellingen SMS card are
+gated per loader (`hide-until-loader:<name>`), not on `StorageAllReady`.
+Each is migrated once from its old file (then deleted) and seeded into new
+profiles (`SeedTelephonyRegistrySettings()`).
 
 `CallAction`/`SmsCallActionTitle` are read at global initialization, before
 the storage loaders, so the user's own call action applies during degraded
@@ -644,7 +653,7 @@ Flow:
 6. locate the telephone input through UIA and fill it;
 7. JavaScript fallback may be used if UIA cannot complete the field operation;
 8. if `TextFieldId` is configured for this page and a non-empty default text
-   is stored for its `Title` in `sms-default-texts.json`, best-effort fill
+   is stored for its `Title` (registry `SmsDefaultTexts`, D-078), best-effort fill
    that field the same way (UIA first, JavaScript fallback); a failure here
    never turns an already-successful phone-number fill into a failed SMS
    action, it is only logged;
@@ -653,11 +662,11 @@ Flow:
 This preserves a deliberate human-in-the-loop safety boundary — the
 default-text fill only pre-populates a field, it never submits anything.
 
-### 12.1 SMS default text (`sms-default-texts.json`)
+### 12.1 SMS default text (registry `SmsDefaultTexts`, formerly `sms-default-texts.json`)
 
 The end user, not the local-configuration owner, sets the default message
 text per SMS page, on the Instellingen page next to the existing SMS-page
-selector. Storage follows the same pattern as `speeddial.json` (§7.2,
+selector. Storage follows the same pattern as the speed dials (§7.2,
 `docs/MIGRATIONS.md`): a `schemaVersion` plus an array of
 `{Title, DefaultText}` items, keyed by `Title` (case-insensitive, matching
 `FindSmsCallActionIndexByTitle()`). Unlike `package-settings.json`, loading
@@ -669,7 +678,7 @@ misconfiguration).
 While the Instellingen page is open, switching the SMS-page dropdown keeps
 any not-yet-saved text for every page visited in that session in memory
 (never written to disk); the existing single "Opslaan" button is what
-persists everything to `sms-default-texts.json`, consistent with how the
+persists everything to the registry, consistent with how the
 rest of that page already behaves (no per-field autosave).
 
 The multiline field itself reuses the existing `AddRoundedEditGroup(...,
