@@ -4257,7 +4257,8 @@ speed dials, SMS default texts and call action.
 
 **Status:** Implemented on `claude/belvenster-los` (branched from
 `release/2.5-rc` at `2.5-rc.2`), as a bugfix for the 2.5 release candidate.
-Not yet validated on Windows.
+Validated on Windows with `2.5-belvenster-los.1` (2026-11-24) by the project
+owner.
 
 **Background**
 
@@ -4284,7 +4285,7 @@ number, settings, problem report) keep `MainGui` as owner.
 - The dialog appears on its own above the current application; after
   closing it, Windows returns focus to the next window in the z-order,
   normally the application the user copied the number from.
-- Windows validation needed: dialog appears and has keyboard focus (arrow
-  keys/Enter/Escape) both when the main window is open behind other windows
-  and when it is hidden in the tray or minimized; after closing, focus
+- Validated on Windows: the dialog appears on its own and keeps keyboard
+  control (arrow keys/Enter/Escape) with the main window behind another
+  application, minimized, or hidden in the tray; after closing, focus
   returns to the previous application.
