@@ -515,6 +515,10 @@ Changelog
 ---------
 
 ### 2.5 — In ontwikkeling
+- Als DocBot een gekopieerd nummer herkent, verschijnt het bel- of
+  keuzevenster nu los boven het programma waarin je werkt. Voorheen kwam
+  daarbij ook het hele DocBot-venster naar voren, en na het sluiten bleef
+  DocBot in beeld in plaats van het programma waar je mee bezig was.
 - Snelkiesnummers en sms-standaardteksten staan nu, net als de Belactie,
   in het Windows-register in plaats van op OneDrive. Bij een
   OneDrive-storing werken bellen, snelkiesnummers en sms met

@@ -4252,3 +4252,39 @@ speed dials, SMS default texts and call action.
   happened before the retry), the most recent changes are lost; the retry
   interval of one minute keeps that window small.
 
+
+## D-080 — Phone-action dialogs are owned by the hidden script window, not the main window
+
+**Status:** Implemented on `claude/belvenster-los` (branched from
+`release/2.5-rc` at `2.5-rc.2`), as a bugfix for the 2.5 release candidate.
+Not yet validated on Windows.
+
+**Background**
+
+When DocBot recognizes a copied number, the call confirmation dialog
+(`ShowCallConfirmationDialog()`) or the call/SMS choice dialog
+(`ShowCallOrSmsChoiceDialog()`) appears. Both were created with
+`+Owner MainGui.Hwnd`. Windows keeps an owner and its owned windows together
+in the z-order, so activating the dialog also brought the whole DocBot main
+window in front of the application the user was working in (for example
+HiX), and closing the dialog activated the main window instead of returning
+to that application. The project owner reported this as unwanted. The same
+code shipped in 2.4.x, so this is not a 2.5 regression.
+
+**Decision**
+
+Both dialogs use the hidden AutoHotkey script window (`A_ScriptHwnd`) as
+owner, via `GetPhoneActionDialogOwnerHwnd()`. An owned window still gets no
+taskbar button, and because the owner is hidden, nothing else is raised with
+the dialog. Dialogs that are opened from the main window itself (register
+number, settings, problem report) keep `MainGui` as owner.
+
+**Consequences**
+
+- The dialog appears on its own above the current application; after
+  closing it, Windows returns focus to the next window in the z-order,
+  normally the application the user copied the number from.
+- Windows validation needed: dialog appears and has keyboard focus (arrow
+  keys/Enter/Escape) both when the main window is open behind other windows
+  and when it is hidden in the tray or minimized; after closing, focus
+  returns to the previous application.

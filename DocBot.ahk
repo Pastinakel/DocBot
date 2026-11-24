@@ -38,7 +38,7 @@ if HasCommandLineArgument("--selftest") {
     ExitApp(exitCode)
 }
 
-global AppVersion := "2.5-rc.2"
+global AppVersion := "2.5-belvenster-los.1"
 
 ; Toegang tot het debugvenster is gekoppeld aan het Windows-account, niet
 ; aan een instelling die iedereen zelf kan aanzetten.
@@ -5735,7 +5735,9 @@ ShowCallConfirmationDialog() {
 
     number := State["IPT"]["ClipBoardNumber"]
 
-    dlg := Gui("+Owner" MainGui.Hwnd " -MaximizeBox -MinimizeBox", "DocBot - Nummer bellen")
+    ; Eigenaar is het verborgen scriptvenster, niet MainGui: zie
+    ; GetPhoneActionDialogOwnerHwnd().
+    dlg := Gui("+Owner" GetPhoneActionDialogOwnerHwnd() " -MaximizeBox -MinimizeBox", "DocBot - Nummer bellen")
     dlg.BackColor := C["Window"]
     dlg.SetFont("s10 c" C["Text"], "Segoe UI")
 
@@ -5801,7 +5803,9 @@ ShowCallOrSmsChoiceDialog() {
 
     number := State["IPT"]["ClipBoardNumber"]
 
-    dlg := Gui("+Owner" MainGui.Hwnd " -MaximizeBox -MinimizeBox", "DocBot - Belactie")
+    ; Eigenaar is het verborgen scriptvenster, niet MainGui: zie
+    ; GetPhoneActionDialogOwnerHwnd().
+    dlg := Gui("+Owner" GetPhoneActionDialogOwnerHwnd() " -MaximizeBox -MinimizeBox", "DocBot - Belactie")
     dlg.BackColor := C["Window"]
     dlg.SetFont("s10 c" C["Text"], "Segoe UI")
 
@@ -5865,6 +5869,18 @@ ShowCallOrSmsChoiceDialog() {
     DllCall("SetFocus", "ptr", callBtn.Hwnd, "ptr")
 
     RoundControl(numberShell, 16)
+}
+
+; Het bel- en keuzevenster verschijnt boven de applicatie waaruit de
+; gebruiker het nummer kopieerde (bijvoorbeeld HiX). Met MainGui als
+; eigenaar haalde Windows bij het activeren van het venster ook het hele
+; DocBot-hoofdvenster naar voren, en bij het sluiten werd dat hoofdvenster
+; geactiveerd in plaats van de applicatie waar de gebruiker mee bezig was.
+; Het verborgen scriptvenster (A_ScriptHwnd) als eigenaar houdt het
+; venster uit de taakbalk, zonder dat het hoofdvenster meekomt. Zie
+; docs/DECISIONS.md D-080.
+GetPhoneActionDialogOwnerHwnd() {
+    return A_ScriptHwnd
 }
 
 RedrawPhoneActionDialogButtons() {
